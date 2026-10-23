@@ -104,7 +104,7 @@ python detectors/sms/train_baseline.py --data ~/merged_sms.csv
 
 `advisor_server` is the native Llama engine: the same KV-cache prefix reuse as `advisor/llm_engine.py`, in C++, built in your WSL ExecuTorch tree with the same toolchain and flags as `llama_main`. The script copies one source file next to `llama_main`, adds one build target and builds only that target.
 
-In WSL, copy the source folder from the Pi, build, and send the binary back:
+Run these in **WSL on the laptop** (prompt `lenovo@...`), not on the Pi: the Pi has no ExecuTorch source tree or cross compiler. Copy the source folder from the Pi, build, and send the binary back:
 
 ```bash
 scp -r arrehinus@10.140.209.76:~/ps3-guardian/deploy/advisor_server ~/
@@ -112,7 +112,9 @@ bash ~/advisor_server/build_pi4.sh ~/executorch
 scp ~/executorch/cmake-out/examples/models/llama/advisor_server arrehinus@10.140.209.76:~/executorch-deployment/
 ```
 
-Use the path of the ExecuTorch folder where you ran `examples/raspberry_pi/setup.sh pi4` if it is not `~/executorch`.
+Use the path of the ExecuTorch folder where you ran `examples/raspberry_pi/setup.sh pi4` if it is not `~/executorch` (`find ~ -maxdepth 3 -name arm-toolchain-pi4.cmake` shows it).
+
+If you keep an `advisor_server` somewhere else on the Pi (for example a prebuilt copy in its own folder, with its own `libllama_runner.so` beside it), pass its path with `--server-bin` in the smoke test and start the service with `LLAMA_SERVER_BIN=<path> bash scripts/run_pi.sh`.
 
 ---
 
@@ -200,6 +202,8 @@ The first plan ran Llama through the ExecuTorch Python runtime (`pip install exe
 
 **Fix.** `advisor_server` is the same engine in C++, built from source with the Pi 4 toolchain and flags (`-march=armv8-a -mtune=cortex-a72`), exactly like `llama_main`. It runs the same kernels `llama_main` already runs on this Pi.
 
+One catch: that CMake file also hands `-march=armv8.2-a+dotprod` to every program that links the custom ops, `llama_main` included, and it comes after the toolchain's `-march=armv8-a`, so it wins. In our first build the compiler used it to put two Armv8.1 atomics into `advisor_server.cpp` (in shared-pointer clean-up that the tests never reached). `build_pi4.sh` now compiles that file for `armv8-a` again. After the fix the scan finds no Armv8.1 atomics in our code. The newer instructions left are all in kernels that XNNPACK and KleidiAI pick at run time from the CPU's features, or in int8 attention kernels for a quantized KV cache, which this model does not use. The same is true of `llama_main`.
+
 Side benefits:
 
 - The Pi needs no PyTorch install (about 600 MB saved on disk, several hundred MB of RAM saved).
@@ -263,6 +267,7 @@ The results:
   - No instruction trapped.
   - The same emulated CPU traps an Armv8.1 atomic instruction, which is exactly what crashes the pip wheel on the real Pi.
   - On one of three prompts, the Arm and x86 answers from the random-weight test model drift apart after about ten tokens. That is normal floating-point rounding between NEON and AVX kernels at a near tie; each build always agrees with itself.
+  - After the `armv8-a` fix above, the rebuilt binary passed the same checks. It also passed the exact smoke-test command from "Run on the Pi" (4 threads, `--verify`) under the emulated Cortex-A72.
 
 ---
 

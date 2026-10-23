@@ -94,6 +94,8 @@ We tried to run Llama through the ExecuTorch Python runtime (`executorch` 1.5.1 
 
 **Fix.** A native C++ engine, `advisor_server`, built from source with the Pi 4 toolchain and flags (`-march=armv8-a -mtune=cortex-a72`), like `llama_main`. It runs the same kernels as `llama_main`, needs no PyTorch on the Pi, and is what the step-3 service uses on this board.
 
+The same CMake line also reaches every program that links the custom ops: their compile flags end with `-march=armv8.2-a+dotprod`. So `build_pi4.sh` compiles our own source file for `armv8-a` again; without that, the compiler had placed two Armv8.1 atomics in it. The newer instructions left in the binary are all in kernels that XNNPACK and KleidiAI choose at run time from the CPU's features, or in int8 attention kernels for a quantized KV cache, which this model does not use.
+
 ## 4. Design decisions taken from these numbers (step 3)
 
 1. **Keep the model loaded:** a persistent Llama service removes the 11.7 s load from every alert.
