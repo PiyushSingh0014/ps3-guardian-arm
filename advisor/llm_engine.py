@@ -180,9 +180,24 @@ class LlamaEngine:
         _, metrics = self.generate(prompt, max_new_tokens=0)
         return metrics
 
+    def is_resident(self, prompt):
+        """True if every token of `prompt` is already in the KV cache."""
+        with self.lock:
+            ids = self.encode(prompt)
+            return common_prefix_len(self.kv, ids) >= len(ids)
+
+    def reset(self):
+        """Forget the cache, so the next prompt is read in full."""
+        with self.lock:
+            self.kv.clear()
+
+    @property
+    def kv_tokens(self):
+        return len(self.kv)
+
 
 def _smoke_test():
-    """python -m advisor.llm_engine --pte llama3_2.pte --tokenizer tokenizer.model [--verify]
+    """python -m advisor.llm_engine --pte llama3_2.pte --tokenizer tokenizer.model [--verify] [--server-bin advisor_server]
     Loads the model, reads the fixed prefix, explains one sample alert twice
     (prefix reused, then an exact repeat) and prints the timings. --verify also
     re-reads everything from an empty cache and checks the answer is unchanged."""
@@ -199,10 +214,17 @@ def _smoke_test():
     ap.add_argument("--lang", default="en", choices=["en", "hi"])
     ap.add_argument("--verify", action="store_true",
                     help="also re-run with an empty KV cache and check the answer is identical")
+    ap.add_argument("--server-bin", help="path to advisor_server (the native C++ engine; needed on a Pi 4)")
     a = ap.parse_args()
 
-    engine = LlamaEngine(a.pte, a.tokenizer, threads=a.threads)
-    print(f"loaded in {engine.load_s:.1f} s | {engine.threads} threads | context {engine.max_context_len} "
+    if a.server_bin:
+        from .llm_native import NativeLlamaEngine
+        engine = NativeLlamaEngine(a.server_bin, a.pte, a.tokenizer, threads=a.threads)
+        kind = "native advisor_server"
+    else:
+        engine = LlamaEngine(a.pte, a.tokenizer, threads=a.threads)
+        kind = "ExecuTorch Python runtime"
+    print(f"[{kind}] loaded in {engine.load_s:.1f} s | {engine.threads} threads | context {engine.max_context_len} "
           f"| up to {engine.max_tokens_per_call} tokens per call")
     m = engine.prefill(static_prefix(a.lang))
     print(f"fixed prefix: {m['prefill_tokens']} tokens in {m['prefill_s']:.1f} s ({m.get('prefill_tok_s', 0):.1f} tok/s)")
@@ -224,7 +246,7 @@ def _smoke_test():
         last = text
 
     if a.verify:
-        engine.kv.clear()                       # forget the cache: read the whole prompt again
+        engine.reset()                          # forget the cache: read the whole prompt again
         text, m = engine.generate(prompt, max_new_tokens=max_new_tokens(a.lang))
         print(f"\n[fresh, no reuse] read {m['prefill_tokens']} tokens in {m['prefill_s']:.1f} s; "
               f"answer identical to the reused-cache answer: {'yes' if text == last else 'NO'}")

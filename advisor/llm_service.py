@@ -10,6 +10,11 @@ examples) into the KV cache, and then serves the app on 127.0.0.1:8765:
     POST /prefill   {"prompt": "..."}                        -> {"metrics"}
     GET  /health
 
+Engines: on a Raspberry Pi 4 pass --server-bin ~/executorch-deployment/advisor_server
+(the native C++ engine, see deploy/advisor_server/). Without it the ExecuTorch
+Python runtime is used, which needs `pip install torch executorch` and an
+Armv8.2+ CPU (Pi 5, laptops); on a Pi 4 it stops with "Illegal instruction".
+
 Two caches make repeat alerts fast:
   * KV cache (in the engine): tokens shared with the previous prompt are not
     read again. With the v3 prompt that is the whole fixed prefix.
@@ -93,7 +98,6 @@ class IdleRewarmer(threading.Thread):
     def __init__(self, engine, prompt, idle_s=3.0):
         super().__init__(daemon=True)
         self.engine, self.prompt, self.idle_s = engine, prompt, idle_s
-        self.ids = engine.encode(prompt)
         self.last_request = time.time()
         self.rewarms = 0
 
@@ -102,13 +106,12 @@ class IdleRewarmer(threading.Thread):
 
     def tick(self):
         """One check: re-read the prefix if idle and it is no longer in the KV cache."""
-        from .llm_engine import common_prefix_len
         if time.time() - self.last_request < self.idle_s:
             return False
         if not self.engine.lock.acquire(blocking=False):     # a request is running
             return False
         try:
-            if common_prefix_len(self.engine.kv, self.ids) < len(self.ids):
+            if not self.engine.is_resident(self.prompt):
                 self.engine.prefill(self.prompt)
                 self.rewarms += 1
                 return True
@@ -136,8 +139,16 @@ def create_app(engine, cache=None, model_id="model", rewarmer=None):
     @app.get("/health")
     def health():
         s = engine.stats
-        return {"ok": True, "model": model_id, "threads": engine.threads, "load_s": engine.load_s,
-                "kv_tokens": len(engine.kv), "max_context_len": engine.max_context_len,
+        busy = not engine.lock.acquire(blocking=False)      # never wait behind a generation
+        kv = None
+        if not busy:
+            try:
+                kv = engine.kv_tokens
+            finally:
+                engine.lock.release()
+        return {"ok": True, "model": model_id, "engine": type(engine).__name__, "busy": busy,
+                "threads": engine.threads, "load_s": engine.load_s,
+                "kv_tokens": kv, "max_context_len": engine.max_context_len,
                 "answer_cache_items": len(cache) if cache is not None else None,
                 "requests": s["requests"],
                 "reused_token_share": round(s["reused_tokens"] / s["prompt_tokens"], 3) if s["prompt_tokens"] else None,
@@ -187,15 +198,22 @@ def main():
                                                  "the first one is kept warm when idle")
     ap.add_argument("--cache-file", default=DEFAULT_CACHE)
     ap.add_argument("--no-answer-cache", action="store_true")
+    ap.add_argument("--server-bin", default=os.environ.get("LLAMA_SERVER_BIN"),
+                    help="path to the native advisor_server (use this on a Raspberry Pi 4); "
+                         "without it the ExecuTorch Python runtime is used")
     a = ap.parse_args()
 
-    from .llm_engine import LlamaEngine
     from .prompt import static_prefix
 
     print(f"[llm] loading {a.pte} with {a.threads} threads ...", flush=True)
-    engine = LlamaEngine(a.pte, a.tokenizer, threads=a.threads)
-    print(f"[llm] loaded in {engine.load_s:.1f} s; context {engine.max_context_len} tokens, "
-          f"{engine.threads} threads", flush=True)
+    if a.server_bin:
+        from .llm_native import NativeLlamaEngine
+        engine = NativeLlamaEngine(a.server_bin, a.pte, a.tokenizer, threads=a.threads)
+    else:
+        from .llm_engine import LlamaEngine
+        engine = LlamaEngine(a.pte, a.tokenizer, threads=a.threads)
+    print(f"[llm] {type(engine).__name__} loaded in {engine.load_s:.1f} s; context "
+          f"{engine.max_context_len} tokens, {engine.threads} threads", flush=True)
 
     langs = [x.strip() for x in a.warm.split(",") if x.strip()]
     for lang in reversed(langs):                 # the first language ends up resident
