@@ -1,9 +1,12 @@
 """Loads the remediation playbooks (advisor/playbooks/*.md).
 
 Each playbook has a title, a severity, a one-line summary, numbered steps and
-two lines that only Llama sees:
+three lines that only Llama sees:
   pretends: who this kind of scam usually pretends to be (used when the
             detector cannot name the organisation)
+  wants:    what the scammer is after, as "to ..." (sentence 1 of the answer);
+            without it the 1B model guessed, e.g. "to trick you into giving
+            away your income-tax refund"
   fact:     one checked fact Llama can rely on, so a 1B model does not have to
             remember how banks or couriers really behave.
 Steps shown to users always come verbatim from here, never from the LLM.
@@ -23,6 +26,7 @@ class Playbook:
     summary: str
     steps: list = field(default_factory=list)
     pretends: str = ""
+    wants: str = ""
     fact: str = ""
 
 
@@ -31,6 +35,7 @@ def _parse(key, text):
     severity = re.search(r"^severity:\s*(\w+)", text, re.M | re.I)
     summary = re.search(r"^summary:\s*(.+)$", text, re.M | re.I)
     pretends = re.search(r"^pretends:\s*(.+)$", text, re.M | re.I)
+    wants = re.search(r"^wants:\s*(.+)$", text, re.M | re.I)
     fact = re.search(r"^fact:\s*(.+)$", text, re.M | re.I)
     block = text.split("## Steps", 1)[1] if "## Steps" in text else ""
     steps = [s.strip() for s in re.findall(r"^\s*\d+\.\s+(.+)$", block, re.M)]
@@ -40,6 +45,7 @@ def _parse(key, text):
                     summary=summary.group(1).strip() if summary else "",
                     steps=steps,
                     pretends=pretends.group(1).strip() if pretends else "",
+                    wants=wants.group(1).strip() if wants else "",
                     fact=fact.group(1).strip() if fact else "")
 
 

@@ -2,6 +2,7 @@
 severity: high
 summary: The message offers easy work or daily earnings but soon asks you to pay a fee or deposit money to "unlock" tasks or earnings.
 pretends: a company offering jobs
+wants: to make you pay a fee or deposit for work that does not exist
 fact: Real employers do not charge fees for a job, and they do not pay for online tasks that later need a deposit to withdraw earnings.
 
 ## Steps

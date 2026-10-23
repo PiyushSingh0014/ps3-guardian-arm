@@ -1,4 +1,10 @@
-"""Builds the Llama 3.2 Instruct prompt for the advisor (v3).
+"""Builds the Llama 3.2 Instruct prompt for the advisor (v4).
+
+v4 (after the first Pi benchmark): each case also says what the scammer wants
+(the playbook's `wants:` line), and sentence 2 is asked for as "the checked
+fact and the first warning sign". On the Pi, v3 guessed the scammer's goal
+("to trick you into giving away your income-tax refund") and padded sentence 2
+with made-up claims ("links to their websites are always correct").
 
 What changed from v2, and why:
   * Evidence only. Llama sees the scanner result, the scam type and one checked
@@ -36,7 +42,7 @@ SYSTEM = (
     "A security scanner has already checked the message and listed what it found. "
     "Using only those facts, write exactly 2 short sentences. "
     "Sentence 1: who the message pretends to be from and what the scammer wants. "
-    "Sentence 2: which warning signs give it away."
+    "Sentence 2: the checked fact and the first warning sign."
 )
 
 RESULT_TEXT = {"dangerous": "scam (high confidence)",
@@ -50,6 +56,7 @@ EXAMPLES = [
         "result": RESULT_TEXT["dangerous"],
         "scam_type": "Fake electricity or bill disconnection",
         "pretends": "the electricity company",
+        "wants": "to scare you into paying a scammer",
         "signs": ["asks you to call or WhatsApp a mobile number",
                   "rushes you with a deadline or a threat to block or cut off a service"],
         "fact": ("Electricity companies send disconnection notices with the official bill and do "
@@ -67,6 +74,7 @@ EXAMPLES = [
         "result": RESULT_TEXT["dangerous"],
         "scam_type": "Fake parcel or delivery fee",
         "pretends": "India Post (a courier company)",
+        "wants": "to steal your card details through a fake delivery fee",
         "signs": ["uses a short link that hides the real website",
                   "rushes you with a deadline or a threat to block or cut off a service"],
         "fact": ("Courier companies and India Post do not ask for redelivery, address-update or "
@@ -84,6 +92,7 @@ EXAMPLES = [
         "result": RESULT_TEXT["suspicious"],
         "scam_type": "OTP or password theft",
         "pretends": "Paytm (a payment app)",
+        "wants": "to get your OTP and empty your account",
         "signs": ["talks about your OTP, PIN, CVV or password",
                   "promises a prize, refund or cashback"],
         "fact": ("No bank, company or government office ever asks you to share an OTP; anyone who "
@@ -127,10 +136,12 @@ def _header(role):
     return f"<|start_header_id|>{role}<|end_header_id|>\n\n"
 
 
-def format_case(result, scam_type, pretends, signs, fact):
+def format_case(result, scam_type, pretends, signs, fact, wants=""):
     # Fixed-per-scam-type lines come first: two alerts of the same type then share
     # these tokens too, and the service does not read them again.
     lines = [f"Scam type: {_field(scam_type)}"]
+    if wants:
+        lines.append(f"Scammer wants: {_field(wants)}")
     if fact:
         lines.append(f"Fact: {_field(fact, 300)}")
     lines += [f"Scanner result: {_field(result)}",
@@ -153,7 +164,8 @@ def build_user_turn(finding, playbook):
                        scam_type=playbook.title,
                        pretends=pretends_to_be(finding, playbook),
                        signs=finding.reasons,
-                       fact=playbook.fact)
+                       fact=playbook.fact,
+                       wants=playbook.wants)
 
 
 def static_prefix(language="en", n_examples=len(EXAMPLES)):
@@ -162,7 +174,7 @@ def static_prefix(language="en", n_examples=len(EXAMPLES)):
     bos = "<|begin_of_text|>" if INCLUDE_BOS_TOKEN else ""
     parts = [bos, _header("system"), SYSTEM.format(lang=LANG_NAMES[lang]), "<|eot_id|>"]
     for ex in EXAMPLES[:n_examples]:
-        case = format_case(ex["result"], ex["scam_type"], ex["pretends"], ex["signs"], ex["fact"])
+        case = format_case(ex["result"], ex["scam_type"], ex["pretends"], ex["signs"], ex["fact"], ex["wants"])
         parts += [_header("user"), case, "<|eot_id|>", _header("assistant"), ex["answer"][lang], "<|eot_id|>"]
     return "".join(parts)
 

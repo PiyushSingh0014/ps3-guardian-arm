@@ -2,6 +2,7 @@
 severity: high
 summary: The message promises a prize, cashback or refund but needs a fee, your bank details or an OTP first. Genuine prizes and refunds never ask for these.
 pretends: a company or office offering a prize or refund
+wants: to steal a fee, your bank details or an OTP with a fake prize or refund
 fact: Genuine prizes and refunds never ask for a fee, bank details or an OTP first; income-tax refunds go straight to your bank account.
 
 ## Steps

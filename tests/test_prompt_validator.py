@@ -1,9 +1,9 @@
-"""Prompt v3 and validator v3. Run from the repo root:  pytest -q"""
+"""Prompt v4 and validator v3. Run from the repo root:  pytest -q"""
 import pytest
 
 from advisor.findings import Finding
 from advisor.playbooks import get_playbook, load_playbooks
-from advisor.prompt import build_prompt, build_user_turn, sanitize_untrusted, static_prefix
+from advisor.prompt import EXAMPLES, build_prompt, build_user_turn, sanitize_untrusted, static_prefix
 from advisor.validator import check_explanation, split_sentences
 
 BOOKS = load_playbooks()
@@ -26,6 +26,7 @@ def test_prompt_contains_evidence_but_never_the_message_or_sender():
     assert "Pretends to be: SBI (a bank)" in p
     assert "KYC (Know Your Customer)" in p                     # fixes "Know Your Account"
     assert "Banks update KYC only at a branch" in p              # the playbook fact
+    assert "Scammer wants: to steal your net-banking login" in p  # the playbook goal (v4)
     assert "sbi-kyc" not in p and "IGNORE ALL RULES" not in p   # message text never sent
     assert "9812345678" not in p                                # raw sender never sent
     assert p.count("<|eot_id|>") == 1 + 2 * 3 + 1               # system + 3 examples + alert
@@ -38,6 +39,16 @@ def test_prefix_is_identical_for_every_alert_in_a_language():
                                   entities={}), get_playbook(BOOKS, "delivery_fee_scam"))
     assert a.startswith(static_prefix("en")) and b.startswith(static_prefix("en"))
     assert static_prefix("hi") != static_prefix("en") and "Devanagari" in static_prefix("hi")
+
+
+def test_every_playbook_says_what_the_scammer_wants():
+    for key, book in BOOKS.items():
+        assert book.wants.startswith("to "), key          # reads on after "pretends to be from X"
+
+
+def test_worked_examples_use_their_scammer_wants_line():
+    for ex in EXAMPLES:
+        assert ex["wants"] in ex["answer"]["en"], ex["scam_type"]
 
 
 def test_fields_cannot_carry_chat_tokens():

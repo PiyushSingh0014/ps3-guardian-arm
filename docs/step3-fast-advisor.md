@@ -35,7 +35,7 @@ Files that changed or are new in step 3:
 
 | File | Role |
 | --- | --- |
-| `advisor/prompt.py` | Prompt v3: evidence only, 3 worked examples (English and Hindi), fixed prefix |
+| `advisor/prompt.py` | Prompt v4: evidence only (including what the scammer wants), 3 worked examples (English and Hindi), fixed prefix |
 | `advisor/validator.py` | Checks the 2 sentences: verdict contradiction, language, numbers/links, hedging, KYC wording |
 | `advisor/advise.py` | `quick()` (template, instant) and `explain()` (Llama, validated); code picks the steps |
 | `deploy/advisor_server/` | **Native engine for the Pi 4:** `advisor_server.cpp` (Llama on ExecuTorch with KV-cache prefix reuse) and `build_pi4.sh`, which builds it like `llama_main` |
@@ -214,7 +214,7 @@ Side benefits:
 
 ## Speed on a Raspberry Pi 4
 
-Measured with the smoke test on 2026-10-24 (first run, before the 32-token pieces; details in [eval/results_pi4.md](../eval/results_pi4.md)):
+Measured on 2026-10-24 (details in [eval/results_pi4.md](../eval/results_pi4.md)). The table is the first smoke-test run; the 32-token pieces changed it as noted below:
 
 | Case | Llama reads | Llama writes | Time |
 | --- | --- | --- | --- |
@@ -227,7 +227,8 @@ Measured with the smoke test on 2026-10-24 (first run, before the 32-token piece
 
 - Reading runs at about 15 tokens/s; writing at 3.4 tokens/s.
 - Writing is slower than Track B's 4.4 tokens/s because each new token also attends to the whole context, here 620–670 tokens. Track B's own numbers show the same trend (see results). A shorter fixed prefix would make every answer faster.
-- The 32-token pieces add a few forward calls per alert (5 instead of 1 for a new alert). Each extra call also runs the output layer once, so expect up to about half a second more; measure it with the smoke test.
+- With the 32-token pieces (measured): the prefix takes 35.5 s instead of 32.0 s, and a new alert's first token about 1 s later. Each extra forward call costs about 0.3 s, because a 32-token piece is too little work to hide re-reading the weights.
+- Benchmark of 6 different alerts (`warm_cache --fresh`): 17.8–20.9 s each. When the previous alert was the same scam type, 512 tokens were reused and the first token came after 5.4–6.2 s.
 - Hindi answers need about 3 times more tokens, so expect about 50 s for a new Hindi alert.
 
 ---
