@@ -1,6 +1,8 @@
 # Promotional spam
 severity: low
 summary: This looks like unwanted marketing rather than a scam. It is annoying but usually not dangerous.
+pretends: a business
+fact: Registered businesses send marketing SMS from sender IDs that end in -P, and you can block them by turning on Do Not Disturb.
 
 ## Steps
 1. Ignore it; replying can confirm that your number is active.

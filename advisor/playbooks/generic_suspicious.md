@@ -1,6 +1,8 @@
 # Suspicious message
 severity: medium
 summary: The message shows warning signs of a scam, even though it does not match one known pattern exactly.
+pretends: someone you might trust
+fact: Scammers use urgency, links and requests for personal details to rush people into mistakes before they can check.
 
 ## Steps
 1. Do not tap links, call numbers or install anything from this message.

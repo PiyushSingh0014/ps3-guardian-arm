@@ -1,0 +1,11 @@
+# Extra packages for the persistent Llama service on the Pi (python -m advisor.llm_service).
+# Not needed on a laptop: the tests use a fake model.
+#
+# 1. Install torch FIRST, from PyTorch's CPU-only index. The default PyPI build for
+#    64-bit ARM pulls in several GB of CUDA libraries the Pi cannot use:
+#       pip install torch==2.14.0 --index-url https://download.pytorch.org/whl/cpu
+#    Use the torch version from the environment you exported llama3_2.pte with
+#    (`pip show torch` in et-venv); ExecuTorch 1.5 was built against 2.14.
+# 2. Then:
+#       pip install -r requirements-llm.txt
+executorch==1.5.1

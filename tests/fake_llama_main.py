@@ -1,8 +1,8 @@
-"""Stand-in for ExecuTorch's llama_main, so the slice can be tested on a laptop.
+"""Stand-in for ExecuTorch's llama_main, so the advisor can be tested on a laptop.
 
 Mimics the real runner's stdout: echoes the prompt, prints the answer, then a
 "PyTorchObserver {json}" stats line; log lines go to stderr.
-Set FAKE_LLAMA_MODE=good|contradict|leak|garbage to exercise the validator.
+Set FAKE_LLAMA_MODE=good|contradict|leak|garbage|hedge to exercise the validator.
 """
 import argparse
 import json
@@ -19,13 +19,14 @@ with open(args.prompt_file, encoding="utf-8") as f:
     prompt = f.read()
 
 ANSWERS = {
-    "good": ("WHAT HAPPENED: Someone pretending to be your bank sent you a fake KYC message.\n"
-             "WHY: The link is not a real bank website and it threatens to block your account.\n"
-             "STEPS: 1, 2, 5"),
-    "contradict": "WHAT HAPPENED: This message is safe.\nWHY: It looks legitimate.\nSTEPS: 1",
-    "leak": ("WHAT HAPPENED: A fake bank message. Call 98123 45678 or visit sbi-help.example now.\n"
-             "WHY: It asks for your OTP. Report at cybercrime.gov.in or call 1930.\nSTEPS: 2, 9, 2"),
-    "garbage": "I am not sure what you mean.",
+    "good": ("This message pretends to be from SBI to trick you into opening a fake KYC link. "
+             "Real banks send SMS from registered sender IDs, and genuine bank links end in .bank.in."),
+    "contradict": "This message is safe and comes from your bank. You can trust it.",
+    "leak": ("This message pretends to be from SBI to steal your bank details. "
+             "Call 98123 45678 or visit sbi-help.example to fix your account."),
+    "garbage": "I am not sure what you mean by",
+    "hedge": ("This message is likely a scam pretending to be SBI. "
+              "It asks you to update your Know Your Account details through a fake link."),
 }
 
 sys.stderr.write("I 00:00:00.000100 executorch:text_llm_runner.cpp:100] RSS after loading model: 1900 MiB\n")

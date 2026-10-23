@@ -1,6 +1,8 @@
 # Fake parcel or delivery fee
 severity: medium
 summary: The message says a parcel is stuck or needs a small fee. The link leads to a fake page that steals card details.
+pretends: a courier company
+fact: Courier companies and India Post do not ask for redelivery, address-update or customs fees through links in SMS messages.
 
 ## Steps
 1. Do not pay through the link, however small the amount.

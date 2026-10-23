@@ -1,6 +1,8 @@
 # "Digital arrest" or fake police threat
 severity: critical
 summary: Someone claims to be from the police, CBI, customs or a court and threatens arrest unless you pay or stay on a video call. Real officials never arrest you or demand money over a call.
+pretends: the police or a government agency
+fact: Indian law has no such thing as a "digital arrest"; police, CBI and courts never arrest anyone over a video call or ask for money to close a case.
 
 ## Steps
 1. Hang up. Do not stay on video calls, and do not transfer any money.

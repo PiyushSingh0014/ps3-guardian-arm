@@ -2,12 +2,12 @@
 
     python -m advisor.cli "Your SBI account is blocked, update KYC: http://sbi-kyc.example/v"
 
-    # with Llama on the Pi:
-    ADVISOR_BACKEND=llama_main LLAMA_MAIN=./llama_main LLAMA_PTE=llama3_2.pte \
-    LLAMA_TOKENIZER=tokenizer.model python -m advisor.cli "..." --lang hi --show-prompt
+    # with the persistent Llama service running on the Pi (see README.md):
+    ADVISOR_BACKEND=service python -m advisor.cli "..." --sender 9812345678 --show-prompt
 """
 import argparse
 import json
+import time
 
 from advisor.advise import Advisor
 from advisor.backends import backend_from_env
@@ -26,11 +26,14 @@ def main():
 
     finding = SmsDetector().check(a.message, sender=a.sender, language=a.lang)
     advisor = Advisor(backend=backend_from_env())
+    t0 = time.time()
     advice = advisor.advise(finding)
+    took = time.time() - t0
 
+    cached = " (saved answer)" if advice.metrics.get("cached") else ""
     print(f"\n{advice.headline}")
     print(f"(score {finding.score:.2f} | category {finding.category} | "
-          f"backend {advisor.backend.name} | source {advice.source})")
+          f"backend {advisor.backend.name} | source {advice.source}{cached} | {took:.1f} s)")
     print(f"\nWhat happened: {advice.what}\nWhy: {advice.why}\nWhat to do now:")
     for i, step in enumerate(advice.steps, 1):
         print(f"  {i}. {step}")
@@ -38,9 +41,11 @@ def main():
         print("\nValidator notes: " + "; ".join(advice.flags))
     if advice.metrics:
         print("Metrics: " + json.dumps(advice.metrics))
-    if a.show_prompt:
+    if a.show_prompt and finding.verdict != "safe":
         book = get_playbook(advisor.books, finding.category)
-        print("\n--- prompt sent to Llama ---\n" + build_prompt(finding, book))
+        n = getattr(advisor.backend, "n_examples", None)
+        prompt = build_prompt(finding, book, n) if n is not None else build_prompt(finding, book)
+        print("\n--- prompt sent to Llama ---\n" + prompt)
 
 
 if __name__ == "__main__":
