@@ -8,79 +8,12 @@ ExecuTorch itself with a tiny exported Llama; see README.md.)
 from fastapi.testclient import TestClient
 
 from advisor.backends import LlamaServiceBackend
-from advisor.llm_engine import LlamaEngine, common_prefix_len
+from advisor.llm_engine import common_prefix_len
 from advisor.llm_service import AnswerCache, IdleRewarmer, create_app
-
-EOS = 3
-
-
-class _Sizes:
-    def __init__(self, n):
-        self.n = n
-
-    def sizes(self):
-        return (1, self.n)
-
-
-class _Meta:
-    def __init__(self, n):
-        self.n = n
-
-    def input_tensor_meta(self, i):
-        return _Sizes(self.n)
-
-
-class FakeModule:
-    """Mimics the ExecuTorch module API the engine uses."""
-
-    def __init__(self, max_call=7, context=200, eos_after=None):
-        self.kv, self.calls = {}, []
-        self.max_call, self.context, self.eos_after = max_call, context, eos_after
-
-    def method_names(self):
-        return ["forward", "get_max_seq_len", "get_max_context_len", "get_eos_ids", "enable_dynamic_shape"]
-
-    def run_method(self, name, inputs):
-        return {"get_max_seq_len": [self.max_call + 1], "get_max_context_len": [self.context],
-                "get_eos_ids": [EOS], "enable_dynamic_shape": [True]}[name]
-
-    def method_meta(self, name):
-        return _Meta(self.max_call)
-
-    def step(self, ids, pos):
-        assert 1 <= len(ids) <= self.max_call, "chunk larger than the exported bound"
-        for i, t in enumerate(ids):
-            self.kv[pos + i] = t
-        h = 7
-        for p in range(pos + len(ids)):            # depends on every visible position
-            h = (h * 31 + self.kv[p]) % 1_000_003
-        self.calls.append((pos, len(ids)))
-        if self.eos_after is not None:                 # deterministic end, for the EOS test
-            return EOS if pos + len(ids) >= self.eos_after else 10 + h % 40
-        return EOS if h % 17 == 0 else 10 + h % 40
-
-
-class FakeTokenizer:
-    eos_id, n_words = EOS, 60
-
-    def encode(self, s, bos=False, eos=False, allowed_special=None):
-        return [10 + (ord(c) % 40) for c in s]
-
-    def decode(self, ids):
-        return "".join(chr(ord("a") + (i - 10) % 26) for i in ids)
-
-
-class FakeEngine(LlamaEngine):
-    def _forward(self, ids, pos):
-        return self.module.step(ids, pos)
-
-    @staticmethod
-    def _argmax(token):
-        return token
-
+from tests.fakes import EOS, make_engine
 
 def engine(**kw):
-    return FakeEngine(module=FakeModule(**kw), tokenizer=FakeTokenizer(), threads=1)
+    return make_engine(**kw)
 
 
 PREFIX = "fixed system text and worked examples | "
@@ -167,4 +100,13 @@ def test_idle_rewarm_restores_the_default_prefix():
     e.prefill(PREFIX + "en")
     assert rw.tick() is False                      # already warm
     e.generate("a different language prefix", 4)
-    assert rw.tick() is True and e.kv[:len(rw.ids)] == rw.ids
+    assert not e.is_resident(PREFIX + "en")
+    assert rw.tick() is True and e.is_resident(PREFIX + "en")
+
+
+def test_reset_forgets_the_cache():
+    e = engine()
+    e.prefill(PREFIX)
+    assert e.kv_tokens == len(PREFIX)
+    e.reset()
+    assert e.kv_tokens == 0 and e.generate(PREFIX + "x", 3)[1]["reused_tokens"] == 0

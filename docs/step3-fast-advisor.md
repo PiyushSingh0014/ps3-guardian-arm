@@ -9,7 +9,7 @@ Step 2 proved the path end to end. Step 3 makes the Llama part usable on a Raspb
 | What Llama writes | WHAT/WHY/STEPS format | exactly 2 sentences; the code picks the steps |
 | What Llama sees | the (sanitised) message + rules | evidence only: scam type, one checked fact, warning signs, who it pretends to be |
 | Prompt style | instructions ("never call it safe") | 3 worked examples, positive wording |
-| Model process | `llama_main` per alert (reload ~12 s) | persistent service, model loaded once |
+| Model process | `llama_main` per alert (reload ~12 s) | persistent service with a native C++ engine (`advisor_server`), model loaded once |
 | Prompt reading | whole prompt every time | fixed prefix read once and reused from the KV cache |
 | Repeat alerts | same cost again | instant (saved answers) |
 | User sees | nothing until Llama finishes | playbook answer at once, Llama's explanation swapped in after checks |
@@ -26,8 +26,8 @@ message ─► SmsDetector ─► Finding (verdict, category, reasons, claims_to
                                │
                                └─► Advisor.explain() (background job)
                                       prompt v3 = [fixed prefix: system + 3 examples] + [this alert's evidence]
-                                      └─► llm_service (Pi) ─► LlamaEngine: reuse KV for the shared prefix,
-                                                               read only the new tokens, greedy decode
+                                      └─► llm_service (Pi) ─► advisor_server (C++, ExecuTorch): reuse KV for the
+                                                               shared prefix, read only the new tokens, greedy decode
                                       ◄── 2 sentences ─► validator ─► page swaps them in
 ```
 
@@ -38,7 +38,9 @@ Files that changed or are new in step 3:
 | `advisor/prompt.py` | Prompt v3: evidence only, 3 worked examples (English and Hindi), fixed prefix |
 | `advisor/validator.py` | Checks the 2 sentences: verdict contradiction, language, numbers/links, hedging, KYC wording |
 | `advisor/advise.py` | `quick()` (template, instant) and `explain()` (Llama, validated); code picks the steps |
-| `advisor/llm_engine.py` | Llama on the ExecuTorch Python runtime with KV-cache prefix reuse; `python -m advisor.llm_engine` is a smoke test |
+| `deploy/advisor_server/` | **Native engine for the Pi 4:** `advisor_server.cpp` (Llama on ExecuTorch with KV-cache prefix reuse) and `build_pi4.sh`, which builds it like `llama_main` |
+| `advisor/llm_native.py` | Runs `advisor_server` and talks to it over stdin/stdout |
+| `advisor/llm_engine.py` | The same engine on the ExecuTorch Python runtime (Pi 5, laptops); `python -m advisor.llm_engine` is the smoke test for both |
 | `advisor/llm_service.py` | Persistent service on 127.0.0.1:8765, answer cache, idle re-warm of the prefix |
 | `advisor/warm_cache.py` | Pre-explains a CSV of messages; writes a review/benchmark table |
 | `advisor/backends.py` | New `LlamaServiceBackend`; `llama_main` kept as a fallback |
@@ -46,7 +48,8 @@ Files that changed or are new in step 3:
 | `detectors/sms/brands.py` | Who a message claims to be (SBI, India Post, ...) from a fixed list |
 | `detectors/sms/rules_india.py` | Clearer warning-sign wording, most important first (model features unchanged) |
 | `advisor/playbooks/*.md` | New `pretends:` and `fact:` lines that only Llama sees |
-| `scripts/run_pi.sh` | Starts the service, waits for it, starts the app |
+| `scripts/run_pi.sh` | Starts the service (with `advisor_server` when present), waits for it, starts the app |
+| `deploy/tools/check_arm_isa.py` | Lists instructions a Cortex-A72 cannot run in a binary; how the pip-wheel crash was found |
 
 ---
 
@@ -59,7 +62,7 @@ python -m advisor.cli "Your SBI account is blocked, update KYC: http://sbi-kyc.e
 uvicorn app.server:app --port 8000
 ```
 
-`pytest` runs 38 tests. The engine and service tests use a fake model, so no torch is needed.
+`pytest` runs 46 tests. The engine, native-server and service tests use a fake model, so no torch is needed.
 
 ---
 
@@ -79,18 +82,14 @@ git checkout step3
 
 If `~/ps3-guardian` already exists (for example from a zip), rename it first with `mv ~/ps3-guardian ~/ps3-guardian-old`.
 
-Then create the Python environment:
+Then create the Python environment. On a Pi 4 the app does **not** need torch or the executorch Python package: Llama runs in the native `advisor_server` (next section).
 
 ```bash
 python3 -m venv ~/ps3-venv
 source ~/ps3-venv/bin/activate
 pip install --upgrade pip
 pip install -r ~/ps3-guardian/requirements.txt
-pip install torch==2.14.0 --index-url https://download.pytorch.org/whl/cpu
-pip install -r ~/ps3-guardian/requirements-llm.txt
 ```
-
-The torch line must use the CPU index: the normal ARM build from PyPI pulls several GB of CUDA libraries. If pip finds no 2.14.0, run `pip show torch` in the Windows `et-venv` you exported with and install that version instead.
 
 Train the SMS model on the Pi (scikit-learn versions must match, so do not copy the .joblib). From WSL, copy `merged_sms.csv` over with `scp merged_sms.csv arrehinus@10.140.209.76:~` (the data is not in git). Then on the Pi:
 
@@ -101,21 +100,35 @@ python detectors/sms/train_baseline.py --data ~/merged_sms.csv
 
 ---
 
+## Build advisor_server (WSL, once)
+
+`advisor_server` is the native Llama engine: the same KV-cache prefix reuse as `advisor/llm_engine.py`, in C++, built in your WSL ExecuTorch tree with the same toolchain and flags as `llama_main`. The script copies one source file next to `llama_main`, adds one build target and builds only that target.
+
+In WSL, copy the source folder from the Pi, build, and send the binary back:
+
+```bash
+scp -r arrehinus@10.140.209.76:~/ps3-guardian/deploy/advisor_server ~/
+bash ~/advisor_server/build_pi4.sh ~/executorch
+scp ~/executorch/cmake-out/examples/models/llama/advisor_server arrehinus@10.140.209.76:~/executorch-deployment/
+```
+
+Use the path of the ExecuTorch folder where you ran `examples/raspberry_pi/setup.sh pi4` if it is not `~/executorch`.
+
+---
+
 ## Run on the Pi
 
-**1. Smoke test.** This loads the model, reads the fixed prefix, and explains one sample alert twice:
+**1. Smoke test.** This loads the model, reads the fixed prefix, explains one sample alert twice, and with `--verify` re-reads everything from an empty cache to confirm the answer is identical:
 
 ```bash
 cd ~/ps3-guardian
 source ~/ps3-venv/bin/activate
-python -m advisor.llm_engine --pte ~/executorch-deployment/llama3_2.pte --tokenizer ~/executorch-deployment/tokenizer.model
+python -m advisor.llm_engine --server-bin ~/executorch-deployment/advisor_server --pte ~/executorch-deployment/llama3_2.pte --tokenizer ~/executorch-deployment/tokenizer.model --verify
 ```
 
-You should see the load time, the prefix size and speed, then two explanations with timings. The second run reads only 1 new token.
+You should see the load time, the prefix size and speed, then two explanations with timings. The second run reads only 1 new token, and the last line should end in `identical ...: yes`, which is good evidence for the report that prefix reuse changes nothing but speed.
 
-Add `--verify` to also re-read everything from an empty cache and confirm the answer is identical. This takes about a minute longer, and the result is good evidence for the report that prefix reuse changes nothing but speed.
-
-**2. Start everything:**
+**2. Start everything** (it uses `~/executorch-deployment/advisor_server` automatically):
 
 ```bash
 bash scripts/run_pi.sh
@@ -173,6 +186,27 @@ Useful settings:
 
 ---
 
+## Why a native server on the Pi 4 (put this in your report)
+
+The first plan ran Llama through the ExecuTorch Python runtime (`pip install executorch`). On the Pi 4 it stopped with `Illegal instruction` while loading the model.
+
+**What we found.** We disassembled every ARM64 library in the `executorch` 1.5.1 wheel with `deploy/tools/check_arm_isa.py`:
+
+- `libcustom_ops_aot_lib.so` contains 43 Armv8.1 LSE atomic instructions (`CAS`, `LDADD`, ...) with no run-time CPU check, plus dot-product instructions.
+- These sit in the code that registers the custom LLM ops (`llama::custom_sdpa`, `llama::update_cache`). The model needs those ops, so loading it hits the bad instructions.
+- The cause is one line in ExecuTorch's `extension/llm/custom_ops/CMakeLists.txt`, which compiles the library with `-march=armv8.2-a+dotprod` for every aarch64 build.
+- The Pi 4's Cortex-A72 only implements Armv8.0-A (its features are `fp asimd crc32`), so the first such instruction stops the program.
+- The other wheel libraries use "outline atomics", which check the CPU at run time, so they are safe.
+
+**Fix.** `advisor_server` is the same engine in C++, built from source with the Pi 4 toolchain and flags (`-march=armv8-a -mtune=cortex-a72`), exactly like `llama_main`. It runs the same kernels `llama_main` already runs on this Pi.
+
+Side benefits:
+
+- The Pi needs no PyTorch install (about 600 MB saved on disk, several hundred MB of RAM saved).
+- The service starts faster, because there are no Python ML imports.
+
+---
+
 ## Speed on a Raspberry Pi 4 (estimates; replace with your measured table)
 
 These estimates come from the Track B measurements in [eval/results_pi4.md](../eval/results_pi4.md): prefill about 13–15 tokens/s, decode about 4.4 tokens/s, model load about 12 s.
@@ -209,7 +243,7 @@ Hindi answers need about 3 times more tokens, so expect about 35 s for a new Hin
 
 ## How the engine was verified
 
-Besides the 38 unit tests, `advisor/llm_engine.py` was run on the real ExecuTorch 1.5.1 runtime with torch 2.14. The model was a tiny random Llama, exported with `export_llm` using the same settings as your model:
+Besides the 46 unit tests, `advisor/llm_engine.py` was run on the real ExecuTorch 1.5.1 runtime with torch 2.14. The model was a tiny random Llama, exported with `export_llm` using the same settings as your model:
 
 - 8da4w XNNPACK linears
 - 8-bit embeddings
@@ -221,6 +255,14 @@ The results:
 - With the prefix reused from the KV cache, the answers were token-for-token identical to a fresh run on a new engine.
 - The answers were also identical to ExecuTorch's own C++ text runner, the code `llama_main` uses, called through its Python binding.
 - **Found along the way:** the C++ runner splits long prompts into chunks of `max_seq_len` tokens, one more than the exported limit (`max_seq_len - 1`). It fails on prompts longer than that limit. Our engine reads the limit from the program. With your 2048-token export this never triggers, but it is a good detail for the report.
+
+`advisor_server` (the native engine) was built from ExecuTorch v1.5.1 with `build_pi4.sh` in two ways, natively and cross-compiled for the Pi 4. The results:
+
+- **Native x86 build:** on the same tiny model and four advisor prompts, its answers, reused-token counts and read-token counts were identical to the Python-runtime engine. The `--verify` re-read from an empty cache was identical too.
+- **Cross-compiled for the Pi 4** (`-march=armv8-a -mtune=cortex-a72`, KleidiAI on): run under QEMU emulating a Cortex-A72, it read the 1,636-token prefix in 511-token chunks, answered three alerts, and gave identical answers with and without prefix reuse.
+  - No instruction trapped.
+  - The same emulated CPU traps an Armv8.1 atomic instruction, which is exactly what crashes the pip wheel on the real Pi.
+  - On one of three prompts, the Arm and x86 answers from the random-weight test model drift apart after about ten tokens. That is normal floating-point rounding between NEON and AVX kernels at a near tie; each build always agrees with itself.
 
 ---
 

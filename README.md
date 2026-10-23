@@ -11,7 +11,7 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | Track A: SMS scam detector baseline | done | [eval/results_sms.md](eval/results_sms.md) |
 | Step 2: advisor vertical slice (SMS → advisor → app) | done (laptop; template and `llama_main` backends) | [docs/step2-vertical-slice.md](docs/step2-vertical-slice.md) |
 | Track B: Llama 3.2 1B on the Pi 4 via ExecuTorch | done: 12.7 tok/s prefill, 4.4 tok/s decode | [eval/results_pi4.md](eval/results_pi4.md), [deploy/README.md](deploy/README.md) |
-| Step 3: fast advisor (persistent Llama service, prompt v3) | code ready on branch `step3`; Pi timings pending | [docs/step3-fast-advisor.md](docs/step3-fast-advisor.md) |
+| Step 3: fast advisor (persistent Llama service with a native C++ engine, prompt v3) | code ready on branch `step3`; Pi timings pending | [docs/step3-fast-advisor.md](docs/step3-fast-advisor.md) |
 | URL, network-flow and DNS detectors; fusion; Android companion | planned | |
 
 ## Hardware and software

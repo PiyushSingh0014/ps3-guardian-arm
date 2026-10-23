@@ -80,6 +80,20 @@ Problems in that answer, and the step-3 fix for each:
 
 **Starting the process is expensive.** Loading the model takes 11.7 s per run, a quarter of test B's time.
 
+## 3b. Finding: the ExecuTorch pip wheel cannot run on the Pi 4
+
+We tried to run Llama through the ExecuTorch Python runtime (`executorch` 1.5.1 wheel from PyPI, `torch` 2.14.0 CPU) for the persistent service. It stopped with `Illegal instruction` while loading the model.
+
+**Cause.** We disassembled every ARM64 library in the wheel with `deploy/tools/check_arm_isa.py`:
+
+- `libcustom_ops_aot_lib.so` holds the custom LLM ops (`llama::custom_sdpa`, `llama::update_cache`) that the exported model needs.
+- It contains 43 Armv8.1 LSE atomic instructions with no run-time CPU check.
+- The reason: ExecuTorch's `extension/llm/custom_ops/CMakeLists.txt` adds `-march=armv8.2-a+dotprod` to every aarch64 build.
+- The Pi 4's Cortex-A72 implements Armv8.0-A only (`fp asimd crc32`), so it traps on the first such instruction.
+- The wheel's other libraries check for LSE at run time (outline atomics) and are safe.
+
+**Fix.** A native C++ engine, `advisor_server`, built from source with the Pi 4 toolchain and flags (`-march=armv8-a -mtune=cortex-a72`), like `llama_main`. It runs the same kernels as `llama_main`, needs no PyTorch on the Pi, and is what the step-3 service uses on this board.
+
 ## 4. Design decisions taken from these numbers (step 3)
 
 1. **Keep the model loaded:** a persistent Llama service removes the 11.7 s load from every alert.
