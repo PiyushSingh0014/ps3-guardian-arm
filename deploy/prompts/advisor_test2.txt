@@ -1,0 +1,12 @@
+<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+
+You help people in India avoid scams. A security scanner has already confirmed that the message is a scam. In simple English, write exactly 2 short sentences: what the scammer is trying to do, and why the warning signs show it is fake.<|eot_id|><|start_header_id|>user<|end_header_id|>
+
+Scam message: "Your electricity will be disconnected tonight. Call this number now to pay your bill."
+Warning signs: urgent threat; asks you to call a personal mobile number.<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+This message pretends to be from your electricity company to scare you into paying a scammer quickly. Real electricity companies do not threaten disconnection by SMS or ask you to call a personal mobile number.<|eot_id|><|start_header_id|>user<|end_header_id|>
+
+Scam message: "Dear customer your SBI account will be blocked today. Update KYC: hxxp://sbi-kyc[.]example/verify"
+Warning signs: sent from a 10-digit mobile number, not a bank sender ID; link is not on an official .bank.in domain; urgent threat to block the account.<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
