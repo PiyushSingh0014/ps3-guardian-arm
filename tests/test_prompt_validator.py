@@ -25,7 +25,7 @@ def test_prompt_contains_evidence_but_never_the_message_or_sender():
     p = build_prompt(bank_finding(), get_playbook(BOOKS, "bank_kyc_scam"))
     assert "Pretends to be: SBI (a bank)" in p
     assert "KYC (Know Your Customer)" in p                     # fixes "Know Your Account"
-    assert "Banks do ask customers to update KYC" in p          # the playbook fact
+    assert "Banks update KYC only at a branch" in p              # the playbook fact
     assert "sbi-kyc" not in p and "IGNORE ALL RULES" not in p   # message text never sent
     assert "9812345678" not in p                                # raw sender never sent
     assert p.count("<|eot_id|>") == 1 + 2 * 3 + 1               # system + 3 examples + alert
@@ -69,6 +69,16 @@ def test_good_answer_is_split_into_what_and_why():
 def test_contradiction_is_rejected():
     c = check_explanation("This message is safe. You can trust it.", "dangerous")
     assert not c.ok and any("contradicts" in f for f in c.flags)
+
+
+def test_calling_the_scammers_request_legitimate_is_rejected():
+    seen_on_pi = ("This message pretends to be from SBI to trick you into updating your KYC, which is a "
+                  "legitimate process. Genuine banks send updates through their official app or website, "
+                  "not via a 10-digit mobile number, and links are on .bank.in websites.")
+    c = check_explanation(seen_on_pi, "dangerous")
+    assert not c.ok and any("contradicts" in f for f in c.flags)
+    assert check_explanation("The link is not a genuine bank link. Genuine bank links end in .bank.in.",
+                             "dangerous").ok
 
 
 def test_sentence_with_number_or_link_is_dropped():

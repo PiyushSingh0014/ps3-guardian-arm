@@ -2,7 +2,7 @@
 severity: high
 summary: Someone is pretending to be your bank and saying your account will be blocked unless you "update KYC" through their link or number.
 pretends: your bank
-fact: Banks do ask customers to update KYC, but only at a branch or through their official app or website, and genuine bank links end in .bank.in.
+fact: Banks update KYC only at a branch or through their official app or website, and genuine bank links end in .bank.in.
 
 ## Steps
 1. Do not tap the link or call any number given in the message.

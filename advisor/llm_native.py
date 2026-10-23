@@ -35,7 +35,7 @@ def _describe_exit(code):
 
 class NativeLlamaEngine:
     def __init__(self, server_bin, pte_path, tokenizer_path, threads=4, start_timeout_s=600,
-                 request_timeout_s=600):
+                 request_timeout_s=600, prefill_chunk=32):
         env = dict(os.environ)
         if isinstance(server_bin, (list, tuple)):    # tests: a command prefix such as [python, fake.py]
             prefix = list(server_bin)
@@ -47,7 +47,8 @@ class NativeLlamaEngine:
             env["LD_LIBRARY_PATH"] = here + (":" + env["LD_LIBRARY_PATH"] if env.get("LD_LIBRARY_PATH") else "")
             prefix = [server_bin]
         self.cmd = prefix + [f"--model_path={os.path.expanduser(pte_path)}",
-                    f"--tokenizer_path={os.path.expanduser(tokenizer_path)}", f"--cpu_threads={int(threads)}"]
+                    f"--tokenizer_path={os.path.expanduser(tokenizer_path)}", f"--cpu_threads={int(threads)}",
+                    f"--prefill_chunk={int(prefill_chunk or 0)}"]
         self.request_timeout_s = request_timeout_s
         self.lock = threading.RLock()
         self.stats = {"requests": 0, "prompt_tokens": 0, "reused_tokens": 0}
@@ -61,6 +62,7 @@ class NativeLlamaEngine:
         self.threads = ready.get("threads", threads)
         self.max_context_len = ready.get("max_context_len")
         self.max_tokens_per_call = ready.get("max_tokens_per_call")
+        self.prefill_chunk = ready.get("prefill_chunk", 0)
 
     # -- protocol ----------------------------------------------------------------
     def _read_reply(self, timeout_s):

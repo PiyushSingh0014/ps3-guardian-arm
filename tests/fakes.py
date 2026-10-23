@@ -2,7 +2,9 @@
 
 The fake model keeps its own KV cache and makes every next token depend on the
 whole visible context, so any position or prefix-reuse mistake in an engine
-changes the output.
+changes the output. Like the real kernels, it also depends on how the prompt was
+split into calls: each cache entry remembers the call that computed it, the way
+float rounding in the real attention kernel depends on the call's length.
 """
 from advisor.llm_engine import LlamaEngine
 
@@ -45,10 +47,11 @@ class FakeModule:
     def step(self, ids, pos):
         assert 1 <= len(ids) <= self.max_call, "chunk larger than the exported bound"
         for i, t in enumerate(ids):
-            self.kv[pos + i] = t
+            self.kv[pos + i] = (t, pos, pos + len(ids))   # token + the call that computed it
         h = 7
         for p in range(pos + len(ids)):            # depends on every visible position
-            h = (h * 31 + self.kv[p]) % 1_000_003
+            t, start, end = self.kv[p]
+            h = (h * 31 + t + 101 * start + 1009 * end) % 1_000_003
         self.calls.append((pos, len(ids)))
         if self.eos_after is not None:                 # deterministic end, for the EOS test
             return EOS if pos + len(ids) >= self.eos_after else 10 + h % 40
@@ -73,6 +76,11 @@ class FakeEngine(LlamaEngine):
     def _argmax(token):
         return token
 
+    @staticmethod
+    def _logits_bytes(token):
+        return str(token).encode()
 
-def make_engine(**kw):
-    return FakeEngine(module=FakeModule(**kw), tokenizer=FakeTokenizer(), threads=1)
+
+def make_engine(prefill_chunk=32, **kw):
+    return FakeEngine(module=FakeModule(**kw), tokenizer=FakeTokenizer(), threads=1,
+                      prefill_chunk=prefill_chunk)

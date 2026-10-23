@@ -13,6 +13,14 @@
  * Positions after the current one are never attended to, so old tokens there
  * are simply overwritten by the next prompt.
  *
+ * Prompts are read in pieces of --prefill_chunk tokens at fixed positions
+ * (0, 32, 64, ...), and the cache is reused only up to such a boundary. A
+ * forward call's rounding depends on how the prompt was split into calls (the
+ * attention kernel's matrix blocking follows the call length), so without this
+ * the same prompt could get a different answer after a different history. With
+ * it, every position is computed by the same calls whatever was cached, and
+ * GEN reports a CRC-32 of the logits behind its answer to prove it.
+ *
  * Protocol (stdin/stdout, one request at a time; logs go to stderr):
  *   request : "<CMD> <max_new_tokens> <nbytes>\n" then exactly <nbytes> bytes of UTF-8 text
  *             CMD = GEN | PREFILL | CHECK | RESET | INFO | QUIT
@@ -39,6 +47,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <iostream>
@@ -51,6 +60,9 @@
 DEFINE_string(model_path, "llama3_2.pte", "Exported Llama .pte file.");
 DEFINE_string(tokenizer_path, "tokenizer.model", "Llama 3 tokenizer.model.");
 DEFINE_int32(cpu_threads, 4, "Threads for the XNNPACK threadpool.");
+DEFINE_int32(prefill_chunk, 32,
+             "Read prompts in pieces of this many tokens at fixed positions, so an answer "
+             "depends only on its prompt. 0 = as few calls as possible (history-dependent rounding).");
 
 using executorch::aten::ScalarType;
 using executorch::aten::Tensor;
@@ -95,6 +107,26 @@ std::string num(double v) {
   return buf;
 }
 
+// CRC-32 as in zlib.crc32(data, crc), so Python's LlamaEngine reports the same value.
+uint32_t crc32_update(uint32_t crc, const unsigned char* p, size_t n) {
+  static const std::array<uint32_t, 256> table = [] {
+    std::array<uint32_t, 256> t{};
+    for (uint32_t i = 0; i < 256; ++i) {
+      uint32_t c = i;
+      for (int k = 0; k < 8; ++k) {
+        c = (c & 1) ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+      }
+      t[i] = c;
+    }
+    return t;
+  }();
+  crc = ~crc;
+  for (size_t i = 0; i < n; ++i) {
+    crc = table[(crc ^ p[i]) & 0xFF] ^ (crc >> 8);
+  }
+  return ~crc;
+}
+
 class Engine {
  public:
   bool init(std::string& err) {
@@ -134,6 +166,7 @@ class Engine {
         tokens_per_call_ = std::max<int64_t>(1, info->sizes()[1]);
       }
     }
+    chunk_ = FLAGS_prefill_chunk > 0 ? std::min<int64_t>(FLAGS_prefill_chunk, tokens_per_call_) : 0;
     load_s_ = seconds_since(t0);
     return true;
   }
@@ -144,7 +177,8 @@ class Engine {
       << ",\"max_seq_len\":" << max_seq_len_
       << ",\"max_context_len\":" << max_context_len_
       << ",\"max_tokens_per_call\":" << tokens_per_call_
-      << ",\"kv_tokens\":" << kv_.size();
+      << ",\"prefill_chunk\":" << chunk_
+      << ",\"kv_tokens\":" << kv_.size() << ",\"exact_tokens\":" << exact_;
     return o.str();
   }
 
@@ -163,14 +197,22 @@ class Engine {
     return true;
   }
 
-  void reset() { kv_.clear(); }   // forget the cache: the next prompt is read in full
-
-  bool is_resident(const std::vector<uint64_t>& ids) const {
-    return kv_.size() >= ids.size() && std::equal(ids.begin(), ids.end(), kv_.begin());
+  void reset() {   // forget the cache: the next prompt is read in full
+    kv_.clear();
+    exact_ = 0;
   }
 
-  // Greedy generation with prefix reuse. Returns false and sets err on failure.
-  bool generate(const std::string& prompt, int64_t max_new, std::string& text,
+  // True if a PREFILL of these tokens would read nothing new.
+  bool is_resident(const std::vector<uint64_t>& ids) const {
+    const int64_t n = static_cast<int64_t>(ids.size());
+    const int64_t lcp = common_prefix(ids);
+    return chunk_ > 0 ? std::min(lcp, exact_) >= n / chunk_ * chunk_ : lcp >= n;
+  }
+
+  // Greedy generation with prefix reuse; prefill_only reads the prompt without
+  // generating. Returns false and sets err on failure. Same plan as
+  // advisor/llm_engine.py:grid_plan.
+  bool generate(const std::string& prompt, int64_t max_new, bool prefill_only, std::string& text,
                 std::string& metrics, std::string& err) {
     auto t0 = Clock::now();
     std::vector<uint64_t> ids;
@@ -183,26 +225,37 @@ class Engine {
             " new tokens exceeds the model context (" + std::to_string(max_context_len_) + ")";
       return false;
     }
-    int64_t reuse = 0;
-    while (reuse < static_cast<int64_t>(kv_.size()) && reuse < n && kv_[reuse] == ids[reuse]) {
-      ++reuse;
+    const int64_t lcp = common_prefix(ids);
+    int64_t reuse = 0, end = n;
+    if (chunk_ > 0) {
+      // Reuse up to a piece boundary that earlier calls computed exactly; a prefill
+      // without generation stops at the last full piece (a partial one is never reused).
+      reuse = std::min({lcp, prefill_only ? n : n - 1, exact_}) / chunk_ * chunk_;
+      end = prefill_only ? n / chunk_ * chunk_ : n;
+    } else {
+      reuse = std::min<int64_t>(lcp, n - 1);  // at least one token, for fresh logits
     }
-    reuse = std::min<int64_t>(reuse, n - 1);  // at least one token, for fresh logits
     kv_.resize(reuse);
+    exact_ = std::min(exact_, reuse);
 
-    // Prefill: read only the tokens after the shared prefix.
+    // Prefill: read only the tokens after the reused part, piece by piece.
     auto t_prefill = Clock::now();
-    int64_t pos = reuse;
+    const int64_t piece = chunk_ > 0 ? chunk_ : tokens_per_call_;
+    int64_t pos = reuse, calls = 0;
     uint64_t next = 0;
-    for (int64_t i = reuse; i < n; i += tokens_per_call_) {
-      const int64_t len = std::min(tokens_per_call_, n - i);
+    uint32_t crc = 0;
+    for (int64_t i = reuse; i < end; i += piece) {
+      const int64_t len = std::min(piece, end - i);
       std::vector<int64_t> chunk(ids.begin() + i, ids.begin() + i + len);
-      if (!step(chunk, pos, next, err)) {
+      const bool last = i + len >= end;
+      if (!step(chunk, pos, next, err, last && !prefill_only ? &crc : nullptr)) {
         return false;
       }
       kv_.insert(kv_.end(), ids.begin() + i, ids.begin() + i + len);
       pos += len;
+      ++calls;
     }
+    exact_ = chunk_ > 0 ? end / chunk_ * chunk_ : end;
     const double prefill_s = seconds_since(t_prefill);
     const double ttft_s = seconds_since(t0);
 
@@ -211,7 +264,7 @@ class Engine {
     int64_t generated = 0, decode_calls = 0;
     uint64_t prev = ids.back();
     text.clear();
-    while (eos_.count(next) == 0 && generated < max_new) {
+    while (!prefill_only && eos_.count(next) == 0 && generated < max_new) {
       auto piece = tokenizer_->decode(prev, next);
       if (piece.ok()) {
         text += piece.get();
@@ -223,7 +276,7 @@ class Engine {
       }
       std::vector<int64_t> one{static_cast<int64_t>(next)};
       const uint64_t fed = next;
-      if (!step(one, pos, next, err)) {
+      if (!step(one, pos, next, err, &crc)) {
         return false;
       }
       kv_.push_back(fed);
@@ -232,17 +285,23 @@ class Engine {
     }
     const double decode_s = seconds_since(t_decode);
 
-    const int64_t prefilled = n - reuse;
+    const int64_t prefilled = end - reuse;
     std::ostringstream m;
     m << "{\"prompt_tokens\":" << n << ",\"reused_tokens\":" << reuse
-      << ",\"prefill_tokens\":" << prefilled << ",\"generated_tokens\":" << generated
+      << ",\"prefill_tokens\":" << prefilled << ",\"prefill_calls\":" << calls
+      << ",\"prefill_chunk\":" << chunk_ << ",\"generated_tokens\":" << generated
       << ",\"ttft_s\":" << num(ttft_s) << ",\"prefill_s\":" << num(prefill_s)
       << ",\"decode_s\":" << num(decode_s);
-    if (prefill_s > 0) {
+    if (prefilled > 0 && prefill_s > 0) {
       m << ",\"prefill_tok_s\":" << num(prefilled / prefill_s);
     }
     if (decode_calls > 0 && decode_s > 0) {
       m << ",\"decode_tok_s\":" << num(decode_calls / decode_s);
+    }
+    if (!prefill_only) {
+      char hex[16];
+      std::snprintf(hex, sizeof(hex), "%08x", crc);
+      m << ",\"logits_crc32\":\"" << hex << "\"";
     }
     m << ",\"total_s\":" << num(seconds_since(t0)) << ",\"engine\":\"native\"}";
     metrics = m.str();
@@ -250,8 +309,19 @@ class Engine {
   }
 
  private:
-  // One forward call; on success `next` is the greedy next token.
-  bool step(std::vector<int64_t>& tokens, int64_t start_pos, uint64_t& next, std::string& err) {
+  int64_t common_prefix(const std::vector<uint64_t>& ids) const {
+    const size_t n = std::min(kv_.size(), ids.size());
+    size_t i = 0;
+    while (i < n && kv_[i] == ids[i]) {
+      ++i;
+    }
+    return static_cast<int64_t>(i);
+  }
+
+  // One forward call; on success `next` is the greedy next token. With crc set,
+  // the logits row behind `next` is added to it.
+  bool step(std::vector<int64_t>& tokens, int64_t start_pos, uint64_t& next, std::string& err,
+            uint32_t* crc = nullptr) {
     auto tokens_tensor = from_blob(
         tokens.data(), {1, static_cast<int>(tokens.size())}, ScalarType::Long);
     std::vector<int64_t> cache_positions;
@@ -270,6 +340,16 @@ class Engine {
     }
     const Tensor& logits = (*out)[0].toTensor();
     next = static_cast<uint64_t>(executorch::extension::llm::logits_to_token(logits, 0.0f));
+    if (crc != nullptr) {
+      const auto* bytes = static_cast<const unsigned char*>(logits.const_data_ptr());
+      size_t nbytes = logits.nbytes();
+      if (logits.scalar_type() == ScalarType::Float && logits.dim() >= 1) {
+        const size_t row = static_cast<size_t>(logits.size(logits.dim() - 1)) * sizeof(float);
+        bytes += nbytes - row;                 // the last position's row, as LlamaEngine hashes it
+        nbytes = row;
+      }
+      *crc = crc32_update(*crc, bytes, nbytes);
+    }
     return true;
   }
 
@@ -299,8 +379,9 @@ class Engine {
   std::unique_ptr<::tokenizers::Tokenizer> tokenizer_;
   std::unique_ptr<Module> module_;
   std::vector<uint64_t> kv_;              // token ids in the KV cache, positions 0..size-1
+  int64_t exact_ = 0;                     // leading positions computed by full prefill pieces
   std::unordered_set<uint64_t> eos_;
-  int64_t max_seq_len_ = 0, max_context_len_ = 0, tokens_per_call_ = 1;
+  int64_t max_seq_len_ = 0, max_context_len_ = 0, tokens_per_call_ = 1, chunk_ = 0;
   double load_s_ = 0;
 };
 
@@ -360,8 +441,9 @@ int main(int argc, char** argv) {
       }
     } else if (cmd == "GEN" || cmd == "PREFILL") {
       std::string text, metrics;
-      const int64_t limit = cmd == "PREFILL" ? 0 : std::max(0LL, max_new);
-      if (engine.generate(prompt, limit, text, metrics, err)) {
+      const bool prefill_only = cmd == "PREFILL";
+      const int64_t limit = prefill_only ? 0 : std::max(0LL, max_new);
+      if (engine.generate(prompt, limit, prefill_only, text, metrics, err)) {
         reply("{\"ok\":true,\"text\":\"" + json_escape(text) + "\",\"metrics\":" + metrics + "}");
       } else {
         reply("{\"ok\":false,\"error\":\"" + json_escape(err) + "\"}");
