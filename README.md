@@ -9,7 +9,7 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | Part | State | Details |
 | --- | --- | --- |
 | Track A: SMS scam detector baseline | done | [eval/results_sms.md](eval/results_sms.md) |
-| Step 2: advisor vertical slice (SMS → advisor → app) | planned | |
+| Step 2: advisor vertical slice (SMS → advisor → app) | done (laptop; template and `llama_main` backends) | [docs/step2-vertical-slice.md](docs/step2-vertical-slice.md) |
 | Track B: Llama 3.2 1B on the Pi 4 via ExecuTorch | planned | |
 | URL, network-flow and DNS detectors; fusion; Android companion | planned | |
 
@@ -18,13 +18,27 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 - Raspberry Pi 4 Model B, 4 GB, running Raspberry Pi OS Lite 64-bit (Debian 13)
 - Python 3.10+ for the detectors and app; ExecuTorch for Llama
 
+## Layout
+
+| Folder | What is in it |
+| --- | --- |
+| `detectors/sms/` | SMS scam detector: India rules, baseline model, `Finding` wrapper |
+| `advisor/` | Turns a `Finding` into advice: playbooks, Llama prompt, LLM backends, output validator |
+| `app/` | FastAPI app: `POST /check` and a phone-friendly page |
+| `tests/` | pytest suite, with a fake `llama_main` for laptops |
+| `eval/` | Results for the report |
+| `docs/` | Notes per step |
+
 ## Quick start (laptop)
 
 ```bash
 pip install -r requirements.txt
-python detectors/sms/train_baseline.py                      # trains on the bundled sample
-python detectors/sms/train_baseline.py --predict "Your SBI KYC is pending, update at short.example/x"
+pytest -q
+python -m advisor.cli "Your SBI account is blocked, update KYC: http://sbi-kyc.example/v"
+uvicorn app.server:app --port 8000
 ```
+
+Open http://localhost:8000 and paste a message.
 
 ## Scope
 
