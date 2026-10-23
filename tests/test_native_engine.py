@@ -28,19 +28,35 @@ def native():
 
 def test_start_reports_the_model_bounds(native):
     assert native.threads == 3 and native.max_context_len == 200 and native.max_tokens_per_call == 7
+    assert native.prefill_chunk == 7
 
 
 def test_same_answers_as_the_in_process_engine(native):
     local = make_engine()
     for prompt in (PREFIX + "alert one", PREFIX + "alert two!", PREFIX + "alert one"):
-        assert native.generate(prompt, 12)[0] == local.generate(prompt, 12)[0]
+        (t1, m1), (t2, m2) = native.generate(prompt, 12), local.generate(prompt, 12)
+        assert t1 == t2 and m1["logits_crc32"] == m2["logits_crc32"]
+
+
+def test_piece_size_is_passed_to_the_server():
+    e = NativeLlamaEngine(FAKE, "model.pte", "tokenizer.model", prefill_chunk=0)
+    try:
+        assert e.prefill_chunk == 0
+        local = make_engine(prefill_chunk=0)
+        e.prefill(PREFIX)
+        local.prefill(PREFIX)
+        (t1, m1), (t2, m2) = e.generate(PREFIX + "alert", 8), local.generate(PREFIX + "alert", 8)
+        assert t1 == t2 and m1["logits_crc32"] == m2["logits_crc32"] and m1["prefill_calls"] == 1
+    finally:
+        e.close()
 
 
 def test_prefix_reuse_check_and_reset(native):
     native.prefill(PREFIX)
-    assert native.is_resident(PREFIX) and native.kv_tokens == len(PREFIX)
+    grid = len(PREFIX) // 7 * 7
+    assert native.is_resident(PREFIX) and native.kv_tokens == grid
     _, m = native.generate(PREFIX + "alert", 5)
-    assert m["reused_tokens"] == len(PREFIX) and m["engine"] == "native"
+    assert m["reused_tokens"] == grid and m["engine"] == "native"
     native.reset()
     assert native.kv_tokens == 0 and not native.is_resident(PREFIX)
 

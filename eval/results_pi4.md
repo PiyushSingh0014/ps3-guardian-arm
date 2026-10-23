@@ -107,7 +107,49 @@ The same CMake line also reaches every program that links the custom ops: their 
 5. **4 threads:** best prefill, with decode unchanged.
 6. **Save answers for repeat alerts:** greedy decoding is deterministic, so a saved answer is exactly what Llama would write again.
 
-Expected with step 3 on this Pi: about 20 s for a new alert and instant for a repeat, against about 42 s here. The real numbers will go in `eval/advisor_pi4.md`.
+Expected with step 3 on this Pi: about 20 s for a new alert and instant for a repeat, against about 42 s here. Measured: 25 s (section 5). The per-alert table will go in `eval/advisor_pi4.md`.
+
+## 5. Step 3 on the Pi 4: first run of the native engine
+
+Measured on 2026-10-24 with the smoke test (`python -m advisor.llm_engine --server-bin ... --verify`): `advisor_server` with 4 threads, the same `llama3_2.pte`, and a sample bank-KYC alert. This run read prompts in as few calls as possible (before the 32-token pieces below).
+
+| Stage | Tokens | Time | Rate |
+| --- | --- | --- | --- |
+| Model load (once per boot) | | 13.4 s | |
+| Fixed prefix (once per boot) | 480 read | 32.0 s | 15.0 tok/s |
+| New alert: reading | 138 read, 480 reused | 9.3 s to the first token | 14.8 tok/s |
+| New alert: writing | 53 written | 15.7 s | 3.37 tok/s |
+| **New alert, end to end** | | **25.0 s** | |
+| Same prompt again (KV cache only) | 1 read, 617 reused | 16.0 s | |
+| Whole prompt from an empty cache | 618 read | 40.6 s to read | 15.2 tok/s |
+
+Against Track B's 42.5 s for test B (section 2), a new alert is 1.7× faster. A repeat alert is instant from the answer cache.
+
+**Writing slows down as the context grows.**
+
+| Run | Context while writing | Writing speed |
+| --- | --- | --- |
+| Track B, 12-token prompt | ~13–75 tokens | 4.37 tok/s |
+| Track B, test B | ~223–289 tokens | 4.02 tok/s |
+| Step 3, sample alert | ~619–671 tokens | 3.37 tok/s |
+
+- A straight line through the two Track B points predicts about 3.5 tok/s at step 3's context, close to the 3.37 measured. So the lower speed comes from the longer prompt, not from the new engine.
+- Each token of context adds roughly 0.09 ms to every written token: the attention reads all cached keys and values.
+- So a shorter fixed prefix (fewer or shorter worked examples) makes every answer faster.
+
+**Finding: reusing the cache changed the answer's rounding.** The smoke test's last check re-read the whole prompt from an empty cache and got a slightly different answer (`identical: NO`). Both answers were reasonable. The cause:
+
+- The attention kernel splits its matrix products by the length of each forward call.
+- Most likely through Eigen's matrix multiply, which on Arm assumes a 16 KB L1 cache and so splits long sums.
+- Reading the prefix and the alert in two calls therefore rounds differently from reading the whole prompt in one call.
+- A test model with the same attention shape reproduces this under QEMU on an emulated Cortex-A72; x86 builds do not show it.
+
+**Fix (step 3 update):** prompts are read in 32-token pieces at fixed positions, and the cache is reused only up to a piece boundary. An answer then depends only on its prompt. Under QEMU the CRC-32 of the logits was identical after five different cache histories. The cost is a few more forward calls per alert; re-measure with the smoke test.
+
+**Wording found in the same run.** Llama wrote "...to trick you into updating your KYC, which is a legitimate process." The validator accepted it, but in a scam warning it reads as approval.
+
+- The playbook fact that led to it ("Banks do ask customers to update KYC, but only...") is now "Banks update KYC only at a branch or through their official app or website...".
+- The validator now rejects "is a legitimate / genuine / safe ..." for flagged messages. The template is shown instead.
 
 ## Reproduce
 

@@ -22,6 +22,10 @@ PREFIX = "fixed system text and worked examples | "
 def test_reads_bounds_from_the_program():
     e = engine(max_call=7, context=200)
     assert e.max_tokens_per_call == 7 and e.max_context_len == 200 and EOS in e.eos_ids
+    assert e.prefill_chunk == 7                   # the 32-token grid is capped at the call bound
+
+
+GRID = len(PREFIX) // 7 * 7                       # last full 7-token piece of the prefix
 
 
 def test_prefix_reuse_gives_the_same_answer_as_a_fresh_engine():
@@ -29,25 +33,58 @@ def test_prefix_reuse_gives_the_same_answer_as_a_fresh_engine():
     warm.prefill(PREFIX)
     a1, m1 = warm.generate(PREFIX + "alert one", 12)
     b1, m2 = warm.generate(PREFIX + "alert two!", 12)
-    assert m1["reused_tokens"] == len(PREFIX) and m1["prefill_tokens"] == len("alert one")
-    assert m2["reused_tokens"] >= len(PREFIX)
-    a2, _ = engine().generate(PREFIX + "alert one", 12)
-    b2, _ = engine().generate(PREFIX + "alert two!", 12)
+    assert m1["reused_tokens"] == GRID and m1["prefill_tokens"] == len(PREFIX + "alert one") - GRID
+    assert m2["reused_tokens"] >= GRID
+    a2, n1 = engine().generate(PREFIX + "alert one", 12)
+    b2, n2 = engine().generate(PREFIX + "alert two!", 12)
     assert (a1, b1) == (a2, b2)
+    assert (m1["logits_crc32"], m2["logits_crc32"]) == (n1["logits_crc32"], n2["logits_crc32"])
 
 
-def test_exact_repeat_reads_one_token():
+def test_answer_depends_only_on_the_prompt():
+    target = PREFIX + "alert one"
+    fresh = engine().generate(target, 12)
+    histories = [[("prefill", PREFIX)], [("gen", PREFIX + "alert two!")], [("gen", PREFIX + "alert on")],
+                 [("gen", target)], [("gen", "unrelated"), ("prefill", PREFIX[:20])],
+                 [("prefill", PREFIX), ("gen", PREFIX + "alert one more"), ("gen", "x" * 50)]]
+    for history in histories:
+        e = engine()
+        for kind, p in history:
+            e.prefill(p) if kind == "prefill" else e.generate(p, 5)
+        text, m = e.generate(target, 12)
+        assert (text, m["logits_crc32"]) == (fresh[0], fresh[1]["logits_crc32"]), history
+
+
+def test_without_the_grid_the_cache_history_can_change_the_answer():
+    """What the Raspberry Pi 4 showed: same prompt, different words after a warm-up."""
+    target = PREFIX + "alert one"
+    fresh = engine(prefill_chunk=0).generate(target, 12)[0]
+    warm = engine(prefill_chunk=0)
+    warm.prefill(PREFIX)
+    _, m = warm.generate(target, 12)
+    assert m["reused_tokens"] == len(PREFIX) and m["prefill_calls"] == 2   # fewer calls, but...
+    assert warm.generate(target, 12)[0] != fresh
+
+
+def test_exact_repeat_rereads_only_the_last_piece():
     e = engine()
-    t1, _ = e.generate(PREFIX + "same", 10)
-    t2, m = e.generate(PREFIX + "same", 10)
-    assert t1 == t2 and m["prefill_tokens"] == 1
+    t1, m1 = e.generate(PREFIX + "same", 10)
+    t2, m2 = e.generate(PREFIX + "same", 10)
+    n = len(PREFIX + "same")
+    assert t1 == t2 and m1["logits_crc32"] == m2["logits_crc32"]
+    assert m2["reused_tokens"] == (n - 1) // 7 * 7 and m2["prefill_tokens"] == n - (n - 1) // 7 * 7
 
 
-def test_long_prompt_is_chunked_within_the_bound():
+def test_prompt_is_read_in_fixed_pieces():
     e = engine(max_call=7)
-    e.prefill("x" * 30)
-    assert [n for _, n in e.module.calls] == [7, 7, 7, 7, 2]
-    assert [p for p, _ in e.module.calls] == [0, 7, 14, 21, 28]
+    e.prefill("x" * 30)                           # a warm-up stops at the last full piece
+    assert e.module.calls == [(0, 7), (7, 7), (14, 7), (21, 7)] and e.kv_tokens == 28
+    e.module.calls.clear()
+    e.generate("x" * 30 + "y" * 10, 1)
+    assert e.module.calls == [(28, 7), (35, 5)]
+    old = engine(max_call=7, prefill_chunk=0)     # without the grid: fewest calls within the bound
+    old.prefill("x" * 30)
+    assert old.module.calls == [(0, 7), (7, 7), (14, 7), (21, 7), (28, 2)]
 
 
 def test_context_limit_max_tokens_and_eos():
@@ -107,6 +144,6 @@ def test_idle_rewarm_restores_the_default_prefix():
 def test_reset_forgets_the_cache():
     e = engine()
     e.prefill(PREFIX)
-    assert e.kv_tokens == len(PREFIX)
+    assert e.kv_tokens == GRID
     e.reset()
     assert e.kv_tokens == 0 and e.generate(PREFIX + "x", 3)[1]["reused_tokens"] == 0

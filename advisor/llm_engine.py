@@ -17,13 +17,23 @@ Entries after the current position are never attended to (causal attention
 over positions < input_pos + n), so old alert tokens do not leak into the
 next answer; they are simply overwritten.
 
-Needs on the Pi:  pip install torch (CPU build) and executorch (same version
-as the one you exported with). See README.md.
+Fixed prefill grid. A forward call's results depend slightly on how the
+prompt was split into calls: the attention kernel's matrix blocking follows
+the call's length, so the same token can get differently rounded keys and
+values. On a Raspberry Pi 4 this changed a word in an answer. So prompts are
+always read in pieces of `prefill_chunk` tokens at fixed positions (0, 32,
+64, ...), and the cache is reused only up to such a boundary. Every position
+is then computed by exactly the same calls whatever was cached before, and an
+answer depends only on its prompt (checked bit for bit with `logits_crc32`).
+
+Needs (not on a Pi 4, which uses deploy/advisor_server instead): torch (CPU
+build) and executorch, the same version as the one you exported with.
 """
 import glob
 import os
 import threading
 import time
+import zlib
 
 LLAMA3_EOS = {128001, 128008, 128009}   # <|end_of_text|>, <|eom_id|>, <|eot_id|>
 
@@ -58,8 +68,25 @@ def common_prefix_len(a, b):
     return i
 
 
+def grid_plan(n, lcp, exact, chunk, prefill_only):
+    """(reuse, end) for a prompt of n tokens: keep cache positions < reuse, compute
+    positions reuse..end-1. Shared by both engines and the tests.
+
+    With a grid (chunk > 0) reuse is a grid boundary that every earlier call
+    computed exactly (exact = tokens covered by full grid pieces), and a prefill
+    without generation stops at the last full piece: a partial piece is never
+    reused, so computing it would be wasted. Without a grid, reuse the whole
+    common prefix and read the rest in as few calls as possible."""
+    if chunk > 0:
+        limit = n if prefill_only else n - 1          # generation needs >= 1 fresh token
+        reuse = min(lcp, limit, exact) // chunk * chunk
+        return reuse, (n // chunk * chunk if prefill_only else n)
+    return min(lcp, n - 1), n
+
+
 class LlamaEngine:
-    def __init__(self, pte_path=None, tokenizer_path=None, threads=4, module=None, tokenizer=None):
+    def __init__(self, pte_path=None, tokenizer_path=None, threads=4, module=None, tokenizer=None,
+                 prefill_chunk=32):
         t0 = time.perf_counter()
         if module is None:
             portable_lib = _register_kernels()
@@ -85,7 +112,9 @@ class LlamaEngine:
         eos = set(eos if isinstance(eos, (list, tuple)) else [eos]) if eos is not None else set()
         self.eos_ids = {int(e) for e in eos} | {int(self.tok.eos_id)} | (
             LLAMA3_EOS if self.tok.n_words > 128009 else set())
+        self.prefill_chunk = min(int(prefill_chunk), self.max_tokens_per_call) if prefill_chunk and prefill_chunk > 0 else 0
         self.kv = []            # token ids whose keys/values are in the cache, positions 0..len-1
+        self.exact = 0          # leading cache positions computed by full grid pieces
         self.lock = threading.RLock()   # re-entrant: the idle re-warmer holds it while calling prefill()
         self.stats = {"requests": 0, "prompt_tokens": 0, "reused_tokens": 0}
 
@@ -114,6 +143,10 @@ class LlamaEngine:
     def _argmax(logits):
         return int(logits.argmax().item())
 
+    @staticmethod
+    def _logits_bytes(logits):
+        return logits.detach().contiguous().float().numpy().tobytes()
+
     # -- public API -----------------------------------------------------------
     def encode(self, prompt):
         # allowed_special="all": the advisor prompt uses Llama 3 chat tokens. All text in
@@ -122,7 +155,16 @@ class LlamaEngine:
         return self.tok.encode(prompt, bos=False, eos=False, allowed_special="all")
 
     def generate(self, prompt, max_new_tokens=64, on_token=None):
-        """Greedy (temperature 0) generation with prefix reuse. Returns (text, metrics)."""
+        """Greedy (temperature 0) generation with prefix reuse. Returns (text, metrics).
+        metrics["logits_crc32"] covers the logits behind every generated token, so two
+        runs with the same value computed bit-identical answers."""
+        return self._run(prompt, max_new_tokens, on_token, prefill_only=False)
+
+    def prefill(self, prompt):
+        """Read a prompt into the KV cache without generating (used to warm the fixed prefix)."""
+        return self._run(prompt, 0, None, prefill_only=True)[1]
+
+    def _run(self, prompt, max_new_tokens, on_token, prefill_only):
         with self.lock:
             t0 = time.perf_counter()
             ids = self.encode(prompt)
@@ -131,65 +173,75 @@ class LlamaEngine:
             if len(ids) + max_new_tokens > self.max_context_len:
                 raise ValueError(f"prompt ({len(ids)} tokens) + {max_new_tokens} new tokens "
                                  f"exceeds the model context ({self.max_context_len})")
-            reuse = min(common_prefix_len(self.kv, ids), len(ids) - 1)   # >=1 token for fresh logits
+            reuse, end = grid_plan(len(ids), common_prefix_len(self.kv, ids), self.exact,
+                                   self.prefill_chunk, prefill_only)
             del self.kv[reuse:]
+            self.exact = min(self.exact, reuse)
             t_tok = time.perf_counter()
 
-            step = max(1, self.max_tokens_per_call)
-            pos, logits = reuse, None
-            for i in range(reuse, len(ids), step):
-                chunk = ids[i:i + step]
+            step = self.prefill_chunk or max(1, self.max_tokens_per_call)
+            pos, logits, calls = reuse, None, 0
+            for i in range(reuse, end, step):
+                chunk = ids[i:min(i + step, end)]
                 logits = self._forward(chunk, pos)
                 pos += len(chunk)
+                calls += 1
                 self.kv.extend(chunk)
+            self.exact = end // self.prefill_chunk * self.prefill_chunk if self.prefill_chunk else end
             t_prefill = time.perf_counter()
 
-            out, n_decode = [], 0
-            nxt = self._argmax(logits)
-            while nxt not in self.eos_ids and len(out) < max_new_tokens:
-                out.append(nxt)
-                if on_token:
-                    on_token(nxt)
-                if len(out) == max_new_tokens:
-                    break
-                logits = self._forward([nxt], pos)
-                self.kv.append(nxt)
-                pos += 1
-                n_decode += 1
+            out, n_decode, crc = [], 0, 0
+            if not prefill_only:
+                crc = zlib.crc32(self._logits_bytes(logits))
                 nxt = self._argmax(logits)
+                while nxt not in self.eos_ids and len(out) < max_new_tokens:
+                    out.append(nxt)
+                    if on_token:
+                        on_token(nxt)
+                    if len(out) == max_new_tokens:
+                        break
+                    logits = self._forward([nxt], pos)
+                    crc = zlib.crc32(self._logits_bytes(logits), crc)
+                    self.kv.append(nxt)
+                    pos += 1
+                    n_decode += 1
+                    nxt = self._argmax(logits)
             t_end = time.perf_counter()
 
         prefill_s, decode_s = t_prefill - t_tok, t_end - t_prefill
-        n_prefill = len(ids) - reuse
-        self.stats["requests"] += 1
-        self.stats["prompt_tokens"] += len(ids)
-        self.stats["reused_tokens"] += reuse
+        n_prefill = end - reuse
+        if not prefill_only:
+            self.stats["requests"] += 1
+            self.stats["prompt_tokens"] += len(ids)
+            self.stats["reused_tokens"] += reuse
         metrics = {
             "prompt_tokens": len(ids), "reused_tokens": reuse, "prefill_tokens": n_prefill,
+            "prefill_calls": calls, "prefill_chunk": self.prefill_chunk,
             "generated_tokens": len(out),
             "ttft_s": round(t_prefill - t0, 3),
             "prefill_s": round(prefill_s, 3), "decode_s": round(decode_s, 3),
-            "prefill_tok_s": round(n_prefill / prefill_s, 2) if prefill_s > 0 else None,
+            "prefill_tok_s": round(n_prefill / prefill_s, 2) if n_prefill and prefill_s > 0 else None,
             "decode_tok_s": round(n_decode / decode_s, 2) if n_decode and decode_s > 0 else None,
             "total_s": round(t_end - t0, 3),
+            "logits_crc32": None if prefill_only else f"{crc:08x}",
         }
         return self.tok.decode(out), {k: v for k, v in metrics.items() if v is not None}
 
-    def prefill(self, prompt):
-        """Read a prompt into the KV cache without generating (used to warm the fixed prefix)."""
-        _, metrics = self.generate(prompt, max_new_tokens=0)
-        return metrics
-
     def is_resident(self, prompt):
-        """True if every token of `prompt` is already in the KV cache."""
+        """True if a prefill of `prompt` would read nothing new: the next prompt that
+        starts with it reuses everything a fresh run would compute the same way."""
         with self.lock:
             ids = self.encode(prompt)
-            return common_prefix_len(self.kv, ids) >= len(ids)
+            lcp = common_prefix_len(self.kv, ids)
+            if self.prefill_chunk:
+                return min(lcp, self.exact) >= len(ids) // self.prefill_chunk * self.prefill_chunk
+            return lcp >= len(ids)
 
     def reset(self):
         """Forget the cache, so the next prompt is read in full."""
         with self.lock:
             self.kv.clear()
+            self.exact = 0
 
     @property
     def kv_tokens(self):
@@ -200,7 +252,8 @@ def _smoke_test():
     """python -m advisor.llm_engine --pte llama3_2.pte --tokenizer tokenizer.model [--verify] [--server-bin advisor_server]
     Loads the model, reads the fixed prefix, explains one sample alert twice
     (prefix reused, then an exact repeat) and prints the timings. --verify also
-    re-reads everything from an empty cache and checks the answer is unchanged."""
+    re-reads everything from an empty cache and checks that the answer and every
+    logit behind it are bit-identical (CRC-32 of the logits)."""
     import argparse
     from .findings import Finding
     from .playbooks import get_playbook, load_playbooks
@@ -213,19 +266,22 @@ def _smoke_test():
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--lang", default="en", choices=["en", "hi"])
     ap.add_argument("--verify", action="store_true",
-                    help="also re-run with an empty KV cache and check the answer is identical")
+                    help="also re-run with an empty KV cache and check the answer is bit-identical")
     ap.add_argument("--server-bin", help="path to advisor_server (the native C++ engine; needed on a Pi 4)")
+    ap.add_argument("--prefill-chunk", type=int, default=32,
+                    help="prompt piece size; 0 = fewest calls (answers may then depend on the cache)")
     a = ap.parse_args()
 
     if a.server_bin:
         from .llm_native import NativeLlamaEngine
-        engine = NativeLlamaEngine(a.server_bin, a.pte, a.tokenizer, threads=a.threads)
+        engine = NativeLlamaEngine(a.server_bin, a.pte, a.tokenizer, threads=a.threads,
+                                   prefill_chunk=a.prefill_chunk)
         kind = "native advisor_server"
     else:
-        engine = LlamaEngine(a.pte, a.tokenizer, threads=a.threads)
+        engine = LlamaEngine(a.pte, a.tokenizer, threads=a.threads, prefill_chunk=a.prefill_chunk)
         kind = "ExecuTorch Python runtime"
     print(f"[{kind}] loaded in {engine.load_s:.1f} s | {engine.threads} threads | context {engine.max_context_len} "
-          f"| up to {engine.max_tokens_per_call} tokens per call")
+          f"| prompt pieces of {engine.prefill_chunk or 'up to ' + str(engine.max_tokens_per_call)} tokens")
     m = engine.prefill(static_prefix(a.lang))
     print(f"fixed prefix: {m['prefill_tokens']} tokens in {m['prefill_s']:.1f} s ({m.get('prefill_tok_s', 0):.1f} tok/s)")
 
@@ -243,13 +299,23 @@ def _smoke_test():
               f"{m.get('decode_tok_s', 0):.2f} tok/s, total {m['total_s']:.1f} s")
         print(f"Llama : {text}")
         print(f"valid : {c.ok} {c.flags if c.flags else ''}")
-        last = text
+        last, last_m = text, m
 
     if a.verify:
         engine.reset()                          # forget the cache: read the whole prompt again
         text, m = engine.generate(prompt, max_new_tokens=max_new_tokens(a.lang))
-        print(f"\n[fresh, no reuse] read {m['prefill_tokens']} tokens in {m['prefill_s']:.1f} s; "
-              f"answer identical to the reused-cache answer: {'yes' if text == last else 'NO'}")
+        same_text = text == last
+        same_logits = m.get("logits_crc32") == last_m.get("logits_crc32")
+        print(f"\n[fresh, empty cache] read {m['prefill_tokens']} tokens in {m['prefill_s']:.1f} s; "
+              f"same answer: {'yes' if same_text else 'NO'}; "
+              f"same logits (CRC-32 {m.get('logits_crc32')}): {'yes' if same_logits else 'NO'}")
+        if not same_text:
+            old, new = last.split(), text.split()
+            k = next((i for i, (x, y) in enumerate(zip(old, new)) if x != y), min(len(old), len(new)))
+            print(f"first difference at word {k + 1}")
+            print(f"fresh : {text}")
+        if not (same_text and same_logits) and engine.prefill_chunk == 0:
+            print("(expected with --prefill-chunk 0: how a prompt is split into calls changes the rounding)")
 
 
 if __name__ == "__main__":

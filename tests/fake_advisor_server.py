@@ -22,19 +22,21 @@ def reply(obj):
     out.flush()
 
 
-threads = 4
+threads, chunk = 4, 32
 for arg in sys.argv[1:]:
     if arg.startswith("--cpu_threads="):
         threads = int(arg.split("=", 1)[1])
+    elif arg.startswith("--prefill_chunk="):
+        chunk = int(arg.split("=", 1)[1])
 
 if os.environ.get("FAKE_SERVER_FAIL_START"):
     reply({"ok": False, "event": "ready", "error": "could not load tokenizer tokenizer.model"})
     sys.exit(1)
 
-engine = make_engine()
+engine = make_engine(prefill_chunk=chunk)
 reply({"ok": True, "event": "ready", "load_s": 0.01, "threads": threads, "max_seq_len": 8,
        "max_context_len": engine.max_context_len, "max_tokens_per_call": engine.max_tokens_per_call,
-       "kv_tokens": 0})
+       "prefill_chunk": engine.prefill_chunk, "kv_tokens": 0, "exact_tokens": 0})
 
 stdin = sys.stdin.buffer
 while True:
@@ -53,7 +55,10 @@ while True:
         os.kill(os.getpid(), signal.SIGILL)
     try:
         if cmd in ("GEN", "PREFILL"):
-            text, metrics = engine.generate(prompt, max_new if cmd == "GEN" else 0)
+            if cmd == "GEN":
+                text, metrics = engine.generate(prompt, max_new)
+            else:
+                text, metrics = "", engine.prefill(prompt)
             reply({"ok": True, "text": text, "metrics": {**metrics, "engine": "native"}})
         elif cmd == "CHECK":
             reply({"ok": True, "resident": engine.is_resident(prompt),
@@ -62,7 +67,8 @@ while True:
             engine.reset()
             reply({"ok": True})
         elif cmd == "INFO":
-            reply({"ok": True, "kv_tokens": engine.kv_tokens, "threads": threads})
+            reply({"ok": True, "kv_tokens": engine.kv_tokens, "exact_tokens": engine.exact,
+                   "threads": threads, "prefill_chunk": engine.prefill_chunk})
         else:
             reply({"ok": False, "error": f"unknown command {cmd}"})
     except ValueError as e:

@@ -17,11 +17,14 @@ Armv8.2+ CPU (Pi 5, laptops); on a Pi 4 it stops with "Illegal instruction".
 
 Two caches make repeat alerts fast:
   * KV cache (in the engine): tokens shared with the previous prompt are not
-    read again. With the v3 prompt that is the whole fixed prefix.
-  * Answer cache (here): greedy decoding is deterministic, so an answer is
-    stored by exact prompt, in memory and in a JSON-lines file. An alert
-    explained once is instant afterwards, even after a restart. Fill it before
-    a demo with `python -m advisor.warm_cache`.
+    read again, up to the last 32-token piece boundary (--prefill-chunk). With
+    the v3 prompt that is the whole fixed prefix. Reading prompts in fixed
+    pieces makes every answer depend only on its prompt, never on which alert
+    came before (see advisor/llm_engine.py).
+  * Answer cache (here): greedy decoding with fixed pieces is deterministic, so
+    an answer is stored by exact prompt, in memory and in a JSON-lines file. An
+    alert explained once is instant afterwards, even after a restart. Fill it
+    before a demo with `python -m advisor.warm_cache`.
 When idle, the service re-reads the default language's prefix if another
 language replaced it, so the next alert in that language is fast again.
 
@@ -201,6 +204,9 @@ def main():
     ap.add_argument("--server-bin", default=os.environ.get("LLAMA_SERVER_BIN"),
                     help="path to the native advisor_server (use this on a Raspberry Pi 4); "
                          "without it the ExecuTorch Python runtime is used")
+    ap.add_argument("--prefill-chunk", type=int, default=int(os.environ.get("LLAMA_PREFILL_CHUNK", "32")),
+                    help="read prompts in pieces of this many tokens at fixed positions, so answers do "
+                         "not depend on what was cached before (0 = fewest calls, history-dependent)")
     a = ap.parse_args()
 
     from .prompt import static_prefix
@@ -208,12 +214,14 @@ def main():
     print(f"[llm] loading {a.pte} with {a.threads} threads ...", flush=True)
     if a.server_bin:
         from .llm_native import NativeLlamaEngine
-        engine = NativeLlamaEngine(a.server_bin, a.pte, a.tokenizer, threads=a.threads)
+        engine = NativeLlamaEngine(a.server_bin, a.pte, a.tokenizer, threads=a.threads,
+                                   prefill_chunk=a.prefill_chunk)
     else:
         from .llm_engine import LlamaEngine
-        engine = LlamaEngine(a.pte, a.tokenizer, threads=a.threads)
+        engine = LlamaEngine(a.pte, a.tokenizer, threads=a.threads, prefill_chunk=a.prefill_chunk)
     print(f"[llm] {type(engine).__name__} loaded in {engine.load_s:.1f} s; context "
-          f"{engine.max_context_len} tokens, {engine.threads} threads", flush=True)
+          f"{engine.max_context_len} tokens, {engine.threads} threads, prefill pieces of "
+          f"{engine.prefill_chunk or 'any size'}", flush=True)
 
     langs = [x.strip() for x in a.warm.split(",") if x.strip()]
     for lang in reversed(langs):                 # the first language ends up resident
@@ -229,7 +237,9 @@ def main():
         rewarmer.start()
 
     import uvicorn
-    uvicorn.run(create_app(engine, cache, model_id_for(a.pte), rewarmer),
+    # Answers depend on the piece size too (float rounding), so it is part of the cache key.
+    model_id = f"{model_id_for(a.pte)}|chunk={engine.prefill_chunk}"
+    uvicorn.run(create_app(engine, cache, model_id, rewarmer),
                 host=a.host, port=a.port, workers=1, log_level="warning")
 
 

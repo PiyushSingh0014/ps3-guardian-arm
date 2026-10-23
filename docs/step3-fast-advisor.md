@@ -10,10 +10,10 @@ Step 2 proved the path end to end. Step 3 makes the Llama part usable on a Raspb
 | What Llama sees | the (sanitised) message + rules | evidence only: scam type, one checked fact, warning signs, who it pretends to be |
 | Prompt style | instructions ("never call it safe") | 3 worked examples, positive wording |
 | Model process | `llama_main` per alert (reload ~12 s) | persistent service with a native C++ engine (`advisor_server`), model loaded once |
-| Prompt reading | whole prompt every time | fixed prefix read once and reused from the KV cache |
+| Prompt reading | whole prompt every time | fixed prefix read once and reused from the KV cache, in fixed 32-token pieces so an answer never depends on earlier alerts |
 | Repeat alerts | same cost again | instant (saved answers) |
 | User sees | nothing until Llama finishes | playbook answer at once, Llama's explanation swapped in after checks |
-| Time per new alert (Pi 4, estimate) | ~42 s measured | ~20 s |
+| Time per new alert (Pi 4) | ~42 s measured | 25 s measured |
 
 ---
 
@@ -120,7 +120,7 @@ If you keep an `advisor_server` somewhere else on the Pi (for example a prebuilt
 
 ## Run on the Pi
 
-**1. Smoke test.** This loads the model, reads the fixed prefix, explains one sample alert twice, and with `--verify` re-reads everything from an empty cache to confirm the answer is identical:
+**1. Smoke test.** This loads the model, reads the fixed prefix, explains one sample alert twice, and with `--verify` re-reads everything from an empty cache to confirm that the answer, and every logit behind it, is bit-identical:
 
 ```bash
 cd ~/ps3-guardian
@@ -128,7 +128,7 @@ source ~/ps3-venv/bin/activate
 python -m advisor.llm_engine --server-bin ~/executorch-deployment/advisor_server --pte ~/executorch-deployment/llama3_2.pte --tokenizer ~/executorch-deployment/tokenizer.model --verify
 ```
 
-You should see the load time, the prefix size and speed, then two explanations with timings. The second run reads only 1 new token, and the last line should end in `identical ...: yes`, which is good evidence for the report that prefix reuse changes nothing but speed.
+You should see the load time, the prefix size and speed, then two explanations with timings. The second run reads only the last few tokens (up to 32). The last line should say `same answer: yes; same logits (CRC-32 ...): yes`. That is the evidence for the report that reusing the cache changes nothing but speed.
 
 **2. Start everything** (it uses `~/executorch-deployment/advisor_server` automatically):
 
@@ -185,6 +185,7 @@ Useful settings:
 
 - `--threads 4` on the service: 4 threads gave the best prefill on the Pi 4, and decode is memory-bound at any thread count.
 - `--warm en,hi`: also read the Hindi prefix at start-up. Only one prefix fits in the KV cache at a time. The first language is re-read when the service is idle.
+- `--prefill-chunk 32` (default; `LLAMA_PREFILL_CHUNK` for `run_pi.sh`): the prompt piece size. `0` uses the fewest forward calls, but then an answer can depend on which alert came before (see "How the engine was verified").
 
 ---
 
@@ -211,19 +212,23 @@ Side benefits:
 
 ---
 
-## Speed on a Raspberry Pi 4 (estimates; replace with your measured table)
+## Speed on a Raspberry Pi 4
 
-These estimates come from the Track B measurements in [eval/results_pi4.md](../eval/results_pi4.md): prefill about 13–15 tokens/s, decode about 4.4 tokens/s, model load about 12 s.
+Measured with the smoke test on 2026-10-24 (first run, before the 32-token pieces; details in [eval/results_pi4.md](../eval/results_pi4.md)):
 
 | Case | Llama reads | Llama writes | Time |
 | --- | --- | --- | --- |
-| Service start-up (once per boot) | ~600-token fixed prefix | none | ~1.5 min |
-| New alert | ~140 tokens (this alert only) | ~40 tokens | ~20 s |
-| Same scam type as the previous alert | ~80 tokens | ~40 tokens | ~15 s |
-| Alert explained before | none | none | instant |
-| Fallback `ADVISOR_BACKEND=llama_main` | whole ~350-token prompt, plus a 12 s model load | ~40 tokens | ~45 s |
+| Service start-up (once per boot) | model load, then the 480-token fixed prefix | none | 13.4 s + 32.0 s |
+| New alert | 138 tokens (this alert only) | 53 tokens | **25.0 s** (first token after 9.3 s) |
+| Same prompt again, from the KV cache | 1 token (up to 32 with the pieces) | 53 tokens | 16.0 s |
+| Alert explained before (answer cache) | none | none | instant |
+| Whole prompt from an empty cache | 618 tokens | 53 tokens | 40.6 s to read, then ~16 s |
+| Fallback `ADVISOR_BACKEND=llama_main` | whole ~350-token prompt, plus a 12 s model load | ~40 tokens | ~45 s (estimate) |
 
-Hindi answers need about 3 times more tokens, so expect about 35 s for a new Hindi alert.
+- Reading runs at about 15 tokens/s; writing at 3.4 tokens/s.
+- Writing is slower than Track B's 4.4 tokens/s because each new token also attends to the whole context, here 620–670 tokens. Track B's own numbers show the same trend (see results). A shorter fixed prefix would make every answer faster.
+- The 32-token pieces add a few forward calls per alert (5 instead of 1 for a new alert). Each extra call also runs the output layer once, so expect up to about half a second more; measure it with the smoke test.
+- Hindi answers need about 3 times more tokens, so expect about 50 s for a new Hindi alert.
 
 ---
 
@@ -240,14 +245,14 @@ Hindi answers need about 3 times more tokens, so expect about 35 s for a new Hin
 - **Output allowlist.** Only 1930, cybercrime.gov.in, sancharsaathi.gov.in and the `.bank.in` suffix may appear in Llama's text. A sentence that contains any other number or link is dropped whole.
 - **Steps are code, not Llama.** They are verbatim from the reviewed playbooks, and the 1930 step is always included.
 - **Llama tokens are never streamed to the user.** The page shows the playbook answer at once and swaps in Llama's text only after the validator accepts it.
-- **Deterministic and reviewable.** Greedy decoding plus evidence-only prompts means a test set produces a small, fixed set of answers. `warm_cache.py` writes them all to one table for human review.
+- **Deterministic and reviewable.** Greedy decoding plus evidence-only prompts means a test set produces a small, fixed set of answers. Prompts are read in fixed 32-token pieces, so an answer is bit-for-bit the same whichever alert came before (`--verify` checks a CRC-32 of the logits). The answers `warm_cache.py` writes to its review table are therefore exactly what users will see.
 - **The API never echoes the raw message.** The page renders everything as plain text. The Llama service listens on 127.0.0.1 only.
 
 ---
 
 ## How the engine was verified
 
-Besides the 46 unit tests, `advisor/llm_engine.py` was run on the real ExecuTorch 1.5.1 runtime with torch 2.14. The model was a tiny random Llama, exported with `export_llm` using the same settings as your model:
+Besides the 50 unit tests, `advisor/llm_engine.py` was run on the real ExecuTorch 1.5.1 runtime with torch 2.14. The model was a tiny random Llama, exported with `export_llm` using the same settings as your model:
 
 - 8da4w XNNPACK linears
 - 8-bit embeddings
@@ -268,6 +273,14 @@ The results:
   - The same emulated CPU traps an Armv8.1 atomic instruction, which is exactly what crashes the pip wheel on the real Pi.
   - On one of three prompts, the Arm and x86 answers from the random-weight test model drift apart after about ten tokens. That is normal floating-point rounding between NEON and AVX kernels at a near tie; each build always agrees with itself.
   - After the `armv8-a` fix above, the rebuilt binary passed the same checks. It also passed the exact smoke-test command from "Run on the Pi" (4 threads, `--verify`) under the emulated Cortex-A72.
+
+**On the real Pi 4 the reuse check failed at first (2026-10-24).** Re-reading the whole prompt from an empty cache gave a slightly different answer than the run that reused the cached prefix. Both answers were fine; the difference is rounding:
+
+- How the attention kernel splits its matrix products follows the length of each forward call: its key/value blocks are `min(512, positions seen so far in this call)` wide. Most likely the cause is Eigen's matrix multiply: on Arm it assumes a 16 KB L1 cache and splits sums longer than about 200 terms, and where it splits depends on that width.
+- Reading the prefix (480 tokens) in one call and the alert (138) in a second call therefore rounds the cached keys and values a little differently from reading all 618 tokens at once. At a near-tie, greedy decoding then picks another word.
+- The tiny test model hid this, because its call boundaries happened not to change any sum, and x86 builds split less. A test model with the 1B's attention shape (head size 64, 2048 context) shows it under QEMU. With one call per prompt, the CRC-32 of the logits after a warm prefix differed from a fresh read in 3 of 4 cache histories.
+- **Fix:** prompts are read in 32-token pieces at fixed positions (0, 32, 64, ...). The cache is reused only up to a piece boundary that earlier calls computed exactly. Every position is then computed by the same calls whatever was cached. Under QEMU the logits CRC was identical in all five histories: fresh, prefix warmed, after another KYC alert, after a parcel alert, and an exact repeat.
+- The unit tests now use a fake model whose output depends on how the prompt was split, like the real kernel. One test shows that without the pieces a warm-up changes the answer; another checks six different histories with them.
 
 ---
 
