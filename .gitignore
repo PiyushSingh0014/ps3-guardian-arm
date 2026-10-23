@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*-venv/
+
+# Models, weights and build outputs: never commit these.
+# They are large (the .pte is ~1 GB, over GitHub's 100 MB limit) and the
+# Llama weights and anything exported from them are covered by Meta's licence.
+*.pte
+*.pth
+*.bin
+*.safetensors
+*.gguf
+tokenizer.model
+llama_main
+*.so
+cmake-out/
+*.joblib
+
+# Datasets: download them with the scripts (their licences differ)
+data/
+*.csv
+!detectors/sms/sample_messages.csv
+*.pcap
+*.pcapng
+
+# Runtime output
+logs/
+*.log
+.cache/
