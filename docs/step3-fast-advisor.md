@@ -72,7 +72,7 @@ sudo apt install -y git gh python3-venv
 git config --global user.name "Arrehinus"
 git config --global user.email "singhpiyush8414@gmail.com"
 gh auth login
-gh repo clone ps3-guardian ~/ps3-guardian
+gh repo clone ps3-guardian-arm ~/ps3-guardian
 cd ~/ps3-guardian
 git checkout step3
 ```
