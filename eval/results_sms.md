@@ -64,7 +64,7 @@ The first run, without de-duplication, scored F1 0.98 on the merged 11,543 rows.
 
 ## Next
 
-1. Build an India test set: about 100 real messages with sender IDs, never used for training. Report results on it separately.
+1. Build an India test set: about 100 real messages with sender IDs, never used for training. Report results on it separately. (Done: see "India test set" below.)
 2. Train a 3-class model (ham / spam / smishing) with a scam-type output that replaces the keyword `categorize.py`.
 3. Run a cross-source test: `--holdout-source` trains on one dataset and tests on the other.
 4. Fine-tune a small multilingual encoder, export it to ExecuTorch as INT8, and compare it with this baseline.
@@ -73,4 +73,96 @@ The first run, without de-duplication, scored F1 0.98 on the merged 11,543 rows.
 
 ```bash
 python detectors/sms/train_baseline.py --data merged_sms.csv --show-errors 15
+```
+
+## India test set (2026-10-25)
+
+227 real messages, never used for training: 100 fraud, 52 genuine marketing, 75 normal. 22 are in Hindi or Hinglish. None of them appears in the training data.
+
+- Fraud:
+  - 12 from the team's inboxes
+  - 8 quoted word for word in Indian fact-checks (PIB Fact Check and others)
+  - 80 picked by hand from the Fishing for Smishing dataset (Agarwal, Papasavva, Suarez-Tangil and Vasek, IMC 2025, CC BY 4.0): reports of scam SMS sent from Indian mobile numbers, 2017–2023
+- Marketing and normal messages: the team's own phones, anonymised.
+
+Measured with `detectors/sms/eval_india.py`: the app's model (same training data, cleaning and split as above) and the app's verdict rules.
+
+| | Messages | Flagged (suspicious or dangerous) | Dangerous |
+| --- | --- | --- | --- |
+| Fraud | 100 | 94 (94%) | 69 |
+| Marketing | 52 | 50 (96%) | 36 |
+| Normal | 75 | 48 (64%) | 25 |
+
+Normal messages flagged, by kind:
+
+| Kind | Flagged |
+| --- | --- |
+| Delivery updates | 6 of 6 |
+| Government notices | 7 of 8 |
+| Bank alerts | 7 of 9 |
+| Service alerts (recharges, bookings, payments) | 12 of 15 |
+| OTPs | 15 of 24 |
+| Personal chats | 1 of 13 |
+
+A model trained on 100% of the training data gives almost the same result: 95 fraud, 49 marketing and 51 normal messages flagged.
+
+### What this shows
+
+- **Catching fraud carries over to India.** 94 of 100 real Indian scams are flagged. None of the 6 misses has a link:
+  - a Hindi prize message
+  - a "PM yojana" benefit
+  - two loan messages
+  - a dating lure
+  - a work-from-home job
+- **Avoiding false alarms does not.** 64% of normal Indian messages are flagged, against 1.3% on the public test. Personal chats are fine, but almost every transactional message is flagged: OTPs, bank alerts, deliveries, recharges and government notices.
+- **Why:** in the public training data, normal messages are mostly personal chat.
+  - It has no OTP messages at all.
+  - Most messages with bank words are labelled threats (76%), and so are most with delivery words (82%), a link (94%) or an amount of money (95%).
+  - So the model learned that a transactional message is a threat, and Indian inboxes are mostly transactional.
+- **Marketing is flagged as a threat (96%)** because the model has only two classes.
+
+### With the sender (2026-10-25)
+
+Sender-aware scoring (`detectors/sms/senders.py`, used by the app and by `eval_india.py`) multiplies the odds of fraud:
+
+- by 0.02 for a registered sender ID ending in `-S`, `-T` or `-G` (service, transactional, government)
+- by 0.1 for one ending in `-P` (promotional) or with no suffix
+- by 4 for a mobile number, when the message has a link, money, urgency, bank words or OTP talk
+
+An `.apk` link stays dangerous whoever sends it. The multipliers come from TRAI's sender-ID rules and were set before this test, not fitted to it.
+
+| Flagged | Messages | Text only | With the senders in the sheet | Projection: genuine messages carry their registered sender ID |
+| --- | --- | --- | --- | --- |
+| Fraud | 100 | 94 | 96 | 96 |
+| Marketing | 52 | 50 | 35 | 21 |
+| Normal | 75 | 48 (64%) | 44 (59%) | 3 (4%) |
+
+- **Senders in the sheet:**
+  - The 77 dataset scams come from Indian mobile numbers, and the chats from a saved contact.
+  - 6 inbox messages came from phone numbers copied from the phone.
+  - Most business messages have a name typed by hand (for example "HDFC bank"). The scoring does not trust names, because anyone can type one.
+  - Senders copied from the message text were removed (the number to call, the user's own number).
+- **The projection** gives each genuine business message the sender ID that TRAI rules require: `-T` for bank alerts and OTPs, `-S` for other services, `-G` for government, `-P` for marketing. Everything else stays as measured. It is an assumption, not a measurement.
+  - With IDs that have no suffix (older IDs such as `AX-HDFCBK`), 17 normal messages stay flagged.
+  - If the 4 genuine messages that came from mobile numbers keep them, 6 normal messages stay flagged.
+- **Still missed:** 4 frauds that have no link and nothing the rules recognise as money or urgency: a Hindi prize message, an MSME loan reference, a "PM yojana" benefit and a dating lure.
+- **Still flagged in the projection:**
+  - the Canara merchant notice (score 0.99, 0.64 with the sender)
+  - the cash-on-delivery Flipkart delivery (0.98 → 0.55)
+  - a one-word chat ("congratulations…")
+
+### What this means
+
+- **The sender ID fixes the false alarms.** With it, the share of normal Indian messages flagged drops from 64% to about 4–8% (up to 23% with suffix-less IDs), and slightly more fraud is caught.
+- **It has to be the real ID** (`JD-HDFCBK-S`), not a name. Typed names do not help, and a made-up number makes a genuine message look like a scam.
+- **So the app should read the sender ID itself.** An Android app gets it with every incoming SMS. In the web demo, type the ID exactly as the phone shows it.
+
+### Next
+
+1. **Android companion** that reads incoming SMS together with their sender IDs and sends both to the Pi; then measure on real traffic.
+2. **Real Indian normal messages in training.** OTPs, bank alerts and delivery updates from business sender IDs, taken from phones other than the test set's and anonymised. This helps when the sender is unknown.
+3. **Three classes** (fraud, marketing, normal), so the app can show marketing as low-risk.
+
+```bash
+python detectors/sms/eval_india.py --train merged_sms.csv --test india_sms_collection_v9.xlsx --show 20
 ```

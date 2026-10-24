@@ -41,4 +41,14 @@ grep "^\[llm\]" logs/llm_service.log 2>/dev/null || true
 
 IP="$(hostname -I | awk '{print $1}')"
 echo "App: open http://$IP:8000 on a phone on the same network"
+
+# Pairing token for the Android companion (POST /sms). Created once, kept in a file.
+TOKEN_FILE="$HOME/.ps3_guardian_token"
+if [ ! -s "$TOKEN_FILE" ]; then
+  python -c 'import secrets; print(secrets.token_hex(4))' > "$TOKEN_FILE"
+  chmod 600 "$TOKEN_FILE"
+fi
+export GUARDIAN_TOKEN="${GUARDIAN_TOKEN:-$(cat "$TOKEN_FILE")}"
+echo "Android app: Pi address http://$IP:8000, pairing token $GUARDIAN_TOKEN"
+
 ADVISOR_BACKEND=service exec uvicorn app.server:app --host 0.0.0.0 --port 8000

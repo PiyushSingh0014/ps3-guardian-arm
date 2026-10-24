@@ -41,7 +41,9 @@ Where to get them:
 
 - Your own and your teammates' inboxes.
 - Family and friends' inboxes, only with their permission.
-- Public warnings that quote the SMS text: Sanchar Saathi (Chakshu), bank, RBI and TRAI advisories, cyber-police awareness posts, news reports.
+- Public sources that quote a real SMS word for word: PIB Fact Check posts, news fact-checks, bank and cyber-police advisories. Put the web link in `notes`. If the source hid the link or phone number, add a made-up one and say so in `notes`.
+- The Fishing for Smishing research dataset (Agarwal, Papasavva, Suarez-Tangil and Vasek, IMC 2025, CC BY 4.0, [github.com/reportsmishing/Smishing-Dataset-IMC25](https://github.com/reportsmishing/Smishing-Dataset-IMC25)): real scam SMS that people posted online, 3,729 of them sent from Indian mobile numbers. Pick by hand, because some reports are genuine messages people were unsure about. Cite the paper.
+- Not for testing: blog lists of "example" scam texts (written by the author) and generated datasets.
 
 Privacy and safety:
 
@@ -56,19 +58,17 @@ smishing,"Your SBI KYC is pending, update today: http://sbi-kyc.example",9812345
 ham,"Rs 500 debited from A/c XX1234 on 12-10. Not you? Call 1800...",AX-SBIINB-S,india_test,,en
 ```
 
-- `label`: `smishing` (fraud), `spam` (genuine but unwanted marketing) or `ham` (normal). The model treats `spam` and `smishing` both as threats; the app then shows marketing as low-risk spam.
-- `sender`: exactly as shown on the phone (`AX-HDFCBK-S`, `9812345678`, or empty).
+- `label`: `smishing` (fraud), `spam` (genuine but unwanted marketing) or `ham` (normal). The model treats `spam` and `smishing` both as threats, so today the app shows marketing as suspicious too; a three-class model is planned.
+- `sender`: copied exactly as the phone shows it (`AX-HDFCBK-S`, `9812345678`, or empty). Never guess it from the message text and never make one up: the detector treats a mobile-number sender as a warning sign, so an invented number on a genuine message creates a false alarm in the test.
 - `language`: `en`, `hi` or `hinglish`.
 
 ## Measure
 
-Append the rows to your `merged_sms.csv`. Add a `source` column to the old rows if they lack one, for example `uci` and `mishra_soni`. Then:
-
 ```bash
-python detectors/sms/train_baseline.py --data merged_sms.csv --holdout-source india_test --show-errors 20
+python detectors/sms/eval_india.py --train merged_sms.csv --test india_sms_collection_v9.xlsx --show 20
 ```
 
-This trains without the India set, tests only on it, and lists the messages it got wrong. Write the numbers into `eval/results_sms.md`. For the demo model, train once more without `--holdout-source`.
+This trains the app's model without the India set (test messages that also appear in the training data are dropped), tests only on the India set, and lists the missed fraud and the false alarms. It reads the workbook directly, or a CSV in the format above. The results so far are in `eval/results_sms.md`.
 
 ## Then improve, in this order
 
