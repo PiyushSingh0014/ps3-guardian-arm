@@ -1,4 +1,4 @@
-"""PS3 Guardian, vertical slice: SMS -> detector -> Llama advisor -> API + web page.
+"""PS3 Guardian app: SMS -> detector -> advisor -> API + phone page.
 
 Run from the repo root:
     uvicorn app.server:app --host 0.0.0.0 --port 8000
@@ -6,25 +6,32 @@ then open http://<pi-or-laptop-ip>:8000 from any phone on the same network.
 
 Backend is chosen by environment variables (see advisor/backends.py):
     ADVISOR_BACKEND=template      (default, no LLM, works anywhere)
-    ADVISOR_BACKEND=llama_main    (Llama 3.2 on the Pi through ExecuTorch)
+    ADVISOR_BACKEND=service       (persistent Llama service on the Pi: the fast path)
+    ADVISOR_BACKEND=llama_main    (one llama_main run per alert: slow fallback)
+
+With an LLM backend, POST /check answers at once with the playbook template
+and a job id; the Llama explanation is written in the background and fetched
+from GET /explain/{id} once the validator has checked it. Llama tokens are
+never streamed to the user unchecked.
 
 No authentication yet: keep it on your lab network. Add a pairing token
 before the Android companion talks to it.
 """
+import secrets
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from advisor.advise import Advisor
 from advisor.backends import backend_from_env
-from detectors.sms.detector import SmsDetector
 
-app = FastAPI(title="PS3 Guardian - vertical slice")
-_detector = SmsDetector()
-_advisor = Advisor(backend=backend_from_env())
+JOB_TTL_S = 900
+MAX_JOBS = 200
 
 
 class CheckIn(BaseModel):
@@ -33,28 +40,102 @@ class CheckIn(BaseModel):
     language: str = Field("en", pattern="^(en|hi)$")
 
 
-@app.post("/check")
-def check(req: CheckIn):
-    t0 = time.time()
-    finding = _detector.check(req.message, sender=req.sender, language=req.language)
-    t1 = time.time()
-    advice = _advisor.advise(finding)
-    t2 = time.time()
+class JobStore:
+    """In-memory explanation jobs (one LLM at a time, so a single worker thread)."""
+
+    def __init__(self):
+        self.jobs, self.lock = {}, threading.Lock()
+        self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="llm")
+
+    def submit(self, fn):
+        job_id = secrets.token_urlsafe(9)
+        now = time.time()
+        with self.lock:
+            for k in [k for k, j in self.jobs.items() if now - j["created"] > JOB_TTL_S]:
+                del self.jobs[k]
+            while len(self.jobs) >= MAX_JOBS:
+                del self.jobs[next(iter(self.jobs))]
+            self.jobs[job_id] = {"status": "pending", "created": now}
+
+        def run():
+            try:
+                advice = fn()
+                result = {"status": "done" if advice.source == "llm" else "fallback",
+                          "advice": advice.to_dict()}
+            except Exception as e:                      # never leave a job hanging
+                result = {"status": "failed", "error": type(e).__name__}
+            with self.lock:
+                if job_id in self.jobs:
+                    self.jobs[job_id].update(result, finished=time.time())
+
+        self.pool.submit(run)
+        return job_id
+
+    def get(self, job_id):
+        with self.lock:
+            j = self.jobs.get(job_id)
+            return dict(j) if j else None
+
+    def queued(self):
+        with self.lock:
+            return sum(1 for j in self.jobs.values() if j["status"] == "pending")
+
+
+def _public_finding(finding):
     f = finding.to_dict()
     f.pop("raw_text", None)                       # never echo untrusted text back
-    return {"finding": f, "advice": advice.to_dict(), "backend": _advisor.backend.name,
-            "timing_ms": {"detect": round((t1 - t0) * 1000, 1),
-                          "advise": round((t2 - t1) * 1000, 1)}}
+    return f
 
 
-@app.get("/health")
-def health():
-    return {"ok": True, "backend": _advisor.backend.name}
+def create_app(detector=None, advisor=None):
+    if detector is None:
+        from detectors.sms.detector import SmsDetector
+        detector = SmsDetector()
+    advisor = advisor or Advisor(backend=backend_from_env())
+    jobs = JobStore()
+    app = FastAPI(title="PS3 Guardian")
 
+    @app.post("/check")
+    def check(req: CheckIn, wait: bool = False):
+        t0 = time.time()
+        finding = detector.check(req.message, sender=req.sender, language=req.language)
+        t1 = time.time()
+        explain = None
+        if advisor.needs_llm(finding) and not wait:
+            advice = advisor.quick(finding)
+            ahead = jobs.queued()
+            explain = {"id": jobs.submit(lambda: advisor.explain(finding)), "status": "pending",
+                       "queued_ahead": ahead}
+        else:
+            advice = advisor.advise(finding)
+        t2 = time.time()
+        return {"finding": _public_finding(finding), "advice": advice.to_dict(),
+                "backend": advisor.backend.name, "explain": explain,
+                "timing_ms": {"detect": round((t1 - t0) * 1000, 1),
+                              "advise": round((t2 - t1) * 1000, 1)}}
 
-@app.get("/", response_class=HTMLResponse)
-def index():
-    return PAGE
+    @app.get("/explain/{job_id}")
+    def explain(job_id: str):
+        job = jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="unknown or expired job")
+        out = {"status": job["status"], "advice": job.get("advice")}
+        if "finished" in job:
+            out["seconds"] = round(job["finished"] - job["created"], 1)
+        return out
+
+    @app.get("/health")
+    def health():
+        h = {"ok": True, "backend": advisor.backend.name, "jobs_pending": jobs.queued()}
+        if hasattr(advisor.backend, "health"):
+            h["llm"] = advisor.backend.health()
+        return h
+
+    @app.get("/", response_class=HTMLResponse)
+    def index():
+        return PAGE
+
+    return app
 
 
 PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -75,6 +156,7 @@ button{background:var(--accent);color:#fff;border:0;cursor:pointer;margin-top:8p
 h1{font-size:20px;margin:8px 0}#head{font-weight:700;font-size:18px}
 .dangerous{color:var(--danger)}.suspicious{color:var(--warn)}.safe{color:var(--ok)}
 .muted{color:var(--muted);font-size:13px}ol{padding-left:20px}
+#llm{border-left:3px solid var(--accent);padding-left:10px}
 </style></head><body><main>
 <h1>Check a message</h1>
 <div class="card">
@@ -83,23 +165,56 @@ h1{font-size:20px;margin:8px 0}#head{font-weight:700;font-size:18px}
 <select id="lang"><option value="en">English</option><option value="hi">हिन्दी</option></select></div>
 <button id="go">Check</button></div>
 <div class="card" id="out" hidden>
-<div id="head"></div><p id="what"></p><p id="why"></p><ol id="steps"></ol><p class="muted" id="meta"></p></div>
+<div id="head"></div><p id="what"></p><p id="why"></p>
+<p class="muted" id="llm" hidden></p>
+<ol id="steps"></ol><p class="muted" id="meta"></p></div>
 <script>
 const $=id=>document.getElementById(id);
+let poll=null;
+function show(a){
+  $('what').textContent=a.what;$('why').textContent=a.why;
+  $('steps').replaceChildren(...a.steps.map(s=>{const li=document.createElement('li');li.textContent=s;return li;}));
+}
+function llmNote(a,secs){
+  const m=a.metrics||{};
+  if(a.source!=='llm'){
+    const f=a.flags||[];const why=f.length?f[f.length-1].split('; template used')[0]:'';
+    return 'Llama could not add an explanation'+(why?' (safety check: '+why+')':'')+', so this is the checked playbook text.';
+  }
+  if(m.cached){return 'Explained by Llama 3.2 on this device (saved answer, instant).';}
+  return 'Explained by Llama 3.2 on this device in '+(secs??m.total_s??'?')+' s'
+    +(m.decode_tok_s?' ('+m.decode_tok_s+' tokens/s)':'')+'.';
+}
+async function follow(id,t0){
+  try{
+    const r=await fetch('/explain/'+encodeURIComponent(id));const d=await r.json();
+    if(d.status==='pending'){
+      $('llm').textContent='Llama is writing a plain-language explanation on this device... '
+        +Math.round((Date.now()-t0)/1000)+' s';
+      poll=setTimeout(()=>follow(id,t0),1500);return;
+    }
+    if(d.advice){show(d.advice);$('llm').textContent=llmNote(d.advice,d.seconds);}
+    else{$('llm').textContent='Llama explanation failed; the playbook text above is still correct.';}
+  }catch(e){$('llm').textContent='Lost contact with the device: '+e;}
+}
 $('go').onclick=async()=>{
   const body={message:$('msg').value,sender:$('sender').value||null,language:$('lang').value};
   if(!body.message.trim())return;
+  if(poll){clearTimeout(poll);poll=null;}
   $('go').disabled=true;$('go').textContent='Checking...';
   try{
     const r=await fetch('/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const d=await r.json();const a=d.advice,f=d.finding,m=a.metrics||{};
+    const d=await r.json();const a=d.advice,f=d.finding;
     $('out').hidden=false;$('head').textContent=a.headline;$('head').className=f.verdict;
-    $('what').textContent=a.what;$('why').textContent=a.why;
-    $('steps').replaceChildren(...a.steps.map(s=>{const li=document.createElement('li');li.textContent=s;return li;}));
-    $('meta').textContent=`score ${f.score} | ${f.category} | backend ${d.backend} | source ${a.source}`
-      +(m.ttft_s!==undefined?` | first token ${m.ttft_s}s | ${m.decode_tok_s??'?'} tok/s`:'')
-      +` | detect ${d.timing_ms.detect} ms, advise ${d.timing_ms.advise} ms`;
+    show(a);
+    $('meta').textContent=`score ${f.score} | ${f.category} | backend ${d.backend}`
+      +` | detect ${d.timing_ms.detect} ms`;
+    $('llm').hidden=!d.explain;
+    if(d.explain){$('llm').textContent='Llama is writing a plain-language explanation on this device...';
+      follow(d.explain.id,Date.now());}
   }catch(e){$('out').hidden=false;$('head').textContent='Error: '+e;}
   finally{$('go').disabled=false;$('go').textContent='Check';}
 };
 </script></main></body></html>"""
+
+app = create_app()

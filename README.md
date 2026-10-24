@@ -11,7 +11,7 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | Track A: SMS scam detector baseline | done | [eval/results_sms.md](eval/results_sms.md) |
 | Step 2: advisor vertical slice (SMS → advisor → app) | done (laptop; template and `llama_main` backends) | [docs/step2-vertical-slice.md](docs/step2-vertical-slice.md) |
 | Track B: Llama 3.2 1B on the Pi 4 via ExecuTorch | done: 12.7 tok/s prefill, 4.4 tok/s decode | [eval/results_pi4.md](eval/results_pi4.md), [deploy/README.md](deploy/README.md) |
-| Step 3: fast advisor (persistent Llama service, prompt v3) | in progress on branch `step3` | |
+| Step 3: fast advisor (persistent Llama service with a native C++ engine, prompt v3) | code ready on branch `step3`; Pi timings pending | [docs/step3-fast-advisor.md](docs/step3-fast-advisor.md) |
 | URL, network-flow and DNS detectors; fusion; Android companion | planned | |
 
 ## Hardware and software
@@ -24,10 +24,11 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | Folder | What is in it |
 | --- | --- |
 | `detectors/sms/` | SMS scam detector: India rules, baseline model, `Finding` wrapper |
-| `advisor/` | Turns a `Finding` into advice: playbooks, Llama prompt, LLM backends, output validator |
+| `advisor/` | Turns a `Finding` into advice: playbooks, Llama prompt, output validator; `llm_engine.py` + `llm_service.py` keep Llama loaded on the Pi |
 | `app/` | FastAPI app: `POST /check` and a phone-friendly page |
-| `tests/` | pytest suite, with a fake `llama_main` for laptops |
+| `tests/` | pytest suite (fake model and fake `llama_main`, so no torch is needed) |
 | `deploy/` | Track B: export, Pi 4 build, benchmark script, test prompts |
+| `scripts/` | `run_pi.sh`: starts the Llama service and the app on the Pi |
 | `eval/` | Results for the report |
 | `docs/` | Notes per step |
 

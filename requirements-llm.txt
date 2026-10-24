@@ -1,0 +1,15 @@
+# Optional: the ExecuTorch *Python* runtime for the Llama service (advisor/llm_engine.py).
+#
+# NOT for the Raspberry Pi 4. The executorch 1.5.1 wheel's custom LLM ops library is
+# compiled for Armv8.2-A and stops with "Illegal instruction" on the Pi 4's
+# Cortex-A72 (Armv8.0-A). On a Pi 4 use the native advisor_server instead
+# (deploy/advisor_server/), which needs no torch or executorch Python packages.
+#
+# Use this file on Armv8.2+ machines (Raspberry Pi 5, Arm laptops/servers) or x86:
+# 1. Install torch FIRST, from PyTorch's CPU-only index (the default PyPI build for
+#    64-bit ARM pulls in several GB of CUDA libraries):
+#       pip install torch==2.14.0 --index-url https://download.pytorch.org/whl/cpu
+#    (ExecuTorch 1.5's torch_pin.py pins 2.14.0.)
+# 2. Then:
+#       pip install -r requirements-llm.txt
+executorch==1.5.1

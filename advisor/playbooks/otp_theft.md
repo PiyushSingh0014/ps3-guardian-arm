@@ -1,6 +1,9 @@
 # OTP or password theft
 severity: high
 summary: The message tries to get your one-time password, PIN or card details, which would let someone empty your account or take over your apps.
+pretends: a bank or company
+wants: to get your OTP or PIN and take money from your account
+fact: No bank, company or government office ever asks you to share an OTP; anyone who has your OTP can take money from your account or take over your apps.
 
 ## Steps
 1. Do not share the OTP, PIN, CVV or password with anyone, even someone claiming to be from a bank, company or government office.

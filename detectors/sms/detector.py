@@ -14,10 +14,17 @@ if _HERE not in sys.path:                 # lets the day-1 scripts keep their pl
 
 import joblib                                    # noqa: E402
 import train_baseline as tb                      # noqa: E402
-from rules_india import extract_signals          # noqa: E402
+from brands import claimed_identity              # noqa: E402
+from rules_india import TEN_DIGIT_RE, extract_signals, normalize_sender  # noqa: E402
 
 from advisor.categorize import categorize_message    # noqa: E402
 from advisor.findings import Finding, verdict_from_score  # noqa: E402
+
+
+def sender_type(sender):
+    if not sender:
+        return "unknown"
+    return "mobile_number" if TEN_DIGIT_RE.match(normalize_sender(sender)) else "sender_id"
 
 
 class SmsDetector:
@@ -37,7 +44,16 @@ class SmsDetector:
         if sig.has_apk and sig.has_url:          # an .apk link is near-certainly malicious
             verdict, score = "dangerous", max(score, 0.95)
         category = categorize_message(text, sig) if verdict != "safe" else "none"
+
+        # claims_to_be (from a fixed list) and sender_type (one of three words) are
+        # trusted, so the advisor may pass them to Llama. 'sender' is the raw value
+        # typed or received; it is shown in the UI but never sent to Llama.
+        entities = {"sender_type": sender_type(sender)}
+        if sender:
+            entities["sender"] = sender
+        name, kind = claimed_identity(text, category)
+        if name:
+            entities["claims_to_be"], entities["claims_kind"] = name, kind
         return Finding(source="sms", verdict=verdict, score=round(score, 3), category=category,
-                       reasons=list(sig.reasons),
-                       entities={"sender": sender} if sender else {},
+                       reasons=list(sig.reasons), entities=entities,
                        raw_text=message, language=language)

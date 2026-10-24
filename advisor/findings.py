@@ -10,6 +10,15 @@ from typing import Optional
 DANGEROUS_AT = 0.80
 SUSPICIOUS_AT = 0.50
 
+_KIND_LABEL = {"bank": "a bank", "payment app": "a payment app", "courier": "a courier company",
+               "online shop": "an online shop", "mobile operator": "a mobile operator"}
+
+
+def describe_org(name, kind=None):
+    """'SBI' + 'bank' -> 'SBI (a bank)'. Government and utility names read fine alone."""
+    label = _KIND_LABEL.get(kind)
+    return f"{name} ({label})" if label else name
+
 
 def verdict_from_score(score: float) -> str:
     if score >= DANGEROUS_AT:
@@ -26,7 +35,7 @@ class Finding:
     score: float                     # calibrated probability of a threat, 0..1
     category: str                    # playbook key, e.g. "bank_kyc_scam"; "none" if safe
     reasons: list = field(default_factory=list)    # human-readable evidence
-    entities: dict = field(default_factory=dict)   # e.g. {"sender": ..., "urls": [...]}
+    entities: dict = field(default_factory=dict)   # e.g. {"claims_to_be": "SBI", "sender": ...}
     raw_text: Optional[str] = None   # UNTRUSTED original content (e.g. the SMS body)
     language: str = "en"             # language for the explanation: "en" or "hi"
 

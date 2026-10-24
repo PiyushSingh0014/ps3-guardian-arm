@@ -80,6 +80,22 @@ Problems in that answer, and the step-3 fix for each:
 
 **Starting the process is expensive.** Loading the model takes 11.7 s per run, a quarter of test B's time.
 
+## 3b. Finding: the ExecuTorch pip wheel cannot run on the Pi 4
+
+We tried to run Llama through the ExecuTorch Python runtime (`executorch` 1.5.1 wheel from PyPI, `torch` 2.14.0 CPU) for the persistent service. It stopped with `Illegal instruction` while loading the model.
+
+**Cause.** We disassembled every ARM64 library in the wheel with `deploy/tools/check_arm_isa.py`:
+
+- `libcustom_ops_aot_lib.so` holds the custom LLM ops (`llama::custom_sdpa`, `llama::update_cache`) that the exported model needs.
+- It contains 43 Armv8.1 LSE atomic instructions with no run-time CPU check.
+- The reason: ExecuTorch's `extension/llm/custom_ops/CMakeLists.txt` adds `-march=armv8.2-a+dotprod` to every aarch64 build.
+- The Pi 4's Cortex-A72 implements Armv8.0-A only (`fp asimd crc32`), so it traps on the first such instruction.
+- The wheel's other libraries check for LSE at run time (outline atomics) and are safe.
+
+**Fix.** A native C++ engine, `advisor_server`, built from source with the Pi 4 toolchain and flags (`-march=armv8-a -mtune=cortex-a72`), like `llama_main`. It runs the same kernels as `llama_main`, needs no PyTorch on the Pi, and is what the step-3 service uses on this board.
+
+The same CMake line also reaches every program that links the custom ops: their compile flags end with `-march=armv8.2-a+dotprod`. So `build_pi4.sh` compiles our own source file for `armv8-a` again; without that, the compiler had placed two Armv8.1 atomics in it. The newer instructions left in the binary are all in kernels that XNNPACK and KleidiAI choose at run time from the CPU's features, or in int8 attention kernels for a quantized KV cache, which this model does not use.
+
 ## 4. Design decisions taken from these numbers (step 3)
 
 1. **Keep the model loaded:** a persistent Llama service removes the 11.7 s load from every alert.
@@ -91,7 +107,81 @@ Problems in that answer, and the step-3 fix for each:
 5. **4 threads:** best prefill, with decode unchanged.
 6. **Save answers for repeat alerts:** greedy decoding is deterministic, so a saved answer is exactly what Llama would write again.
 
-Expected with step 3 on this Pi: about 20 s for a new alert and instant for a repeat, against about 42 s here. The real numbers will go in `eval/advisor_pi4.md`.
+Expected with step 3 on this Pi: about 20 s for a new alert and instant for a repeat, against about 42 s here. Measured: 25 s (section 5). The per-alert table will go in `eval/advisor_pi4.md`.
+
+## 5. Step 3 on the Pi 4: first run of the native engine
+
+Measured on 2026-10-24 with the smoke test (`python -m advisor.llm_engine --server-bin ... --verify`): `advisor_server` with 4 threads, the same `llama3_2.pte`, and a sample bank-KYC alert. This run read prompts in as few calls as possible (before the 32-token pieces below).
+
+| Stage | Tokens | Time | Rate |
+| --- | --- | --- | --- |
+| Model load (once per boot) | | 13.4 s | |
+| Fixed prefix (once per boot) | 480 read | 32.0 s | 15.0 tok/s |
+| New alert: reading | 138 read, 480 reused | 9.3 s to the first token | 14.8 tok/s |
+| New alert: writing | 53 written | 15.7 s | 3.37 tok/s |
+| **New alert, end to end** | | **25.0 s** | |
+| Same prompt again (KV cache only) | 1 read, 617 reused | 16.0 s | |
+| Whole prompt from an empty cache | 618 read | 40.6 s to read | 15.2 tok/s |
+
+Against Track B's 42.5 s for test B (section 2), a new alert is 1.7× faster. A repeat alert is instant from the answer cache.
+
+**Writing slows down as the context grows.**
+
+| Run | Context while writing | Writing speed |
+| --- | --- | --- |
+| Track B, 12-token prompt | ~13–75 tokens | 4.37 tok/s |
+| Track B, test B | ~223–289 tokens | 4.02 tok/s |
+| Step 3, sample alert | ~619–671 tokens | 3.37 tok/s |
+
+- A straight line through the two Track B points predicts about 3.5 tok/s at step 3's context, close to the 3.37 measured. So the lower speed comes from the longer prompt, not from the new engine.
+- Each token of context adds roughly 0.09 ms to every written token: the attention reads all cached keys and values.
+- So a shorter fixed prefix (fewer or shorter worked examples) makes every answer faster.
+
+**Finding: reusing the cache changed the answer's rounding.** The smoke test's last check re-read the whole prompt from an empty cache and got a slightly different answer (`identical: NO`). Both answers were reasonable. The cause:
+
+- The attention kernel splits its matrix products by the length of each forward call.
+- Most likely through Eigen's matrix multiply, which on Arm assumes a 16 KB L1 cache and so splits long sums.
+- Reading the prefix and the alert in two calls therefore rounds differently from reading the whole prompt in one call.
+- A test model with the same attention shape reproduces this under QEMU on an emulated Cortex-A72; x86 builds do not show it.
+
+**Fix (step 3 update):** prompts are read in 32-token pieces at fixed positions, and the cache is reused only up to a piece boundary. An answer then depends only on its prompt. Under QEMU the CRC-32 of the logits was identical after five different cache histories.
+
+**Confirmed on the Pi 4** (same smoke test, 32-token pieces):
+
+| Stage | First run (as few calls as possible) | With 32-token pieces |
+| --- | --- | --- |
+| Model load | 13.4 s | 13.7 s |
+| Fixed prefix, 480 tokens | 32.0 s (1 call) | 35.5 s (15 calls) |
+| New alert, first token | 9.3 s (138 tokens, 1 call) | 10.3 s (132 tokens, 5 calls) |
+| New alert, total | 25.0 s (53 tokens written) | 24.0 s (46 tokens written) |
+| Same prompt again | 16.0 s (1 token read) | 14.2 s (4 tokens read) |
+| Whole prompt from an empty cache | 40.6 s to read 618 tokens | 45.7 s to read 612 tokens |
+| Reused cache vs empty cache | different answer | **same answer, same logits (CRC-32 `ea13714d`)** |
+
+- Each extra forward call costs about 0.3 s.
+- A 32-token piece is too little work to hide re-reading the weights (about 0.85 GB per call), so prefill drops from about 15 to 13.5 tok/s.
+- That is about 1 s more per new alert and 3.5 s more at start-up, in exchange for answers that are exactly reproducible.
+
+**Advisor benchmark on the Pi 4** (`python -m advisor.warm_cache detectors/sms/sample_messages.csv --fresh --limit 6`, prompt v3, 32-token pieces):
+
+- 6 new alerts took 17.8–20.9 s each.
+- First token after 5.4–6.2 s when the previous alert was the same scam type (512 tokens reused), and 5.8–8.7 s otherwise (480 reused).
+- Writing ran at 3.39–3.43 tok/s.
+- The validator accepted all 6 answers, but 3 contained wrong or made-up claims:
+  - "updating your KYC, which is not possible online" (false: banks' official apps do it)
+  - "links to their websites are always correct"
+  - "trick you into giving away your income-tax refund"
+  - "Paytm is not a bank"
+- Two causes, both fixed in the next update:
+  - **A detector rule gave Llama wrong evidence.** "Claims to be from a bank, but the link is not on .bank.in" fired whenever a message said "account", "KYC" or "bank details". So a KBC lottery, an income-tax refund and a Paytm wallet message were all described to Llama as bank messages. The sign now needs a named bank. There are also two accurate new signs: a government name with a link that is not on .gov.in, and a request to share bank details.
+  - **Llama had to guess what the scammer wants.** Prompt v4 adds a "Scammer wants:" line from each playbook and asks for "the checked fact and the first warning sign" in sentence 2.
+
+**The SMS model on the Pi was the 30-message fallback.** The app tests on the phone scored "Your SBI account is hacked. Click the link below to fix it." at 0.537 and "You have got an exciting offer. Click the link below to claim it." at 0.368 (likely safe). A model trained only on the bundled 30-message sample gives exactly these scores. The detector trains that fallback when no model file exists, so the 6,053-message model (F1 0.950) had never been trained on the Pi.
+
+**Wording found in the same run.** Llama wrote "...to trick you into updating your KYC, which is a legitimate process." The validator accepted it, but in a scam warning it reads as approval.
+
+- The playbook fact that led to it ("Banks do ask customers to update KYC, but only...") is now "Banks update KYC only at a branch or through their official app or website...".
+- The validator now rejects "is a legitimate / genuine / safe ..." for flagged messages. The template is shown instead.
 
 ## Reproduce
 
