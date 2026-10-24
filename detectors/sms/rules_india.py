@@ -12,6 +12,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
+from brands import BRANDS   # same folder; names shape the wording of reasons, not the features
+
 # --- patterns -------------------------------------------------------------
 URL_RE          = re.compile(r'(https?://|www\.)\S+', re.I)
 BARE_DOMAIN_RE  = re.compile(r'\b([a-z0-9-]+\.)+[a-z]{2,}(/\S*)?', re.I)
@@ -31,6 +33,15 @@ CALL_NUMBER_RE  = re.compile(r'\b(call|contact|whatsapp|dial)\b\D{0,25}(\+?91[\s
 BANK_IN_RE      = re.compile(r'\b[a-z0-9-]+\.bank\.in\b', re.I)
 # TRAI DLT header suffixes for registered commercial senders (-P/-S/-T/-G).
 TRAI_SUFFIX_RE  = re.compile(r'-[PSTG]\b')
+# Reasons only (not model features):
+GOV_SITE_RE     = re.compile(r'\b[a-z0-9-]+\.(gov|nic)\.in\b', re.I)
+NETBANKING_RE   = re.compile(r'\bnet\s?banking\b', re.I)
+BANK_DETAILS_RE = re.compile(r'\b(share|send|enter|confirm|update|provide|give|submit)\b[^.]{0,30}\b(bank|account)\s+(details|number)\b', re.I)
+
+
+def named_kinds(message):
+    """Kinds of organisation the message names (bank, government, ...), from the brand list."""
+    return {kind for _, kind, rx in BRANDS if rx.search(message or "")}
 
 
 def normalize_sender(sender):
@@ -94,28 +105,42 @@ def extract_signals(message: str, sender: Optional[str] = None) -> Signals:
     s.bank_link_not_bankin = int(bool(s.bank_context and s.has_url and not BANK_IN_RE.search(m)))
     s.sender_is_10_digit = int(bool(sender and TEN_DIGIT_RE.match(normalize_sender(sender))))
 
+    # The bank and government reasons need the message to name one: "share your bank
+    # details" or "confirm your account" alone does not claim to be a bank, and saying
+    # so gave Llama wrong evidence ("Paytm is not a bank").
+    kinds = named_kinds(m)
+    names_bank = bool(kinds & {"bank", "regulator"}) or bool(NETBANKING_RE.search(m))
     r = s.reasons
+    link_reason = False
     if s.has_apk:
         r.append("asks you to install an app file (.apk) from a link instead of the Play Store")
+        link_reason = True
     if s.asks_secret:
         r.append("talks about your OTP, PIN, CVV or password")
-    if s.bank_link_not_bankin:
+    elif BANK_DETAILS_RE.search(m):
+        r.append("asks for your bank account details")
+    if s.bank_link_not_bankin and names_bank:
         r.append("claims to be from a bank, but the link is not on an official .bank.in website")
-    if s.sender_is_10_digit and s.bank_context:
+        link_reason = True
+    elif s.has_url and "government" in kinds and not GOV_SITE_RE.search(m):
+        r.append("claims to be from a government office, but the link is not on an official .gov.in website")
+        link_reason = True
+    if s.sender_is_10_digit and names_bank:
         r.append("sent from a 10-digit mobile number, but real banks send SMS from registered sender IDs")
-    elif s.sender_is_10_digit and (s.has_url or s.mentions_money or s.urgency or s.asks_secret):
+    elif s.sender_is_10_digit and (s.has_url or s.mentions_money or s.urgency or s.asks_secret or s.bank_context):
         r.append("sent from a personal 10-digit mobile number, not a registered business sender ID")
     if CALL_NUMBER_RE.search(m):
         r.append("asks you to call or WhatsApp a mobile number")
     if s.has_shortener:
         r.append("uses a short link that hides the real website")
+        link_reason = True
     if s.has_upi:
         r.append("contains a UPI ID for sending money")
     if s.reward_bait:
         r.append("promises a prize, refund or cashback")
     if s.urgency:
         r.append("rushes you with a deadline or a threat to block or cut off a service")
-    if s.has_url and not (s.has_apk or s.bank_link_not_bankin or s.has_shortener):
+    if s.has_url and not link_reason:
         r.append("contains a link")
     return s
 

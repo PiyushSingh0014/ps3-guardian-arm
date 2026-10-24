@@ -2,6 +2,7 @@
 severity: medium
 summary: The message shows warning signs of a scam, even though it does not match one known pattern exactly.
 pretends: someone you might trust
+wants: to rush you into opening a link or sharing personal details
 fact: Scammers use urgency, links and requests for personal details to rush people into mistakes before they can check.
 
 ## Steps

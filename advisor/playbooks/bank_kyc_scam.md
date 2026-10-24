@@ -2,6 +2,7 @@
 severity: high
 summary: Someone is pretending to be your bank and saying your account will be blocked unless you "update KYC" through their link or number.
 pretends: your bank
+wants: to steal your net-banking login, card details or OTP through a fake KYC page
 fact: Banks update KYC only at a branch or through their official app or website, and genuine bank links end in .bank.in.
 
 ## Steps

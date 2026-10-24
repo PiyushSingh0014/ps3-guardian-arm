@@ -177,7 +177,10 @@ function show(a){
 }
 function llmNote(a,secs){
   const m=a.metrics||{};
-  if(a.source!=='llm'){return 'Llama could not add an explanation, so this is the checked playbook text.';}
+  if(a.source!=='llm'){
+    const f=a.flags||[];const why=f.length?f[f.length-1].split('; template used')[0]:'';
+    return 'Llama could not add an explanation'+(why?' (safety check: '+why+')':'')+', so this is the checked playbook text.';
+  }
   if(m.cached){return 'Explained by Llama 3.2 on this device (saved answer, instant).';}
   return 'Explained by Llama 3.2 on this device in '+(secs??m.total_s??'?')+' s'
     +(m.decode_tok_s?' ('+m.decode_tok_s+' tokens/s)':'')+'.';

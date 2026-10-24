@@ -144,7 +144,39 @@ Against Track B's 42.5 s for test B (section 2), a new alert is 1.7× faster. A 
 - Reading the prefix and the alert in two calls therefore rounds differently from reading the whole prompt in one call.
 - A test model with the same attention shape reproduces this under QEMU on an emulated Cortex-A72; x86 builds do not show it.
 
-**Fix (step 3 update):** prompts are read in 32-token pieces at fixed positions, and the cache is reused only up to a piece boundary. An answer then depends only on its prompt. Under QEMU the CRC-32 of the logits was identical after five different cache histories. The cost is a few more forward calls per alert; re-measure with the smoke test.
+**Fix (step 3 update):** prompts are read in 32-token pieces at fixed positions, and the cache is reused only up to a piece boundary. An answer then depends only on its prompt. Under QEMU the CRC-32 of the logits was identical after five different cache histories.
+
+**Confirmed on the Pi 4** (same smoke test, 32-token pieces):
+
+| Stage | First run (as few calls as possible) | With 32-token pieces |
+| --- | --- | --- |
+| Model load | 13.4 s | 13.7 s |
+| Fixed prefix, 480 tokens | 32.0 s (1 call) | 35.5 s (15 calls) |
+| New alert, first token | 9.3 s (138 tokens, 1 call) | 10.3 s (132 tokens, 5 calls) |
+| New alert, total | 25.0 s (53 tokens written) | 24.0 s (46 tokens written) |
+| Same prompt again | 16.0 s (1 token read) | 14.2 s (4 tokens read) |
+| Whole prompt from an empty cache | 40.6 s to read 618 tokens | 45.7 s to read 612 tokens |
+| Reused cache vs empty cache | different answer | **same answer, same logits (CRC-32 `ea13714d`)** |
+
+- Each extra forward call costs about 0.3 s.
+- A 32-token piece is too little work to hide re-reading the weights (about 0.85 GB per call), so prefill drops from about 15 to 13.5 tok/s.
+- That is about 1 s more per new alert and 3.5 s more at start-up, in exchange for answers that are exactly reproducible.
+
+**Advisor benchmark on the Pi 4** (`python -m advisor.warm_cache detectors/sms/sample_messages.csv --fresh --limit 6`, prompt v3, 32-token pieces):
+
+- 6 new alerts took 17.8–20.9 s each.
+- First token after 5.4–6.2 s when the previous alert was the same scam type (512 tokens reused), and 5.8–8.7 s otherwise (480 reused).
+- Writing ran at 3.39–3.43 tok/s.
+- The validator accepted all 6 answers, but 3 contained wrong or made-up claims:
+  - "updating your KYC, which is not possible online" (false: banks' official apps do it)
+  - "links to their websites are always correct"
+  - "trick you into giving away your income-tax refund"
+  - "Paytm is not a bank"
+- Two causes, both fixed in the next update:
+  - **A detector rule gave Llama wrong evidence.** "Claims to be from a bank, but the link is not on .bank.in" fired whenever a message said "account", "KYC" or "bank details". So a KBC lottery, an income-tax refund and a Paytm wallet message were all described to Llama as bank messages. The sign now needs a named bank. There are also two accurate new signs: a government name with a link that is not on .gov.in, and a request to share bank details.
+  - **Llama had to guess what the scammer wants.** Prompt v4 adds a "Scammer wants:" line from each playbook and asks for "the checked fact and the first warning sign" in sentence 2.
+
+**The SMS model on the Pi was the 30-message fallback.** The app tests on the phone scored "Your SBI account is hacked. Click the link below to fix it." at 0.537 and "You have got an exciting offer. Click the link below to claim it." at 0.368 (likely safe). A model trained only on the bundled 30-message sample gives exactly these scores. The detector trains that fallback when no model file exists, so the 6,053-message model (F1 0.950) had never been trained on the Pi.
 
 **Wording found in the same run.** Llama wrote "...to trick you into updating your KYC, which is a legitimate process." The validator accepted it, but in a scam warning it reads as approval.
 
