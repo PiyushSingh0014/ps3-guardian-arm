@@ -3,7 +3,7 @@ package com.ps3guardian.companion
 import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
-import java.net.URL
+import java.net.URI
 
 /** The three calls the app makes to the Pi (app/server.py). Blocking: use a background thread. */
 class PiClient(private val baseUrl: String, private val token: String) {
@@ -22,11 +22,12 @@ class PiClient(private val baseUrl: String, private val token: String) {
     fun explain(jobId: String): JSONObject = request("GET", "/explain/$jobId", null)
 
     private fun request(method: String, path: String, body: JSONObject?): JSONObject {
-        val conn = URL(baseUrl + path).openConnection() as HttpURLConnection
+        val conn = URI(baseUrl + path).toURL().openConnection() as HttpURLConnection
         try {
             conn.requestMethod = method
-            conn.connectTimeout = 4_000
-            conn.readTimeout = 8_000
+            // Android gives an SMS receiver about 10 s; the Pi answers in well under 1 s.
+            conn.connectTimeout = 3_000
+            conn.readTimeout = 6_000
             if (token.isNotEmpty()) conn.setRequestProperty("X-Guardian-Token", token)
             if (body != null) {
                 conn.doOutput = true

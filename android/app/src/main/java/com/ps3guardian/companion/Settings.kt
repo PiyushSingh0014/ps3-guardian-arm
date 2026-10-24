@@ -11,8 +11,11 @@ object Settings {
 
     private fun prefs(c: Context) = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun piUrl(c: Context): String =
-        (prefs(c).getString("pi_url", DEFAULT_URL) ?: DEFAULT_URL).trim().trimEnd('/')
+    /** The Pi address; "10.140.209.76:8000" typed without http:// works too. */
+    fun piUrl(c: Context): String {
+        val url = (prefs(c).getString("pi_url", null) ?: "").trim().trimEnd('/').ifBlank { DEFAULT_URL }
+        return if ("://" in url) url else "http://$url"
+    }
 
     fun token(c: Context): String = (prefs(c).getString("token", "") ?: "").trim()
 
@@ -20,16 +23,18 @@ object Settings {
         prefs(c).edit().putString("pi_url", url.trim()).putString("token", token.trim()).apply()
     }
 
+    private fun recentArray(c: Context) = JSONArray(prefs(c).getString("recent", null) ?: "[]")
+
     @Synchronized
     fun addRecent(c: Context, line: String) {
-        val old = JSONArray(prefs(c).getString("recent", "[]"))
+        val old = recentArray(c)
         val out = JSONArray().put(line)
         for (i in 0 until minOf(old.length(), MAX_RECENT - 1)) out.put(old.getString(i))
         prefs(c).edit().putString("recent", out.toString()).apply()
     }
 
     fun recent(c: Context): List<String> {
-        val arr = JSONArray(prefs(c).getString("recent", "[]"))
+        val arr = recentArray(c)
         return List(arr.length()) { arr.getString(it) }
     }
 }

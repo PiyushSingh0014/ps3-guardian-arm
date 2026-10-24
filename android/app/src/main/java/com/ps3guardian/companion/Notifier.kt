@@ -21,7 +21,7 @@ object Notifier {
     fun ensureChannel(c: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(CHANNEL, "Scam alerts", NotificationManager.IMPORTANCE_HIGH)
-            c.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            c.getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
     }
 

@@ -56,19 +56,15 @@ incoming SMS ──> Android app ──(Wi-Fi hotspot, POST /sms + pairing token
    | Minimum SDK | API 26 |
    | Build configuration language | Kotlin DSL |
 
-3. **Edit `app/build.gradle.kts`.** Inside `defaultConfig`, set:
+3. **Edit `app/build.gradle.kts`** (the one in the `app` folder):
+   - Inside `defaultConfig`, find the `targetSdk` line and change its number to **36**, for example `targetSdk = 36`. Leave `compileSdk` as it is.
+   - In `dependencies`, add:
 
-   ```kotlin
-   targetSdk = 36
-   ```
+     ```kotlin
+     implementation("androidx.work:work-runtime-ktx:2.10.1")
+     ```
 
-   In `dependencies`, add:
-
-   ```kotlin
-   implementation("androidx.work:work-runtime-ktx:2.10.1")
-   ```
-
-   Keep `targetSdk = 36` even if your Android Studio suggests 37. Apps targeting Android 17 (API 37) receive OTP-like SMS three hours late and need an extra local-network permission. Click **Sync Now**. If Android Studio offers a newer WorkManager version, accept it.
+   Keep the target at 36 even if Android Studio suggests 37: apps targeting Android 17 (API 37) receive OTP-like SMS three hours late and need an extra local-network permission. Click **Sync Now**. If Android Studio offers a newer WorkManager version, accept it.
 
 4. **Copy the files** from this repo's `android/app/src/main/` into the project's `app/src/main/`:
 
