@@ -26,13 +26,16 @@ About 100 threats, spread over the playbook types:
 - job or task scam
 - "digital arrest"
 
-About 100 normal messages, including the hard ones:
+About 25 genuine marketing messages from registered senders (label `spam`). "Exciting offer…" from an `-P` header is marketing, not fraud.
 
-- OTPs and bank transaction alerts
-- delivery updates
-- real promotions from registered senders. "Exciting offer…" from an `-P` header is normal marketing, not a scam.
+About 75 normal messages (label `ham`), including the hard ones that look like scams but are real:
+
+- OTPs, bank transaction alerts and real KYC reminders from your bank's sender ID
+- delivery updates with links
 - government alerts
 - personal chats
+
+The collection sheet (`india_sms_collection.xlsx`, sent in the chat) has dropdowns for the labels and 19 categories, a target per category, and a progress sheet that counts what is still missing.
 
 Where to get them:
 
@@ -53,7 +56,7 @@ smishing,"Your SBI KYC is pending, update today: http://sbi-kyc.example",9812345
 ham,"Rs 500 debited from A/c XX1234 on 12-10. Not you? Call 1800...",AX-SBIINB-S,india_test,,en
 ```
 
-- `label`: `ham`, `spam` (unwanted marketing) or `smishing` (fraud).
+- `label`: `smishing` (fraud), `spam` (genuine but unwanted marketing) or `ham` (normal). The model treats `spam` and `smishing` both as threats; the app then shows marketing as low-risk spam.
 - `sender`: exactly as shown on the phone (`AX-HDFCBK-S`, `9812345678`, or empty).
 - `language`: `en`, `hi` or `hinglish`.
 
@@ -73,7 +76,7 @@ This trains without the India set, tests only on it, and lists the messages it g
 2. **Synthetic messages** fill a gap only when real ones are too rare:
    - varied wording, marked `source=synthetic`, never in `india_test`
    - keep them only if the `india_test` score improves; a model can learn a generator's writing style instead of the scam.
-3. **Hard negatives** (real promotions, bank alerts) teach the model that "offer" or "click" alone is not a scam.
+3. **Hard negatives** (real bank alerts, OTPs, KYC reminders and delivery links labelled `ham`) teach the model that "account", "KYC" or a link alone is not a scam.
 4. **Use the sender.**
    - The public datasets have no sender, so today the model cannot learn from it, and the 10-digit-sender rule only adds a warning sign.
    - With senders in the India set, the score can combine the model with sender rules: a link or money request from a personal number should be at least "suspicious".
