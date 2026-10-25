@@ -35,8 +35,10 @@ incoming SMS ──> Android app ──(Wi-Fi hotspot, POST /sms + pairing token
    git push
    pkill -f "uvicorn app.server" ; sleep 1
    nohup bash scripts/run_pi.sh > logs/app.log 2>&1 &
-   sleep 5; grep -E "App:|pairing token" logs/app.log
+   for i in $(seq 40); do grep -q "pairing token" logs/app.log && break; sleep 5; done; cat logs/app.log
    ```
+
+   This waits up to about 3 minutes: if the Llama service is not already running (for example after a reboot), the script loads Llama first (1–2 minutes) and prints the address and token only then. If git opens an editor for a merge message (your Pi has commits the bundle doesn't), save and close it: in nano, Ctrl+X, Y, Enter. Adding `--no-edit` to the pull skips the editor.
 
 3. Note the two values it prints:
    - the Pi address, for example `http://10.140.209.76:8000`
@@ -61,10 +63,10 @@ incoming SMS ──> Android app ──(Wi-Fi hotspot, POST /sms + pairing token
    - In `dependencies`, add:
 
      ```kotlin
-     implementation("androidx.work:work-runtime-ktx:2.10.1")
+     implementation("androidx.work:work-runtime-ktx:2.12.0")
      ```
 
-   Keep the target at 36 even if Android Studio suggests 37: apps targeting Android 17 (API 37) receive OTP-like SMS three hours late and need an extra local-network permission. Click **Sync Now**. If Android Studio offers a newer WorkManager version, accept it.
+   Keep the target at 36 even if Android Studio suggests 37: apps targeting Android 17 (API 37) receive OTP-like SMS three hours late and need an extra local-network permission. Android Studio's warning "Not targeting the latest versions of Android" is therefore expected, and "Use version catalog instead" can be ignored. Click **Sync Now**. If Android Studio offers a newer WorkManager version, accept it (2.12.0 needs minimum SDK 24; the app uses 26).
 
 4. **Copy the files** from this repo's `android/app/src/main/` into the project's `app/src/main/`:
 
