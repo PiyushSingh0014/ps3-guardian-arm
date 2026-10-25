@@ -1,21 +1,28 @@
 package com.example.ps3guardian
 
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.ComponentName
+import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Build
 import android.os.Bundle
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationManagerCompat
 
-/** One screen: Pi address and token, permissions, two tests, and the last results. */
+/** One screen: Pi address, token and phone name, permissions, chats, two tests, and the last results. */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var url: EditText
     private lateinit var token: EditText
+    private lateinit var device: EditText
     private lateinit var status: TextView
+    private lateinit var chatStatus: TextView
     private lateinit var recent: TextView
 
     private val askPermissions =
@@ -34,10 +41,13 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         url = findViewById(R.id.pi_url)
         token = findViewById(R.id.token)
+        device = findViewById(R.id.device)
         status = findViewById(R.id.status)
+        chatStatus = findViewById(R.id.chat_status)
         recent = findViewById(R.id.recent)
         url.setText(Settings.piUrl(this))
         token.setText(Settings.token(this))
+        device.setText(Settings.device(this))
         Notifier.ensureChannel(this)
 
         findViewById<Button>(R.id.save).setOnClickListener {
@@ -51,6 +61,11 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.test_connection).setOnClickListener { testConnection() }
         findViewById<Button>(R.id.test_message).setOnClickListener { testMessage() }
+
+        bindSwitch(R.id.chat_messages, Settings.chatKey(ChatApps.MESSAGES))
+        bindSwitch(R.id.chat_whatsapp, Settings.chatKey(ChatApps.WHATSAPP))
+        bindSwitch(R.id.chat_contacts, Settings.CHAT_CONTACTS)
+        findViewById<Button>(R.id.notification_access).setOnClickListener { openNotificationAccess() }
     }
 
     // While the screen is open, show new results as soon as they are saved.
@@ -62,7 +77,8 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         Settings.prefs(this).registerOnSharedPreferenceChangeListener(refresh)
         showRecent()
-        FlushWorker.flushSoon(this)          // send SMS that waited for the Pi, if it can be reached now
+        showChatStatus()                     // notification access may have just been allowed
+        FlushWorker.flushSoon(this)          // send messages that waited for the Pi, if it can be reached now
     }
 
     override fun onPause() {
@@ -70,7 +86,46 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
     }
 
-    private fun save() = Settings.save(this, url.text.toString(), token.text.toString())
+    private fun save() = Settings.save(this, url.text.toString(), token.text.toString(), device.text.toString())
+
+    private fun bindSwitch(id: Int, key: String) {
+        val box = findViewById<CheckBox>(id)
+        box.isChecked = Settings.prefs(this).getBoolean(key, false)
+        box.setOnCheckedChangeListener { _, on ->
+            Settings.setSwitch(this, key, on)
+            showChatStatus()
+        }
+    }
+
+    /** Android's settings page where the user allows the app to read notifications. */
+    private fun openNotificationAccess() {
+        val list = Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+        val intent = if (Build.VERSION.SDK_INT >= 30) {
+            Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
+                android.provider.Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                ComponentName(this, ChatListener::class.java).flattenToString()
+            )
+        } else {
+            list
+        }
+        try {
+            startActivity(intent)
+        } catch (e: ActivityNotFoundException) {
+            startActivity(list)
+        }
+    }
+
+    private fun showChatStatus() {
+        val allowed = NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
+        val on = listOf(ChatApps.MESSAGES, ChatApps.WHATSAPP).filter { Settings.chatOn(this, it) }
+            .map { ChatApps.label(it) }
+        chatStatus.text = when {
+            on.isEmpty() -> "Chats are not checked."
+            !allowed -> "Tap 'Allow notification access' so that chats in ${on.joinToString(" and ")} can be checked."
+            else -> "Checking chats in ${on.joinToString(" and ")} from numbers that are not in your contacts" +
+                (if (Settings.chatContacts(this)) ", and from your contacts (testing)." else ".")
+        }
+    }
 
     private fun testConnection() {
         save()

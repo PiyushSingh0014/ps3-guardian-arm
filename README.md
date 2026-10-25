@@ -14,6 +14,7 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | Step 3: fast advisor (persistent Llama service with a native C++ engine, prompt v4) | done on the Pi 4: explanations in 19–28 s per new alert | [docs/step3-fast-advisor.md](docs/step3-fast-advisor.md) |
 | India SMS test set (227 real messages) and sender-aware scoring | measured | [eval/results_sms.md](eval/results_sms.md), [docs/india-sms-test-set.md](docs/india-sms-test-set.md) |
 | Android companion: reads incoming SMS with their sender IDs | running on a Galaxy S25 with the Pi; first real SMS checked; real-traffic measurement next | [docs/android-companion.md](docs/android-companion.md) |
+| Chats (RCS, WhatsApp) from unknown numbers, via notification access; several phones | code ready (opt-in) | [docs/android-companion.md](docs/android-companion.md), Parts F–G |
 | URL, network-flow and DNS detectors; fusion | planned | |
 
 ## Hardware and software

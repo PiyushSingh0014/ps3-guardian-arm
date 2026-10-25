@@ -42,6 +42,10 @@ class CheckIn(BaseModel):
     sender: Optional[str] = Field(None, max_length=64)
     language: str = Field("en", pattern="^(en|hi)$")
     test: bool = False                  # /sms: a test from the phone's button, not logged
+    # /sms only, sent by the Android companion:
+    channel: str = Field("sms", pattern="^(sms|chat)$")     # chat: RCS, MMS or WhatsApp, read from a notification
+    app: Optional[str] = Field(None, max_length=40, pattern="^[a-z_]+$")   # the chat app: messages, whatsapp
+    device: Optional[str] = Field(None, max_length=32)      # the phone's name typed in the app, e.g. "A"
 
 
 class JobStore:
@@ -139,14 +143,18 @@ def create_app(detector=None, advisor=None, sms_log=None):
             raise HTTPException(status_code=503, detail="no pairing token on the Pi: set GUARDIAN_TOKEN")
         if not secrets.compare_digest((x_guardian_token or "").encode(), token.encode()):
             raise HTTPException(status_code=401, detail="wrong pairing token")
+        from detectors.sms.detector import classify_sender
+        sender = req.sender
+        if req.channel == "chat" and classify_sender(sender).kind != "mobile":
+            sender = None       # a chat shows a contact or brand name, not a registered sender ID
         t0 = time.time()
-        finding = detector.check(req.message, sender=req.sender, language=req.language)
+        finding = detector.check(req.message, sender=sender, language=req.language)
         text_only = detector.check(req.message, sender=None, language=req.language)
         t1 = time.time()
         out = respond(finding, False, t0, t1)
         out["text_only"] = {"verdict": text_only.verdict, "score": text_only.score}
-        out["log_id"] = None if req.test else (sms_log or default_log()).add(req.message, req.sender,
-                                                                             finding, text_only)
+        out["log_id"] = None if req.test else (sms_log or default_log()).add(
+            req.message, req.sender, finding, text_only, channel=req.channel, app=req.app, device=req.device)
         return out
 
     @app.get("/explain/{job_id}")

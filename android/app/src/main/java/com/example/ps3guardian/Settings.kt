@@ -7,8 +7,9 @@ import org.json.JSONObject
 import java.util.UUID
 
 /**
- * Kept in the app's private storage: the Pi address and pairing token typed on the main
- * screen, the last results, and SMS that arrived while the Pi could not be reached.
+ * Kept in the app's private storage: the Pi address, pairing token and phone name typed on the
+ * main screen, the chat switches, the last results, and messages that arrived while the Pi could
+ * not be reached.
  */
 object Settings {
     private const val PREFS = "guardian"
@@ -16,6 +17,7 @@ object Settings {
     private const val MAX_PENDING = 500
     const val KEY_RECENT = "recent"
     const val KEY_PENDING = "pending"
+    const val CHAT_CONTACTS = "chat_contacts"
     const val DEFAULT_URL = "http://10.140.209.76:8000"
 
     fun prefs(c: Context): SharedPreferences = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -28,8 +30,24 @@ object Settings {
 
     fun token(c: Context): String = (prefs(c).getString("token", null) ?: "").trim()
 
-    fun save(c: Context, url: String, token: String) {
-        prefs(c).edit().putString("pi_url", url.trim()).putString("token", token.trim()).apply()
+    /** This phone's name in the Pi's log, for example "A": each person labels their own phone's messages. */
+    fun device(c: Context): String = (prefs(c).getString("device", null) ?: "").trim()
+
+    fun save(c: Context, url: String, token: String, device: String) {
+        prefs(c).edit().putString("pi_url", url.trim()).putString("token", token.trim())
+            .putString("device", device.trim()).apply()
+    }
+
+    fun chatKey(app: String) = "chat_$app"
+
+    /** Chats from this app (ChatApps.MESSAGES or ChatApps.WHATSAPP) are checked. Off until switched on. */
+    fun chatOn(c: Context, app: String): Boolean = prefs(c).getBoolean(chatKey(app), false)
+
+    /** Testing only: also check chats from saved contacts (normally only unknown numbers). */
+    fun chatContacts(c: Context): Boolean = prefs(c).getBoolean(CHAT_CONTACTS, false)
+
+    fun setSwitch(c: Context, key: String, on: Boolean) {
+        prefs(c).edit().putBoolean(key, on).apply()
     }
 
     private fun array(c: Context, key: String) = JSONArray(prefs(c).getString(key, null) ?: "[]")
@@ -47,16 +65,16 @@ object Settings {
         return List(arr.length()) { arr.getString(it) }
     }
 
-    /** An SMS the Pi has not checked yet. */
-    class Pending(val id: String, val sender: String, val text: String, val received: Long)
+    /** A message the Pi has not checked yet. */
+    class Pending(val id: String, val msg: Msg)
 
-    /** Keeps an SMS until the Pi answers; beyond MAX_PENDING the oldest are dropped. */
+    /** Keeps a message until the Pi answers; beyond MAX_PENDING the oldest are dropped. */
     @Synchronized
-    fun addPending(c: Context, sender: String, text: String, received: Long) {
+    fun addPending(c: Context, m: Msg) {
         val all = array(c, KEY_PENDING)
         all.put(
-            JSONObject().put("id", UUID.randomUUID().toString()).put("sender", sender)
-                .put("text", text).put("received", received)
+            JSONObject().put("id", UUID.randomUUID().toString()).put("channel", m.channel)
+                .put("app", m.app ?: "").put("sender", m.sender).put("text", m.text).put("received", m.received)
         )
         val out = JSONArray()
         for (i in maxOf(0, all.length() - MAX_PENDING) until all.length()) out.put(all.getJSONObject(i))
@@ -68,7 +86,9 @@ object Settings {
         val all = array(c, KEY_PENDING)
         if (all.length() == 0) return null
         val o = all.getJSONObject(0)
-        return Pending(o.getString("id"), o.optString("sender"), o.getString("text"), o.optLong("received"))
+        val app = o.optString("app").ifBlank { null }
+        val msg = Msg(o.optString("channel", "sms"), app, o.optString("sender"), o.getString("text"), o.optLong("received"))
+        return Pending(o.getString("id"), msg)
     }
 
     @Synchronized

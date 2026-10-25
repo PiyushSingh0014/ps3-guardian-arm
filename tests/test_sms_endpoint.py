@@ -1,4 +1,5 @@
-"""POST /sms (Android companion): pairing token, text-only verdict, privacy of the traffic log."""
+"""POST /sms (Android companion): pairing token, text-only verdict, privacy of the traffic log, chats."""
+import csv
 import json
 import os
 import subprocess
@@ -66,6 +67,18 @@ def test_log_masks_digits_and_skips_safe_personal_texts(client):
         assert chat["text"] is None                              # personal and safe: text not kept
 
 
+def label_rows(path, labels):
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.DictReader(f))
+        fields = list(rows[0].keys())
+    for r, lab in zip(rows, labels):
+        r["label"] = lab
+    with open(path, "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fields)
+        w.writeheader()
+        w.writerows(rows)
+
+
 def test_export_and_measure(client, tmp_path):
     h = {"X-Guardian-Token": "abc123"}
     for msg, snd in ((SCAM, "9812345678"), (OTP, "JD-HDFCBK-S")):
@@ -73,7 +86,53 @@ def test_export_and_measure(client, tmp_path):
     out = tmp_path / "traffic.csv"
     script = os.path.join(ROOT, "scripts", "sms_traffic.py")
     subprocess.run([sys.executable, script, "export", str(out), "--log", str(client.log_path)], check=True)
-    text = out.read_text(encoding="utf-8-sig").replace(",,", ",smishing,", 1)   # label the first row
-    out.write_text(text, encoding="utf-8-sig")
+    label_rows(out, ["smishing"])                                       # label the first row only
     res = subprocess.run([sys.executable, script, "measure", str(out)], check=True, capture_output=True, text=True)
     assert "2 messages, 1 labelled" in res.stdout and "fraud" in res.stdout
+
+
+def test_chat_from_an_unknown_number(client):
+    h = {"X-Guardian-Token": "abc123"}
+    r = client.post("/sms", json={"message": SCAM, "sender": "+91 98123 45678", "channel": "chat",
+                                  "app": "whatsapp", "device": "A"}, headers=h)
+    assert r.status_code == 200
+    e = entries(client.log_path)[-1]
+    assert (e["channel"], e["app"], e["device"], e["sender"]) == ("chat", "whatsapp", "A", "mobile")
+    assert "98123" not in json.dumps(e)
+    assert e["score"] >= e["text_score"]                  # a risky text from a number counts more, as for SMS
+
+
+def test_chat_sender_names_are_not_trusted_or_stored(client):
+    """A chat sender shown as a name ('AIRTEL') is not a registered sender ID: no discount, not logged."""
+    h = {"X-Guardian-Token": "abc123"}
+    client.post("/sms", json={"message": SCAM, "sender": "AIRTEL", "channel": "chat", "app": "messages"},
+                headers=h)
+    client.post("/sms", json={"message": CHAT, "sender": "Rahul", "channel": "chat", "app": "messages"},
+                headers=h)
+    scam, chat = entries(client.log_path)[-2:]
+    assert scam["sender"] == "name" and scam["score"] == scam["text_score"]
+    assert "AIRTEL" not in json.dumps(scam) and "Rahul" not in json.dumps(chat)
+    if chat["verdict"] == "safe":
+        assert chat["text"] is None                       # a safe chat is never stored
+
+
+def test_sms_fields_default_and_device_is_cleaned(client):
+    h = {"X-Guardian-Token": "abc123"}
+    client.post("/sms", json={"message": OTP, "sender": "JD-HDFCBK-S", "device": "Phone <B>!"}, headers=h)
+    e = entries(client.log_path)[-1]
+    assert (e["channel"], e["app"], e["device"]) == ("sms", None, "Phone B")
+    bad = client.post("/sms", json={"message": OTP, "channel": "email"}, headers=h)
+    assert bad.status_code == 422
+
+
+def test_measure_splits_sms_and_chats(client, tmp_path):
+    h = {"X-Guardian-Token": "abc123"}
+    client.post("/sms", json={"message": SCAM, "sender": "9812345678", "device": "A"}, headers=h)
+    client.post("/sms", json={"message": SCAM, "sender": "+919812345670", "channel": "chat", "app": "messages",
+                              "device": "B"}, headers=h)
+    out = tmp_path / "traffic.csv"
+    script = os.path.join(ROOT, "scripts", "sms_traffic.py")
+    subprocess.run([sys.executable, script, "export", str(out), "--log", str(client.log_path)], check=True)
+    label_rows(out, ["smishing", "smishing"])
+    res = subprocess.run([sys.executable, script, "measure", str(out)], check=True, capture_output=True, text=True)
+    assert "Phones: A 1, B 1" in res.stdout and "SMS only" in res.stdout and "CHAT only" in res.stdout

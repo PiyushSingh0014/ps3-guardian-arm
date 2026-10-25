@@ -10,13 +10,16 @@ This folder is a complete Android Studio project (Kotlin, package `com.example.p
 | `java/com/example/ps3guardian/SmsReceiver.kt` | Called by Android for every SMS: joins the parts of long messages, takes the raw sender ID |
 | `Checker.kt` | Sends the SMS to the Pi, keeps a list of recent results, shows the alert; keeps the SMS for later if the Pi cannot be reached |
 | `FlushWorker.kt` | Background job: sends the SMS that waited for the Pi (every 15 minutes while any wait, when the app opens, and after any SMS the Pi answered) |
+| `ChatListener.kt` | With "Notification access" allowed: reads chat notifications (Messages for RCS and MMS, WhatsApp; each switched on separately) from senders not in your contacts, and checks them like an SMS |
+| `ChatApps.kt` | Which apps are read; takes the newest incoming message from a notification; tells a phone number (unknown sender) from a contact or business name |
+| `Seen.kt` | Short hashes of recent SMS and checked chats, so a message is not checked twice |
 | `PiClient.kt` | The HTTP calls: `/health`, `/sms` (with the pairing token), `/explain/{id}` |
 | `ExplainWorker.kt` | Background job: waits for Llama's explanation on the Pi and updates the alert |
 | `Notifier.kt` | The alert notification |
-| `Settings.kt` | The Pi address, the pairing token, the recent results, the SMS waiting for the Pi (at most 500) |
-| `MainActivity.kt`, `res/layout/activity_main.xml` | One screen: address, token, permissions, two tests, recent results (refreshed while open) |
+| `Settings.kt` | The Pi address, the pairing token, the phone name, the chat switches, the recent results, the messages waiting for the Pi (at most 500) |
+| `MainActivity.kt`, `res/layout/activity_main.xml` | One screen: address, token, phone name, permissions, chats, two tests, recent results (refreshed while open) |
 | `res/xml/network_security_config.xml` | Allows plain HTTP, which the Pi uses on the hotspot |
 
 The rest (Gradle files, launcher icons, theme) is Android Studio's *Empty Views Activity* template. `targetSdk` stays at 36 on purpose: apps targeting Android 17 (API 37) receive OTP-like SMS three hours late.
 
-The app never sends, deletes or changes SMS, and it talks only to the Pi. It sees SMS only: chat messages (RCS, WhatsApp) don't reach other apps on Android.
+The app never sends, deletes or changes messages, and it talks only to the Pi. Chat messages (RCS, WhatsApp) never reach other apps as SMS; the app reads them from their notifications only when you switch that on, and only from senders who are not in your contacts.

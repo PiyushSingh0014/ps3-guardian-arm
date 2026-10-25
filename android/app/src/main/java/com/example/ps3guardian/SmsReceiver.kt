@@ -29,6 +29,7 @@ class SmsReceiver : BroadcastReceiver() {
         val pending = goAsync()
         Thread {
             try {
+                Seen.noteSms(app, text)          // so its Messages notification is not checked again as a chat
                 Checker.onSms(app, sender, text)
             } finally {
                 pending.finish()
