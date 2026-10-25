@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Pi on your phone's hotspot answers plain HTTP (no certificate), so the app
+     must be allowed to use it. The app talks to nothing but the Pi. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
