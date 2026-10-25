@@ -1,6 +1,7 @@
 package com.ps3guardian.companion
 
 import android.Manifest
+import android.content.SharedPreferences
 import android.os.Build
 import android.os.Bundle
 import android.widget.Button
@@ -52,9 +53,21 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.test_message).setOnClickListener { testMessage() }
     }
 
+    // While the screen is open, show new results as soon as they are saved.
+    private val refresh = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == Settings.KEY_RECENT || key == Settings.KEY_PENDING) runOnUiThread { showRecent() }
+    }
+
     override fun onResume() {
         super.onResume()
+        Settings.prefs(this).registerOnSharedPreferenceChangeListener(refresh)
         showRecent()
+        FlushWorker.flushSoon(this)          // send SMS that waited for the Pi, if it can be reached now
+    }
+
+    override fun onPause() {
+        Settings.prefs(this).unregisterOnSharedPreferenceChangeListener(refresh)
+        super.onPause()
     }
 
     private fun save() = Settings.save(this, url.text.toString(), token.text.toString())
@@ -78,10 +91,9 @@ class MainActivity : AppCompatActivity() {
         save()
         status.text = "Sending a test scam..."
         Thread {
-            Checker.check(
+            Checker.test(
                 applicationContext, "9812345678",
-                "Dear customer your SBI account will be blocked today. Update KYC: http://sbi-kyc.example/update",
-                test = true
+                "Dear customer your SBI account will be blocked today. Update KYC: http://sbi-kyc.example/update"
             )
             runOnUiThread {
                 status.text = "Test done: see the alert and the list below."
@@ -92,6 +104,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun showRecent() {
         val lines = Settings.recent(this)
-        recent.text = if (lines.isEmpty()) "No messages checked yet." else lines.joinToString("\n\n")
+        val waiting = Settings.pendingCount(this)
+        val head = when (waiting) {
+            0 -> ""
+            1 -> "1 message is waiting for the Pi. It is sent as soon as the Pi can be reached.\n\n"
+            else -> "$waiting messages are waiting for the Pi. They are sent as soon as the Pi can be reached.\n\n"
+        }
+        recent.text = head + if (lines.isEmpty()) "No messages checked yet." else lines.joinToString("\n\n")
     }
 }

@@ -24,11 +24,12 @@ class SmsReceiver : BroadcastReceiver() {
 
         // Keep the receiver alive for the network call (a few seconds at most):
         // the Pi answers the verdict at once; Llama's explanation follows later.
+        // If the Pi cannot be reached, the SMS is kept on the phone and sent later.
         val app = context.applicationContext
         val pending = goAsync()
         Thread {
             try {
-                Checker.check(app, sender, text)
+                Checker.onSms(app, sender, text)
             } finally {
                 pending.finish()
             }

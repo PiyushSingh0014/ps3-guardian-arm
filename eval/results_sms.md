@@ -157,9 +157,19 @@ An `.apk` link stays dangerous whoever sends it. The multipliers come from TRAI'
 - **It has to be the real ID** (`JD-HDFCBK-S`), not a name. Typed names do not help, and a made-up number makes a genuine message look like a scam.
 - **So the app should read the sender ID itself.** An Android app gets it with every incoming SMS. In the web demo, type the ID exactly as the phone shows it.
 
+### First real SMS through the Android companion (2026-10-25)
+
+The companion app (`android/`, [docs/android-companion.md](../docs/android-companion.md)) now runs on a Galaxy S25 and sends each incoming SMS with its raw sender ID to the Pi. From the Pi's traffic log, digits masked:
+
+| Sender | Message | Text only | With the sender ID |
+| --- | --- | --- | --- |
+| `AE-AIRTEL-S` | "Pack Valid till ## Oct ####. SMS cost:Rs#.## Bal:Rs.#.##. Unlimited data and calls …" | 0.856, dangerous | **0.106, safe** |
+
+This is the false alarm the projection above predicts away, now on a real message: a genuine operator notice with an amount of money looks like a scam on its text alone, and its `-S` sender ID clears it. One message is an example, not a measurement; the week of real traffic (Part E of the guide) gives the numbers.
+
 ### Next
 
-1. **Android companion** that reads incoming SMS together with their sender IDs and sends both to the Pi; then measure on real traffic.
+1. **Measure on real traffic:** about a week of SMS through the companion, labelled by hand, with `scripts/sms_traffic.py measure`.
 2. **Real Indian normal messages in training.** OTPs, bank alerts and delivery updates from business sender IDs, taken from phones other than the test set's and anonymised. This helps when the sender is unknown.
 3. **Three classes** (fraud, marketing, normal), so the app can show marketing as low-risk.
 
