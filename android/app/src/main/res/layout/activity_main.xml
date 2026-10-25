@@ -41,6 +41,18 @@
             android:layout_height="wrap_content"
             android:inputType="text" />
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Phone name (marks this phone's messages in the Pi's log, for example A)" />
+
+        <EditText
+            android:id="@+id/device"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"
+            android:maxLength="32" />
+
         <Button
             android:id="@+id/save"
             android:layout_width="match_parent"
@@ -67,6 +79,48 @@
 
         <TextView
             android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingTop="16dp"
+            android:text="Chats (RCS and WhatsApp)"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Only chats from numbers that are not in your contacts are checked." />
+
+        <CheckBox
+            android:id="@+id/chat_messages"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Check chats in Messages (RCS)" />
+
+        <CheckBox
+            android:id="@+id/chat_whatsapp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Check WhatsApp chats" />
+
+        <CheckBox
+            android:id="@+id/chat_contacts"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Also check chats from saved contacts (for testing)" />
+
+        <Button
+            android:id="@+id/notification_access"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Allow notification access" />
+
+        <TextView
+            android:id="@+id/chat_status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingTop="8dp" />

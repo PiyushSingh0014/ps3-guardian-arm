@@ -13,12 +13,19 @@ class PiClient(private val baseUrl: String, private val token: String) {
 
     fun health(): JSONObject = request("GET", "/health", null)
 
-    fun checkSms(message: String, sender: String, language: String, test: Boolean = false): JSONObject {
+    /** channel "sms", or "chat" with the app it came from; device is this phone's name for the log. */
+    fun checkSms(
+        message: String, sender: String, language: String, test: Boolean = false,
+        channel: String = "sms", app: String? = null, device: String = ""
+    ): JSONObject {
         val body = JSONObject()
             .put("message", message)
             .put("language", language)
             .put("test", test)
+            .put("channel", channel)
         if (sender.isNotBlank()) body.put("sender", sender)
+        if (app != null) body.put("app", app)
+        if (device.isNotBlank()) body.put("device", device.take(32))
         return request("POST", "/sms", body)
     }
 

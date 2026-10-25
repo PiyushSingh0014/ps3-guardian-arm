@@ -21,7 +21,7 @@ incoming SMS ──> Android app ──(Wi-Fi hotspot, POST /sms + pairing token
                                                                           └─> logs/sms_traffic.jsonl
 ```
 
-The app sees **SMS only**. Chat messages (RCS "chat features" in Messages, WhatsApp) never reach it: Android passes them to no other app.
+Chat messages (RCS "chat features" in Messages, WhatsApp) are not SMS: Android passes them to no other app. The app can still check them through the notifications the chat apps show, if you switch that on (Part F), and only for senders who are not in your contacts.
 
 ## Part A: the Pi
 
@@ -103,7 +103,7 @@ New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.exampl
 ## Part D: set it up
 
 1. **Connect your phone to the Pi.** The phone must be the hotspot the Pi is on, or connected to the same hotspot.
-2. **Pi address and token:** type the address and the pairing token from Part A, tap **Save**, then **Test connection**. You should see "Connected. Advisor: llama_service."
+2. **Pi address, token and phone name:** type the address and the pairing token from Part A, and a short **phone name** (for example `A`; every phone gets its own, see Part G). Tap **Save**, then **Test connection**. You should see "Connected. Advisor: llama_service."
 3. **Permissions:** tap **Allow SMS and notifications** and allow both.
    - If SMS cannot be allowed or says "restricted setting": go to App info → **⋮** → **Allow restricted settings**.
    - Then go to Permissions → **SMS** → Allow.
@@ -119,13 +119,13 @@ New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.exampl
 
 ## Part E: collect real traffic and measure
 
-1. **Collect** for about a week. Every incoming SMS is checked and logged.
+1. **Collect** for about a week. Every incoming SMS, and every chat if you switched chats on (Part F), is checked and logged with the phone's name. The Pi does not have to stay on all the time: see the next point.
    - **Away from the Pi:** an SMS that arrives while the phone cannot reach the Pi is kept on the phone and shows "WAITING for the Pi". It is sent by itself once the Pi can be reached again: within about 15 minutes, or at once when you open the app. Its line then says "checked later". Up to 500 messages are kept, only in the app's private storage, until the Pi has checked them.
    - **Hotspot:** when you come back, the Pi reconnects to your phone's hotspot by itself, as long as the hotspot is on. If your phone switches the hotspot off when nothing is connected, turn that timeout off in the hotspot settings.
    - **Privacy on the Pi:**
      - Digits are replaced by `#`.
-     - Phone numbers are not stored.
-     - The text of safe messages from phone numbers (mostly personal chats) is not stored.
+     - Phone numbers are not stored, nor the names of chat senders.
+     - The text of safe messages from phone numbers (mostly personal chats) is not stored, nor the text of any chat that was judged safe.
    - **OTPs:** on Android 17 and later, OTP messages that carry an app code (the 11-character string at the end) reach the app three hours late. Android protects them, and that is fine for this test.
 2. **Export the log** on the Pi:
 
@@ -141,6 +141,8 @@ New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.exampl
    ```
 
    Open it in Excel and fill the `label` column with `smishing`, `spam` or `ham`; leave a row empty if you are unsure. Save it as **CSV UTF-8**.
+   - With several phones, each person labels the rows of their own phone (the `device` column).
+   - A row without text is a safe message from a phone number or a safe chat: if you need to, find it on the phone by its `time`.
 4. **Measure.** Copy it back and run:
 
    ```powershell
@@ -151,8 +153,34 @@ New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.exampl
    python scripts/sms_traffic.py measure ~/traffic.csv
    ```
 
-   It prints flagged messages per label, text only vs with the sender ID: the real-traffic numbers that replace the projection in `eval/results_sms.md`.
+   It prints flagged messages per label, text only vs with the sender ID, for all messages and then separately for SMS and chats, and how many came from each phone: the real-traffic numbers that replace the projection in `eval/results_sms.md`.
 5. **Clean up:** after measuring, delete the log on the Pi with `rm ~/ps3-guardian/logs/sms_traffic.jsonl`.
+
+## Part F: chats (RCS and WhatsApp)
+
+Android never passes chat messages to other apps, but it shows them the notifications that chat apps post, if you allow **Notification access**. The app uses that to check chats:
+
+- **Which apps:** Messages (Google Messages and Samsung Messages: RCS chats and MMS) and WhatsApp. Each has its own switch, off until you turn it on.
+- **Which senders:** only senders shown as a phone number, that is, people who are not in your contacts, where scam chats come from. Chats from your contacts and from businesses are ignored and never leave the phone, unless you turn on the testing switch.
+- **On the Pi:** a chat is scored on its text, plus the same extra weight as an SMS from a phone number when it has a link, money or urgency. Its text is stored only if it was flagged (digits masked), and its sender only as `mobile` (or `name` while testing).
+- **Not seen:** chats whose notification you have turned off or muted, and notifications Android hides from apps like this one (on Android 15 and later, notifications that carry an OTP).
+- An SMS also shows up as a Messages notification; it is checked once, as an SMS.
+
+1. In the app, tick **Check chats in Messages (RCS)** and, if you want, **Check WhatsApp chats**.
+2. Tap **Allow notification access**, find **PS3 Guardian** and allow it. Android warns that the app can read notifications: that is what it needs. If the switch is grey or says "restricted setting": App info → **⋮** → **Allow restricted settings**, then try again.
+3. Back in the app, the line under the button says which chats are being checked.
+4. **Test:** tick **Also check chats from saved contacts (for testing)** and ask a teammate to send you an RCS chat (or a WhatsApp message) with a link, for example `check this http://example.com`. About 5 seconds after it arrives, a line `[Messages] <name> …` appears in the app's list, with an alert if it was flagged. On the Pi, `tail -n 1 ~/ps3-guardian/logs/sms_traffic.jsonl` shows `"channel": "chat"`. Then untick the testing switch.
+
+## Part G: more phones
+
+More phones give more, and more varied, messages: other banks, operators and apps. For each teammate's Android phone (iPhones don't let apps read SMS):
+
+1. **Install** the app the same way: Part C, over USB from Android Studio, never by sending the APK.
+2. **Set it up** as in Part D, with the **same Pi address and token** and a **different phone name** (for example `B`, `C`). Part F (chats) is up to them.
+3. **Collect:** their messages wait on their phone (up to 500) until it is on the Pi's hotspot, then go to the Pi by themselves.
+4. **Agree first:** the Pi keeps sender IDs, verdicts and the text of flagged messages with digits masked; never phone numbers, chat senders' names or the text of safe personal messages. They can uninstall the app at any time.
+
+When labelling (Part E), each person labels their own phone's rows: they know best whether a message really came from their bank.
 
 ## If something goes wrong
 
@@ -163,7 +191,8 @@ New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.exampl
 | `HTTP 503` | The Pi has no token: `sudo systemctl restart ps3-guardian` |
 | "WAITING for the Pi" | Normal while the phone cannot reach the Pi; the message is sent later by itself. Many of them: check the Pi as for "Cannot reach the Pi". |
 | No alert, but the list shows the message | It was judged safe (no alert for safe messages), or notifications are off for the app |
-| Nothing at all when an SMS arrives | SMS permission (Part D, step 3) and battery Unrestricted (step 4). Chat (RCS) messages never reach the app. |
+| Nothing at all when an SMS arrives | SMS permission (Part D, step 3) and battery Unrestricted (step 4). Chats are checked only as set up in Part F. |
+| A chat is not checked | Is its app ticked, and does the line under "Allow notification access" say chats are being checked? Is the sender shown as a phone number (not in your contacts)? Are notifications on for that chat? The check runs about 5 seconds after the notification. |
 | `Unresolved reference 'R'` and "Package directive does not match the file location" | The `.kt` files were copied into a project with another package name: change their first line to that package (see "How the project was made" in Part B), then build again. |
 | Emulator: "not enough disk space" | You don't need the emulator: install on your phone (Part C). |
 | Other build error in Android Studio | Send the first error line |
