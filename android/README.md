@@ -2,19 +2,21 @@
 
 A small Android app that reads every incoming SMS **with its sender ID** (for example `JD-HDFCBK-S`, or a phone number), sends both to the Pi (`POST /sms`), and shows a scam alert when the Pi flags the message. The Pi logs each message so the detector can be measured on real traffic. When the Pi cannot be reached, the SMS is kept on the phone and sent once it can.
 
-These are the source files only. Create a project with Android Studio's *Empty Views Activity* template and copy them in: the template provides the Gradle files for your Android Studio version. Step-by-step instructions: [`docs/android-companion.md`](../docs/android-companion.md).
+This folder is a complete Android Studio project (Kotlin, package `com.example.ps3guardian`, minimum Android 8.0 / API 26, target API 36, AGP 9.4, Gradle 9.6, WorkManager 2.12). Open this `android` folder in Android Studio (File → Open), connect the phone by USB and press Run ▶. Step-by-step instructions, including the phone settings: [`docs/android-companion.md`](../docs/android-companion.md).
 
-| File | What it does |
+| File (under `app/src/main/`) | What it does |
 | --- | --- |
 | `AndroidManifest.xml` | Permissions (receive SMS, internet, notifications) and the SMS receiver |
-| `SmsReceiver.kt` | Called by Android for every SMS: joins the parts of long messages, takes the raw sender ID |
+| `java/com/example/ps3guardian/SmsReceiver.kt` | Called by Android for every SMS: joins the parts of long messages, takes the raw sender ID |
 | `Checker.kt` | Sends the SMS to the Pi, keeps a list of recent results, shows the alert; keeps the SMS for later if the Pi cannot be reached |
 | `FlushWorker.kt` | Background job: sends the SMS that waited for the Pi (every 15 minutes while any wait, when the app opens, and after any SMS the Pi answered) |
 | `PiClient.kt` | The HTTP calls: `/health`, `/sms` (with the pairing token), `/explain/{id}` |
 | `ExplainWorker.kt` | Background job: waits for Llama's explanation on the Pi and updates the alert |
 | `Notifier.kt` | The alert notification |
 | `Settings.kt` | The Pi address, the pairing token, the recent results, the SMS waiting for the Pi (at most 500) |
-| `MainActivity.kt`, `activity_main.xml` | One screen: address, token, permissions, two tests, recent results (refreshed while open) |
-| `network_security_config.xml` | Allows plain HTTP, which the Pi uses on the hotspot |
+| `MainActivity.kt`, `res/layout/activity_main.xml` | One screen: address, token, permissions, two tests, recent results (refreshed while open) |
+| `res/xml/network_security_config.xml` | Allows plain HTTP, which the Pi uses on the hotspot |
+
+The rest (Gradle files, launcher icons, theme) is Android Studio's *Empty Views Activity* template. `targetSdk` stays at 36 on purpose: apps targeting Android 17 (API 37) receive OTP-like SMS three hours late.
 
 The app never sends, deletes or changes SMS, and it talks only to the Pi. It sees SMS only: chat messages (RCS, WhatsApp) don't reach other apps on Android.

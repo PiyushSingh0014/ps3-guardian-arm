@@ -52,12 +52,12 @@ Don't start `scripts/run_pi.sh` by hand any more: a second copy cannot use port 
    scp $HOME\Downloads\ps3-guardian-update6.bundle arrehinus@10.140.209.76:~/
    ```
 
-2. On the Pi (`arrehinus@ps3-guardian`), pull it, push it to GitHub and restart the app:
+2. On the Pi (`arrehinus@ps3-guardian`), pull it, push it to GitHub (the `step3` branch and `main`, the branch GitHub shows first) and restart the app:
 
    ```bash
    cd ~/ps3-guardian
    git pull --no-rebase --no-edit ~/ps3-guardian-update6.bundle step3
-   git push
+   git push origin step3 step3:main
    sudo systemctl restart ps3-guardian
    for i in $(seq 40); do curl -sf http://127.0.0.1:8000/health > /dev/null && break; sleep 5; done
    grep "pairing token" logs/app.log | tail -n 1
@@ -73,40 +73,22 @@ Don't start `scripts/run_pi.sh` by hand any more: a second copy cannot use port 
 
 1. **Install Android Studio** (the current stable version) from developer.android.com/studio.
 
-2. **New Project → Empty Views Activity:**
+2. **Get the project.** The repo's `android/` folder is the complete Android Studio project (package `com.example.ps3guardian`). Either clone the repo, or on GitHub choose **Code → Download ZIP** and unzip it.
 
-   | Field | Value |
-   | --- | --- |
-   | Name | `PS3 Guardian` |
-   | Package name | `com.ps3guardian.companion` (Android Studio fills in `com.example.ps3guardian`: change it) |
-   | Language | Kotlin |
-   | Minimum SDK | API 26 |
-   | Build configuration language | Kotlin DSL |
+3. **Open it:** File → **Open** → choose the `android` folder (not the repo's top folder). Android Studio downloads Gradle and the libraries the first time; wait until the sync finishes.
 
-3. **Edit `app/build.gradle.kts`** (the one in the `app` folder):
-   - Inside `defaultConfig`, find the `targetSdk` line and change its number to **36**, for example `targetSdk = 36`. Leave `compileSdk` as it is.
-   - In `dependencies`, add:
+   Two warnings are expected and can be left alone: "Not targeting the latest versions of Android" (the target stays at 36 on purpose: apps targeting Android 17, API 37, receive OTP-like SMS three hours late and need an extra local-network permission) and "Use version catalog instead".
 
-     ```kotlin
-     implementation("androidx.work:work-runtime-ktx:2.12.0")
-     ```
+4. **Build → Make Project** (Ctrl+F9; called Assemble Project in some versions). It should end with BUILD SUCCESSFUL. If it doesn't, send the first error line.
 
-   Keep the target at 36 even if Android Studio suggests 37: apps targeting Android 17 (API 37) receive OTP-like SMS three hours late and need an extra local-network permission. Android Studio's warning "Not targeting the latest versions of Android" is therefore expected, and "Use version catalog instead" can be ignored. Click **Sync Now**. If Android Studio offers a newer WorkManager version, accept it (2.12.0 needs minimum SDK 24; the app uses 26).
+**Updating the app later:** get the new version of the repo (pull, or download the ZIP again), or copy the changed `.kt` files from `android/app/src/main/java/com/example/ps3guardian/` over your copies, and press **Run ▶**. The app keeps its settings and its list.
 
-4. **Copy the files** from this repo's `android/app/src/main/` into the project's `app/src/main/`:
+<details>
+<summary>How the project was made (only needed to make it again from scratch)</summary>
 
-   | From the repo | Into the project | |
-   | --- | --- | --- |
-   | `AndroidManifest.xml` | `app/src/main/AndroidManifest.xml` | replace; keep your template's `android:theme` value if it is not `Theme.PS3Guardian` |
-   | `java/com/ps3guardian/companion/*.kt` (8 files) | the folder that holds the template's `MainActivity.kt` | replace `MainActivity.kt`, add the others |
-   | `res/layout/activity_main.xml` | `app/src/main/res/layout/` | replace |
-   | `res/xml/network_security_config.xml` | `app/src/main/res/xml/` | create the `xml` folder if needed |
+New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.example.ps3guardian` (Android Studio's suggestion), Kotlin, minimum SDK API 26, Kotlin DSL. Then in `app/build.gradle.kts`: `targetSdk = 36` and `implementation("androidx.work:work-runtime-ktx:2.12.0")`; then the app's files copied into `app/src/main/` (manifest, the 8 `.kt` files, `res/layout/activity_main.xml`, `res/xml/network_security_config.xml`). If you choose another package name, change the first line (`package ...`) of the 8 `.kt` files to match (Edit → Find → Replace in Files).
 
-   If your project's package is not `com.ps3guardian.companion` (for example `com.example.ps3guardian`), use Edit → Find → **Replace in Files**: replace `package com.ps3guardian.companion` with `package com.example.ps3guardian` (your package).
-
-5. **Build → Make Project** (Ctrl+F9; called Assemble Project in some versions). It should end with BUILD SUCCESSFUL. If it doesn't, send the first error line.
-
-**Updating the app later:** copy the new `.kt` files over the old ones, do the same package replace if you needed it the first time, and press **Run ▶**. The app keeps its settings and its list.
+</details>
 
 ## Part C: install it on your phone
 
@@ -182,7 +164,7 @@ Don't start `scripts/run_pi.sh` by hand any more: a second copy cannot use port 
 | "WAITING for the Pi" | Normal while the phone cannot reach the Pi; the message is sent later by itself. Many of them: check the Pi as for "Cannot reach the Pi". |
 | No alert, but the list shows the message | It was judged safe (no alert for safe messages), or notifications are off for the app |
 | Nothing at all when an SMS arrives | SMS permission (Part D, step 3) and battery Unrestricted (step 4). Chat (RCS) messages never reach the app. |
-| `Unresolved reference 'R'` and "Package directive does not match the file location" | The project was created with another package name, for example `com.example.ps3guardian`: do the package replace from Part B, step 4, then build again. |
+| `Unresolved reference 'R'` and "Package directive does not match the file location" | The `.kt` files were copied into a project with another package name: change their first line to that package (see "How the project was made" in Part B), then build again. |
 | Emulator: "not enough disk space" | You don't need the emulator: install on your phone (Part C). |
 | Other build error in Android Studio | Send the first error line |
 

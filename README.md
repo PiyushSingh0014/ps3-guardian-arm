@@ -28,7 +28,7 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | `detectors/sms/` | SMS scam detector: India rules, baseline model, `Finding` wrapper |
 | `advisor/` | Turns a `Finding` into advice: playbooks, Llama prompt, output validator; `llm_engine.py` + `llm_service.py` keep Llama loaded on the Pi |
 | `app/` | FastAPI app: `POST /check` and a phone-friendly page; `POST /sms` for the Android companion, with a traffic log |
-| `android/` | Android companion source (Kotlin): forwards incoming SMS with their sender IDs to the Pi, and keeps them while the Pi is out of reach |
+| `android/` | Android companion: a complete Android Studio project (Kotlin). Forwards incoming SMS with their sender IDs to the Pi, and keeps them while the Pi is out of reach |
 | `tests/` | pytest suite (fake model and fake `llama_main`, so no torch is needed) |
 | `deploy/` | Track B: export, Pi 4 build, benchmark script, test prompts |
 | `scripts/` | `run_pi.sh`: starts the Llama service and the app on the Pi; `install_service.sh`: starts them at every boot (systemd); `sms_traffic.py`: exports and measures the companion's traffic log |

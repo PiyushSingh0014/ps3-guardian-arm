@@ -1,4 +1,4 @@
-package com.ps3guardian.companion
+package com.example.ps3guardian
 
 import org.json.JSONObject
 import java.io.IOException

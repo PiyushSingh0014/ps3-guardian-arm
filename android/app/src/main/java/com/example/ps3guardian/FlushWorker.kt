@@ -1,4 +1,4 @@
-package com.ps3guardian.companion
+package com.example.ps3guardian
 
 import android.content.Context
 import androidx.work.Constraints

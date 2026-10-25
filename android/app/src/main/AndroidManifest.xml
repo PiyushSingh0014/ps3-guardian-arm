@@ -10,8 +10,6 @@
 
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
 
-    <!-- Keep the android:theme value your Android Studio template created
-         (Theme.PS3Guardian if you named the project "PS3 Guardian"). -->
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
