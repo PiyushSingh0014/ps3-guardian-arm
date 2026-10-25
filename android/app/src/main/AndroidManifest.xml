@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Read incoming SMS (the app never sends, deletes or changes SMS). -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <!-- Talk to the Pi on your hotspot. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Show scam alerts (Android 13+ asks the user). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+
+    <!-- Keep the android:theme value your Android Studio template created
+         (Theme.PS3Guardian if you named the project "PS3 Guardian"). -->
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="PS3 Guardian"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.PS3Guardian">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Called by Android for every incoming SMS. BROADCAST_SMS means only the
+             system can call it, so other apps cannot feed it fake messages. -->
+        <receiver
+            android:name=".SmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

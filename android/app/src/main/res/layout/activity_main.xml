@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="PS3 Guardian"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingTop="16dp"
+            android:text="Pi address" />
+
+        <EditText
+            android:id="@+id/pi_url"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="http://10.140.209.76:8000"
+            android:inputType="textUri" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Pairing token (printed when the Pi app starts)" />
+
+        <EditText
+            android:id="@+id/token"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text" />
+
+        <Button
+            android:id="@+id/save"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Save" />
+
+        <Button
+            android:id="@+id/permissions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Allow SMS and notifications" />
+
+        <Button
+            android:id="@+id/test_connection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Test connection" />
+
+        <Button
+            android:id="@+id/test_message"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Send a test scam" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingTop="16dp"
+            android:text="Recent messages"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/recent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp"
+            android:textIsSelectable="true" />
+    </LinearLayout>
+</ScrollView>

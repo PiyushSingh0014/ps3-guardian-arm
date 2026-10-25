@@ -14,16 +14,19 @@ and a job id; the Llama explanation is written in the background and fetched
 from GET /explain/{id} once the validator has checked it. Llama tokens are
 never streamed to the user unchecked.
 
-No authentication yet: keep it on your lab network. Add a pairing token
-before the Android companion talks to it.
+The web page (/ and /check) has no login: keep it on your own network. The
+Android companion uses POST /sms, which needs the pairing token in the
+X-Guardian-Token header (GUARDIAN_TOKEN on the Pi; scripts/run_pi.sh creates
+one) and logs each message for measuring (app/sms_log.py).
 """
+import os
 import secrets
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -38,6 +41,7 @@ class CheckIn(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
     sender: Optional[str] = Field(None, max_length=64)
     language: str = Field("en", pattern="^(en|hi)$")
+    test: bool = False                  # /sms: a test from the phone's button, not logged
 
 
 class JobStore:
@@ -81,13 +85,24 @@ class JobStore:
             return sum(1 for j in self.jobs.values() if j["status"] == "pending")
 
 
+_DEFAULT_LOG = None
+
+
+def default_log():
+    global _DEFAULT_LOG
+    if _DEFAULT_LOG is None:
+        from app.sms_log import SmsLog
+        _DEFAULT_LOG = SmsLog()
+    return _DEFAULT_LOG
+
+
 def _public_finding(finding):
     f = finding.to_dict()
     f.pop("raw_text", None)                       # never echo untrusted text back
     return f
 
 
-def create_app(detector=None, advisor=None):
+def create_app(detector=None, advisor=None, sms_log=None):
     if detector is None:
         from detectors.sms.detector import SmsDetector
         detector = SmsDetector()
@@ -95,11 +110,7 @@ def create_app(detector=None, advisor=None):
     jobs = JobStore()
     app = FastAPI(title="PS3 Guardian")
 
-    @app.post("/check")
-    def check(req: CheckIn, wait: bool = False):
-        t0 = time.time()
-        finding = detector.check(req.message, sender=req.sender, language=req.language)
-        t1 = time.time()
+    def respond(finding, wait, t0, t1):
         explain = None
         if advisor.needs_llm(finding) and not wait:
             advice = advisor.quick(finding)
@@ -113,6 +124,30 @@ def create_app(detector=None, advisor=None):
                 "backend": advisor.backend.name, "explain": explain,
                 "timing_ms": {"detect": round((t1 - t0) * 1000, 1),
                               "advise": round((t2 - t1) * 1000, 1)}}
+
+    @app.post("/check")
+    def check(req: CheckIn, wait: bool = False):
+        t0 = time.time()
+        finding = detector.check(req.message, sender=req.sender, language=req.language)
+        return respond(finding, wait, t0, time.time())
+
+    @app.post("/sms")
+    def sms(req: CheckIn, x_guardian_token: Optional[str] = Header(None)):
+        """For the Android companion: the SMS as received, with its sender ID."""
+        token = os.environ.get("GUARDIAN_TOKEN", "")
+        if not token:
+            raise HTTPException(status_code=503, detail="no pairing token on the Pi: set GUARDIAN_TOKEN")
+        if not secrets.compare_digest((x_guardian_token or "").encode(), token.encode()):
+            raise HTTPException(status_code=401, detail="wrong pairing token")
+        t0 = time.time()
+        finding = detector.check(req.message, sender=req.sender, language=req.language)
+        text_only = detector.check(req.message, sender=None, language=req.language)
+        t1 = time.time()
+        out = respond(finding, False, t0, t1)
+        out["text_only"] = {"verdict": text_only.verdict, "score": text_only.score}
+        out["log_id"] = None if req.test else (sms_log or default_log()).add(req.message, req.sender,
+                                                                             finding, text_only)
+        return out
 
     @app.get("/explain/{job_id}")
     def explain(job_id: str):

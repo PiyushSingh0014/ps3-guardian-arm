@@ -15,16 +15,31 @@ if _HERE not in sys.path:                 # lets the day-1 scripts keep their pl
 import joblib                                    # noqa: E402
 import train_baseline as tb                      # noqa: E402
 from brands import claimed_identity              # noqa: E402
-from rules_india import TEN_DIGIT_RE, extract_signals, normalize_sender  # noqa: E402
+from rules_india import extract_signals          # noqa: E402
+from senders import apply_sender, classify_sender  # noqa: E402
 
 from advisor.categorize import categorize_message    # noqa: E402
 from advisor.findings import Finding, verdict_from_score  # noqa: E402
 
 
 def sender_type(sender):
-    if not sender:
-        return "unknown"
-    return "mobile_number" if TEN_DIGIT_RE.match(normalize_sender(sender)) else "sender_id"
+    """'mobile_number', 'registered_sender_id', 'other' or 'unknown'."""
+    return classify_sender(sender).type_name
+
+
+def decide(score, text, sender=None, use_sender=True):
+    """Text score -> (final score, verdict, signals). Shared by the app and eval_india.py.
+
+    The sender multiplies the odds of fraud (senders.py); an .apk link stays dangerous
+    whoever sent it.
+    """
+    sig = extract_signals(text, sender=sender)
+    if use_sender:
+        score = apply_sender(score, classify_sender(sender), sig)
+    verdict = verdict_from_score(score)
+    if sig.has_apk and sig.has_url:          # an .apk link is near-certainly malicious
+        verdict, score = "dangerous", max(score, 0.95)
+    return score, verdict, sig
 
 
 class SmsDetector:
@@ -37,15 +52,11 @@ class SmsDetector:
 
     def check(self, message: str, sender: Optional[str] = None, language: str = "en") -> Finding:
         x, _ = tb.build_features([message], vec=self.vec)     # cleans text internally
-        score = float(self.clf.predict_proba(x)[0, 1])
         text = tb.clean_text(message)                       # same cleaning for the rules
-        sig = extract_signals(text, sender=sender)
-        verdict = verdict_from_score(score)
-        if sig.has_apk and sig.has_url:          # an .apk link is near-certainly malicious
-            verdict, score = "dangerous", max(score, 0.95)
+        score, verdict, sig = decide(float(self.clf.predict_proba(x)[0, 1]), text, sender)
         category = categorize_message(text, sig) if verdict != "safe" else "none"
 
-        # claims_to_be (from a fixed list) and sender_type (one of three words) are
+        # claims_to_be (from a fixed list) and sender_type (one of four words) are
         # trusted, so the advisor may pass them to Llama. 'sender' is the raw value
         # typed or received; it is shown in the UI but never sent to Llama.
         entities = {"sender_type": sender_type(sender)}
