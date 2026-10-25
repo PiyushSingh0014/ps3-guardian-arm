@@ -8,6 +8,9 @@ import java.net.URI
 /** The three calls the app makes to the Pi (app/server.py). Blocking: use a background thread. */
 class PiClient(private val baseUrl: String, private val token: String) {
 
+    /** The Pi refused the request itself (bad or too long a message), not the connection or the token. */
+    class Rejected(message: String) : IOException(message)
+
     fun health(): JSONObject = request("GET", "/health", null)
 
     fun checkSms(message: String, sender: String, language: String, test: Boolean = false): JSONObject {
@@ -37,6 +40,7 @@ class PiClient(private val baseUrl: String, private val token: String) {
             val code = conn.responseCode
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
             val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
+            if (code in REFUSED) throw Rejected("HTTP $code ${text.take(120)}")
             if (code !in 200..299) throw IOException("HTTP $code ${text.take(120)}")
             return JSONObject(text)
         } finally {
@@ -46,5 +50,8 @@ class PiClient(private val baseUrl: String, private val token: String) {
 
     companion object {
         const val MAX_MESSAGE = 2000        // the Pi accepts up to 2000 characters
+        // Bad request, too large, invalid fields. A wrong token (401) or a stopped app is
+        // worth trying again later, so those stay ordinary IOExceptions.
+        private val REFUSED = setOf(400, 413, 422)
     }
 }

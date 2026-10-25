@@ -13,7 +13,7 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | Track B: Llama 3.2 1B on the Pi 4 via ExecuTorch | done: 12.7 tok/s prefill, 4.4 tok/s decode | [eval/results_pi4.md](eval/results_pi4.md), [deploy/README.md](deploy/README.md) |
 | Step 3: fast advisor (persistent Llama service with a native C++ engine, prompt v4) | done on the Pi 4: explanations in 19–28 s per new alert | [docs/step3-fast-advisor.md](docs/step3-fast-advisor.md) |
 | India SMS test set (227 real messages) and sender-aware scoring | measured | [eval/results_sms.md](eval/results_sms.md), [docs/india-sms-test-set.md](docs/india-sms-test-set.md) |
-| Android companion: reads incoming SMS with their sender IDs | code ready; build it in Android Studio | [docs/android-companion.md](docs/android-companion.md) |
+| Android companion: reads incoming SMS with their sender IDs | running on a Galaxy S25 with the Pi; first real SMS checked; real-traffic measurement next | [docs/android-companion.md](docs/android-companion.md) |
 | URL, network-flow and DNS detectors; fusion | planned | |
 
 ## Hardware and software
@@ -28,10 +28,10 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | `detectors/sms/` | SMS scam detector: India rules, baseline model, `Finding` wrapper |
 | `advisor/` | Turns a `Finding` into advice: playbooks, Llama prompt, output validator; `llm_engine.py` + `llm_service.py` keep Llama loaded on the Pi |
 | `app/` | FastAPI app: `POST /check` and a phone-friendly page; `POST /sms` for the Android companion, with a traffic log |
-| `android/` | Android companion source (Kotlin): forwards incoming SMS with their sender IDs to the Pi |
+| `android/` | Android companion source (Kotlin): forwards incoming SMS with their sender IDs to the Pi, and keeps them while the Pi is out of reach |
 | `tests/` | pytest suite (fake model and fake `llama_main`, so no torch is needed) |
 | `deploy/` | Track B: export, Pi 4 build, benchmark script, test prompts |
-| `scripts/` | `run_pi.sh`: starts the Llama service and the app on the Pi; `sms_traffic.py`: exports and measures the companion's traffic log |
+| `scripts/` | `run_pi.sh`: starts the Llama service and the app on the Pi; `install_service.sh`: starts them at every boot (systemd); `sms_traffic.py`: exports and measures the companion's traffic log |
 | `eval/` | Results for the report |
 | `docs/` | Notes per step |
 
