@@ -167,6 +167,21 @@ The companion app (`android/`, [docs/android-companion.md](../docs/android-compa
 
 This is the false alarm the projection above predicts away, now on a real message: a genuine operator notice with an amount of money looks like a scam on its text alone, and its `-S` sender ID clears it. One message is an example, not a measurement; the week of real traffic (Part E of the guide) gives the numbers.
 
+### With the links checked (update 9, 2026-10-25)
+
+The phishing link checker ([docs/url-detector.md](../docs/url-detector.md)) now checks every link in a message and adjusts the score after the sender:
+
+- a link that is dangerous on its own (an `.apk`, a reported phishing site, a brand's name on someone else's site) makes the message dangerous;
+- otherwise the worst link multiplies the odds by 3 (dangerous) or 1.5 (suspicious), and links that are all official divide them by about 3.
+
+| Flagged | Messages | Text only | With sender | Sender + links |
+| --- | --- | --- | --- | --- |
+| Fraud | 100 | 94 | 96 | 96 |
+| Marketing | 52 | 50 | 35 | 30 |
+| Normal | 75 | 48 | 44 | 44 |
+
+Five Airtel offers with links on Airtel's own sites turned safe, and four messages with official links went from dangerous to suspicious. Two went the other way (`gs.im`, `weurl.co`). No fraud changed: the real scam links in this set are short random domains such as `po9.in`, which look like the link domains genuine marketing uses, and the 36 anonymised ones (`*.example`) are skipped. Details: [eval/results_url.md](results_url.md).
+
 ### Next
 
 1. **Measure on real traffic:** about a week of SMS through the companion, labelled by hand, with `scripts/sms_traffic.py measure`.

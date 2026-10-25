@@ -14,9 +14,9 @@ A rejected answer makes the advisor fall back to its template text.
 import re
 from dataclasses import dataclass, field
 
-# Text the explanation may mention. "bank.in" covers phrases such as
-# "genuine bank links end in .bank.in"; it is a domain suffix, not a site.
-ALLOWED_DOMAINS = {"cybercrime.gov.in", "sancharsaathi.gov.in", "bank.in"}
+# Text the explanation may mention. "bank.in" and "gov.in" cover phrases such as
+# "genuine bank links end in .bank.in"; they are domain endings, not sites.
+ALLOWED_DOMAINS = {"cybercrime.gov.in", "sancharsaathi.gov.in", "bank.in", "gov.in"}
 ALLOWED_NUMBERS = {"1930"}
 MAX_SENTENCES = 2
 MAX_WORDS = {"en": 60, "hi": 80}       # Hindi writes postpositions as separate words

@@ -7,8 +7,9 @@ The model is trained exactly like train_baseline.py does it (same cleaning and
 de-duplication, the same 70% split with random_state 42), so it is the model the app
 uses. --all-data trains on 100% instead. Test messages that also appear in the training
 data are dropped. Verdicts come from the app's own decision (detector.decide): score
->= 0.5 is suspicious, >= 0.8 dangerous, an .apk link is always dangerous, and the sender
-changes the odds (senders.py). Results are shown without and with the sender.
+>= 0.5 is suspicious, >= 0.8 dangerous, an .apk link is always dangerous, the sender
+changes the odds (senders.py) and so do the links (detectors/url, unless --no-links).
+Results are shown for the text alone, with the sender, and with the sender and links.
 
 The test file is the collection workbook ('messages' sheet) or a CSV with the columns
 label,message[,sender,category,language,origin]. Labels: smishing (fraud), spam
@@ -68,6 +69,7 @@ def main():
     ap.add_argument("--all-data", action="store_true", help="train on 100%% instead of the app's 70%% split")
     ap.add_argument("--show", type=int, default=10, help="list this many misses and false alarms")
     ap.add_argument("--out", help="write every test message with its scores to this CSV")
+    ap.add_argument("--no-links", action="store_true", help="do not check the links (detectors/url)")
     a = ap.parse_args()
 
     test = read_test(a.test)
@@ -81,35 +83,56 @@ def main():
     x, _ = tb.build_features(test.message.tolist(), vec=vec)
     text_score = clf.predict_proba(x)[:, 1]
     texts = [tb.clean_text(m) for m in test.message]
-    for mode, use in (("text", False), ("sender", True)):
-        out = [decide(float(p), t, s or None, use_sender=use) for p, t, s in zip(text_score, texts, test.sender)]
+    url = None
+    if not a.no_links:
+        from detectors.url.detector import UrlDetector
+        url = UrlDetector()
+        print("Links:", "model" if url.model else "rules only", "| lists:", url.blocklist.info().get("hosts", 0),
+              "listed hosts,", len(url.top_sites), "top sites")
+    checks = [url.check_text(t) if url else [] for t in texts]
+    modes = [("text", False, False), ("sender", True, False)] + ([("links", True, True)] if url else [])
+    for mode, use, with_links in modes:
+        out = [decide(float(p), t, s or None, use_sender=use, links=c if with_links else None)
+               for p, t, s, c in zip(text_score, texts, test.sender, checks)]
         test[f"score_{mode}"] = [round(o[0], 3) for o in out]
         test[f"verdict_{mode}"] = [o[1] for o in out]
     test["sender_kind"] = [classify_sender(s).kind for s in test.sender]
+    test["links"] = ["; ".join(f"{v.host} {v.verdict}" for v in c) for c in checks]
+    last = modes[-1][0]
 
     print(f"\nIndia test: {len(test)} messages "
           f"({'all-data' if a.all_data else 'app'} model, trained on {os.path.basename(a.train)})")
     print("Senders:", ", ".join(f"{k} {n}" for k, n in test.sender_kind.value_counts().items()))
-    print(f"\n{'label':10s} {'messages':>8s} {'flagged, text only':>19s} {'flagged, with sender':>21s}")
+    heads = {"text": "text only", "sender": "with sender", "links": "sender + links"}
+    print(f"\n{'label':10s} {'messages':>8s}" + "".join(f" {'flagged, ' + heads[m]:>24s}" for m, _, _ in modes))
     for lab, name in LABELS.items():
         t = test[test.label == lab]
         if len(t):
-            f1, f2 = int((t.verdict_text != "safe").sum()), int((t.verdict_sender != "safe").sum())
-            print(f"{name:10s} {len(t):8d} {f1:12d} ({f1 / len(t):4.0%}) {f2:14d} ({f2 / len(t):4.0%})")
-    print("\nFlagged with sender, by category (text only in brackets):")
+            cells = []
+            for m, _, _ in modes:
+                f = int((t[f"verdict_{m}"] != "safe").sum())
+                cells.append(f"{f:17d} ({f / len(t):4.0%})")
+            print(f"{name:10s} {len(t):8d} " + " ".join(cells))
+    print(f"\nFlagged {heads[last]}, by category (text only, with sender in brackets):")
     for (lab, cat), t in test.groupby(["label", "category"]):
-        print(f"  {LABELS[lab]:9s} {cat or '-':24s} {int((t.verdict_sender != 'safe').sum()):3d} of {len(t):3d}"
-              f"  ({int((t.verdict_text != 'safe').sum())})")
+        print(f"  {LABELS[lab]:9s} {cat or '-':24s} {int((t[f'verdict_{last}'] != 'safe').sum()):3d} of {len(t):3d}"
+              f"  ({int((t.verdict_text != 'safe').sum())}, {int((t.verdict_sender != 'safe').sum())})")
 
     if a.show:
-        miss = test[(test.label == "smishing") & (test.verdict_sender == "safe")]
-        print("\nMissed fraud, with sender (lowest score first):")
-        for _, r in miss.sort_values("score_sender").head(a.show).iterrows():
-            print(f"  {r.score_sender:.2f}  [{r.sender_kind}] {tb.clean_text(r.message)[:110]}")
-        fa = test[(test.label == "ham") & (test.verdict_sender != "safe")]
-        print("\nNormal messages flagged, with sender (highest score first):")
-        for _, r in fa.sort_values("score_sender", ascending=False).head(a.show).iterrows():
-            print(f"  {r.score_sender:.2f}  [{r.category}, {r.sender_kind}] {tb.clean_text(r.message)[:100]}")
+        miss = test[(test.label == "smishing") & (test[f"verdict_{last}"] == "safe")]
+        print(f"\nMissed fraud, {heads[last]} (lowest score first):")
+        for _, r in miss.sort_values(f"score_{last}").head(a.show).iterrows():
+            print(f"  {r[f'score_{last}']:.2f}  [{r.sender_kind}] {tb.clean_text(r.message)[:110]}")
+        fa = test[(test.label == "ham") & (test[f"verdict_{last}"] != "safe")]
+        print(f"\nNormal messages flagged, {heads[last]} (highest score first):")
+        for _, r in fa.sort_values(f"score_{last}", ascending=False).head(a.show).iterrows():
+            print(f"  {r[f'score_{last}']:.2f}  [{r.category}, {r.sender_kind}] {tb.clean_text(r.message)[:100]}")
+        if url:
+            changed = test[test.verdict_sender != test.verdict_links]
+            print(f"\nMessages whose verdict the links changed ({len(changed)}):")
+            for _, r in changed.iterrows():
+                print(f"  {LABELS[r.label]:9s} {r.verdict_sender:>10s} -> {r.verdict_links:10s} [{r.links[:60]}] "
+                      f"{tb.clean_text(r.message)[:70]}")
     if a.out:
         test.drop(columns=["norm"]).to_csv(a.out, index=False, encoding="utf-8")
         print(f"\nWrote {a.out}")
