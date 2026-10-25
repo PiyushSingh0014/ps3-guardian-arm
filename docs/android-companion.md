@@ -53,7 +53,7 @@ incoming SMS ──> Android app ──(Wi-Fi hotspot, POST /sms + pairing token
    | Field | Value |
    | --- | --- |
    | Name | `PS3 Guardian` |
-   | Package name | `com.ps3guardian.companion` |
+   | Package name | `com.ps3guardian.companion` (Android Studio fills in `com.example.ps3guardian`: change it) |
    | Language | Kotlin |
    | Minimum SDK | API 26 |
    | Build configuration language | Kotlin DSL |
@@ -150,7 +150,8 @@ incoming SMS ──> Android app ──(Wi-Fi hotspot, POST /sms + pairing token
 | `HTTP 503` | The Pi has no token: restart it with `scripts/run_pi.sh` |
 | No alert, but the list shows the message | It was judged safe (no alert for safe messages), or notifications are off for the app |
 | Nothing at all when an SMS arrives | SMS permission (Part D, step 3) and battery Unrestricted (step 4) |
-| Build error in Android Studio | Send the first error line |
+| `Unresolved reference 'R'` and "Package directive does not match the file location" | The project was created with another package name, for example `com.example.ps3guardian`. Edit → Find → Replace in Files: replace `package com.ps3guardian.companion` with `package com.example.ps3guardian` (your project's package), then build again. Repeat this whenever you copy in new versions of the files. |
+| Other build error in Android Studio | Send the first error line |
 
 ## Sources for the Android rules above
 
