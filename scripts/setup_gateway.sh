@@ -76,8 +76,15 @@ case "${1:-}" in
     t="$(tether_dev || true)"
     say "Kept. The Pi is now a hotspot, also after a restart."
     say "  Devices on \"$SSID\" reach the Pi at http://$ADDR:8000"
-    [ -n "$t" ] && say "  Your phone (USB) reaches it at http://$(addr_of "$t"):8000  <- put this in the phone app"
-    say "Next: bash scripts/install_netmon.sh   (starts the network monitor on wlan0)"
+    if [ -n "$t" ]; then
+      say "  Your phone (USB) reaches it at http://$(addr_of "$t"):8000  <- put this in the phone app"
+    fi
+    if systemctl is-enabled --quiet ps3-netmon 2>/dev/null; then
+      sudo systemctl restart ps3-netmon            # watch wlan0 again, now as the hotspot
+      say "The network monitor restarted on the hotspot (logs/netmon.log)."
+    else
+      say "Next: bash scripts/install_netmon.sh   (starts the network monitor on wlan0)"
+    fi
     exit 0 ;;
   "") ;;
   *) die "unknown option $1 (use --keep, --undo or --status)" ;;
@@ -85,6 +92,9 @@ esac
 
 # --- 1. checks: nothing is changed until all of them pass -------------------------
 command -v nmcli > /dev/null || die "NetworkManager (nmcli) not found."
+if nmcli -t -f NAME con show --active | grep -qx "$LAB"; then
+  die "the hotspot is already on. Use --keep, --undo or --status."
+fi
 PHONE="$(phone_con || true)"
 [ -n "$PHONE" ] || die "the Pi is not on a Wi-Fi network now, so there is nothing to switch back to."
 echo "$PHONE" > "$STATE"
@@ -95,11 +105,11 @@ say "Phone over USB: $T, the Pi is $(addr_of "$T") there"
 code="$(sudo curl -s -m 10 --interface "$T" -o /dev/null -w '%{http_code}' https://www.google.com/generate_204 || true)"
 [ "$code" = "204" ] || die "no internet through the phone's USB tethering (got '$code'). Is mobile data on?"
 say "Internet through USB: OK"
-if ! command -v dnsmasq > /dev/null; then
+if [ ! -x /usr/sbin/dnsmasq ]; then
   say "Installing dnsmasq-base (gives addresses to devices on the hotspot) ..."
   sudo apt-get install -y dnsmasq-base > /dev/null
 fi
-if iw reg get 2>/dev/null | grep -q "country 00"; then
+if [ -x /usr/sbin/iw ] && /usr/sbin/iw reg get 2>/dev/null | grep -q "country 00"; then
   say "Setting the Wi-Fi country to India (needed for a hotspot) ..."
   sudo raspi-config nonint do_wifi_country IN
 fi
@@ -128,13 +138,18 @@ read -r -p "Switch now? [y/N] " ok
 [ "$ok" = "y" ] || [ "$ok" = "Y" ] || { say "Nothing switched."; exit 0; }
 
 # --- 3. the automatic undo, then the switch; both run on their own (systemd), so they ---
-# --- finish even though this SSH session drops ---------------------------------------
+# --- finish even though this SSH session drops. Names travel as environment variables, ---
+# --- so a hotspot name with spaces or quotes cannot break the commands. -----------------
 sudo systemctl stop "$UNDO.timer" "$UNDO.service" 2>/dev/null || true
 sudo systemctl reset-failed "$UNDO.timer" "$UNDO.service" 2>/dev/null || true
-sudo systemd-run --quiet --unit "$UNDO" --on-active="${UNDO_MINUTES}m" /bin/bash -c \
-  "nmcli con modify '$LAB' connection.autoconnect no; nmcli con down '$LAB'; \
-   nmcli con modify '$PHONE' connection.autoconnect yes; nmcli con up '$PHONE'"
-sudo systemd-run --quiet --unit ps3-gateway-switch-$$ /bin/bash -c \
-  "sleep 2; nmcli con modify '$PHONE' connection.autoconnect no; \
-   nmcli con up '$LAB' || { nmcli con modify '$PHONE' connection.autoconnect yes; nmcli con up '$PHONE'; }"
+# shellcheck disable=SC2016                 # $LAB and $PHONE are expanded by the unit, not here
+sudo systemd-run --quiet --unit "$UNDO" --on-active="${UNDO_MINUTES}m" \
+  --setenv=LAB="$LAB" --setenv=PHONE="$PHONE" /bin/bash -c \
+  'nmcli con modify "$LAB" connection.autoconnect no; nmcli con down "$LAB";
+   nmcli con modify "$PHONE" connection.autoconnect yes; nmcli con up "$PHONE"'
+# shellcheck disable=SC2016
+sudo systemd-run --quiet --unit "ps3-gateway-switch-$$" \
+  --setenv=LAB="$LAB" --setenv=PHONE="$PHONE" /bin/bash -c \
+  'sleep 2; nmcli con modify "$PHONE" connection.autoconnect no;
+   nmcli con up "$LAB" || { nmcli con modify "$PHONE" connection.autoconnect yes; nmcli con up "$PHONE"; }'
 say "Switching... this session will now stop responding."
