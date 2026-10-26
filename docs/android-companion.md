@@ -105,6 +105,7 @@ New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.exampl
 ## Part D: set it up
 
 1. **Connect your phone to the Pi.** The phone must be the hotspot the Pi is on, or connected to the same hotspot.
+   If the Pi is the hotspot itself ([network-detector.md](network-detector.md), part 2), your own phone reaches it over the USB cable: use the address `setup_gateway.sh --keep` prints. Other phones join the Wi-Fi `PS3-Guardian-Lab` and use `http://10.42.0.1:8000`.
 2. **Pi address, token and phone name:** type the address and the pairing token from Part A, and a short **phone name** (for example `A`; every phone gets its own, see Part G). Tap **Save**, then **Test connection**. You should see "Connected. Advisor: llama_service."
 3. **Permissions:** tap **Allow SMS and notifications** and allow both.
    - If SMS cannot be allowed or says "restricted setting": go to App info → **⋮** → **Allow restricted settings**.

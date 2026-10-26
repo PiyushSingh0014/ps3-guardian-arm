@@ -16,7 +16,8 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | Android companion: reads incoming SMS with their sender IDs | running on a Galaxy S25 with the Pi; first real SMS checked; real-traffic measurement next | [docs/android-companion.md](docs/android-companion.md) |
 | Chats (RCS, WhatsApp) from unknown numbers, via notification access; several phones | running on the Galaxy S25 (opt-in) | [docs/android-companion.md](docs/android-companion.md), Parts F–G |
 | Phishing link checker: official domains, brand rules, public phishing list, link model; links inside SMS and chats | done (update 9) | [eval/results_url.md](eval/results_url.md), [docs/url-detector.md](docs/url-detector.md) |
-| Network-flow and DNS detectors; fusion | planned | |
+| Network detector: scans, floods, password guessing, beacons, DGA names, DNS tunnels, phishing look-ups, per-device normal; the Pi as the Wi-Fi hotspot for lab devices | done (update 10); live on the Pi next | [eval/results_net.md](eval/results_net.md), [docs/network-detector.md](docs/network-detector.md) |
+| Llama explanations for network alerts; ESP32 demo device; fusion | planned | |
 
 ## Hardware and software
 
@@ -29,12 +30,13 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | --- | --- |
 | `detectors/sms/` | SMS scam detector: India rules, baseline model, `Finding` wrapper |
 | `detectors/url/` | Phishing link checker: link parsing, brand and official-domain lists, public phishing list (SQLite), link model (`url_model.npz`) |
+| `detectors/net/` | Network detector: flows from NFStream (live or pcap) or CIC-IDS2017 CSVs, behaviour rules, DNS checks, DGA model (`dga_model.npz`), per-device baseline, the monitor service |
 | `advisor/` | Turns a `Finding` into advice: playbooks, Llama prompt, output validator; `llm_engine.py` + `llm_service.py` keep Llama loaded on the Pi |
-| `app/` | FastAPI app: `POST /check` (a message or a link) and a phone-friendly page; `POST /url` for one link; `POST /sms` for the Android companion, with a traffic log |
+| `app/` | FastAPI app: `POST /check` (a message or a link) and a phone-friendly page; `POST /url` for one link; `POST /sms` for the Android companion, with a traffic log; `GET /alerts` for network alerts |
 | `android/` | Android companion: a complete Android Studio project (Kotlin). Forwards incoming SMS with their sender IDs to the Pi, and keeps them while the Pi is out of reach |
 | `tests/` | pytest suite (fake model and fake `llama_main`, so no torch is needed) |
 | `deploy/` | Track B: export, Pi 4 build, benchmark script, test prompts |
-| `scripts/` | `run_pi.sh`: starts the Llama service and the app on the Pi; `install_service.sh`: starts them at every boot (systemd); `sms_traffic.py`: exports and measures the companion's traffic log; `get_url_data.py`: downloads the link checker's lists |
+| `scripts/` | `run_pi.sh`: starts the Llama service and the app on the Pi; `install_service.sh`: starts them at every boot (systemd); `sms_traffic.py`: exports and measures the companion's traffic log; `get_url_data.py`: downloads the link checker's lists; `install_netmon.sh`: the network monitor service; `setup_gateway.sh`: the Pi as a Wi-Fi hotspot, with automatic undo |
 | `eval/` | Results for the report |
 | `docs/` | Notes per step |
 
@@ -59,6 +61,8 @@ Open http://localhost:8000 and paste a message or a link.
 | Same, with registered sender IDs (projection) | 96% of fraud caught, 4% of normal messages flagged | [eval/results_sms.md](eval/results_sms.md) |
 | Link checker on brand-new phishing sites (held out, no lists) | 81% caught; 7.6% of popular websites flagged, 1.1% called dangerous | [eval/results_url.md](eval/results_url.md) |
 | Held-out phishing hosts using an Indian brand's name | 20 of 21 flagged; 0.3% of popular `.in` websites called dangerous | [eval/results_url.md](eval/results_url.md) |
+| Network detector on CIC-IDS2017 (5 days, 2.8M flows) | all 10 network-level attacks detected, 7 within the first minute; 46 false alarms in 40.7 h without beacon alerts (162 with) | [eval/results_net.md](eval/results_net.md) |
+| DGA model, held-out names | 89.8% of machine-made names caught, 0.35% of real names flagged | [eval/results_net.md](eval/results_net.md) |
 | Llama 3.2 1B SpinQuant INT4 on the Pi 4, 4 threads | prefill 12.7 tok/s, decode 4.4 tok/s, load 11.7 s | [eval/results_pi4.md](eval/results_pi4.md) |
 | First 2-sentence advisor explanation on the Pi (`llama_main`) | ≈42.5 s end to end | [eval/results_pi4.md](eval/results_pi4.md) |
 
@@ -68,4 +72,4 @@ This project uses Llama 3.2 1B Instruct (SpinQuant INT4) under the [Llama 3.2 Co
 
 ## Scope
 
-Defensive only. The repo has no attack or traffic-generation tools. The network detectors are tested by replaying labelled public captures on an isolated lab network.
+Defensive only. The repo has no attack or traffic-generation tools. The network detector is measured on labelled public data (CIC-IDS2017 flow records) and on the Pi's own lab network; it reads connection summaries, never the content of traffic.

@@ -62,6 +62,8 @@ class Advisor:
     def needs_llm(self, finding):
         if finding.verdict == "safe" or isinstance(self.backend, TemplateBackend):
             return False
+        if finding.source == "net":              # the Llama prompt is written for messages; network
+            return False                         # alerts use the checked playbook text for now
         return get_playbook(self.books, finding.category).severity not in SKIP_LLM_SEVERITIES
 
     def quick(self, finding):
