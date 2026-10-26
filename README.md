@@ -14,8 +14,9 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | Step 3: fast advisor (persistent Llama service with a native C++ engine, prompt v4) | done on the Pi 4: explanations in 19–28 s per new alert | [docs/step3-fast-advisor.md](docs/step3-fast-advisor.md) |
 | India SMS test set (227 real messages) and sender-aware scoring | measured | [eval/results_sms.md](eval/results_sms.md), [docs/india-sms-test-set.md](docs/india-sms-test-set.md) |
 | Android companion: reads incoming SMS with their sender IDs | running on a Galaxy S25 with the Pi; first real SMS checked; real-traffic measurement next | [docs/android-companion.md](docs/android-companion.md) |
-| Chats (RCS, WhatsApp) from unknown numbers, via notification access; several phones | code ready (opt-in) | [docs/android-companion.md](docs/android-companion.md), Parts F–G |
-| URL, network-flow and DNS detectors; fusion | planned | |
+| Chats (RCS, WhatsApp) from unknown numbers, via notification access; several phones | running on the Galaxy S25 (opt-in) | [docs/android-companion.md](docs/android-companion.md), Parts F–G |
+| Phishing link checker: official domains, brand rules, public phishing list, link model; links inside SMS and chats | done (update 9) | [eval/results_url.md](eval/results_url.md), [docs/url-detector.md](docs/url-detector.md) |
+| Network-flow and DNS detectors; fusion | planned | |
 
 ## Hardware and software
 
@@ -27,12 +28,13 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | Folder | What is in it |
 | --- | --- |
 | `detectors/sms/` | SMS scam detector: India rules, baseline model, `Finding` wrapper |
+| `detectors/url/` | Phishing link checker: link parsing, brand and official-domain lists, public phishing list (SQLite), link model (`url_model.npz`) |
 | `advisor/` | Turns a `Finding` into advice: playbooks, Llama prompt, output validator; `llm_engine.py` + `llm_service.py` keep Llama loaded on the Pi |
-| `app/` | FastAPI app: `POST /check` and a phone-friendly page; `POST /sms` for the Android companion, with a traffic log |
+| `app/` | FastAPI app: `POST /check` (a message or a link) and a phone-friendly page; `POST /url` for one link; `POST /sms` for the Android companion, with a traffic log |
 | `android/` | Android companion: a complete Android Studio project (Kotlin). Forwards incoming SMS with their sender IDs to the Pi, and keeps them while the Pi is out of reach |
 | `tests/` | pytest suite (fake model and fake `llama_main`, so no torch is needed) |
 | `deploy/` | Track B: export, Pi 4 build, benchmark script, test prompts |
-| `scripts/` | `run_pi.sh`: starts the Llama service and the app on the Pi; `install_service.sh`: starts them at every boot (systemd); `sms_traffic.py`: exports and measures the companion's traffic log |
+| `scripts/` | `run_pi.sh`: starts the Llama service and the app on the Pi; `install_service.sh`: starts them at every boot (systemd); `sms_traffic.py`: exports and measures the companion's traffic log; `get_url_data.py`: downloads the link checker's lists |
 | `eval/` | Results for the report |
 | `docs/` | Notes per step |
 
@@ -41,11 +43,12 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 ```bash
 pip install -r requirements.txt
 pytest -q
-python -m advisor.cli "Your SBI account is blocked, update KYC: http://sbi-kyc.example/v"
+python scripts/get_url_data.py          # optional: the public phishing list and the top websites (~20 MB)
+python -m advisor.cli "Your SBI account is blocked, update KYC: hxxp://sbi-kyc-update.xyz/v"
 uvicorn app.server:app --port 8000
 ```
 
-Open http://localhost:8000 and paste a message.
+Open http://localhost:8000 and paste a message or a link.
 
 ## Results so far
 
@@ -54,6 +57,8 @@ Open http://localhost:8000 and paste a message.
 | SMS detector, held-out F1 (6,053 unique messages) | 0.950, with 1.27% false alarms | [eval/results_sms.md](eval/results_sms.md) |
 | SMS detector on 227 real Indian messages, text only | 94% of fraud caught, but 64% of normal messages flagged | [eval/results_sms.md](eval/results_sms.md) |
 | Same, with registered sender IDs (projection) | 96% of fraud caught, 4% of normal messages flagged | [eval/results_sms.md](eval/results_sms.md) |
+| Link checker on brand-new phishing sites (held out, no lists) | 81% caught; 7.6% of popular websites flagged, 1.1% called dangerous | [eval/results_url.md](eval/results_url.md) |
+| Held-out phishing hosts using an Indian brand's name | 20 of 21 flagged; 0.3% of popular `.in` websites called dangerous | [eval/results_url.md](eval/results_url.md) |
 | Llama 3.2 1B SpinQuant INT4 on the Pi 4, 4 threads | prefill 12.7 tok/s, decode 4.4 tok/s, load 11.7 s | [eval/results_pi4.md](eval/results_pi4.md) |
 | First 2-sentence advisor explanation on the Pi (`llama_main`) | ≈42.5 s end to end | [eval/results_pi4.md](eval/results_pi4.md) |
 

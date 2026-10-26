@@ -23,6 +23,8 @@ incoming SMS ──> Android app ──(Wi-Fi hotspot, POST /sms + pairing token
 
 Chat messages (RCS "chat features" in Messages, WhatsApp) are not SMS: Android passes them to no other app. The app can still check them through the notifications the chat apps show, if you switch that on (Part F), and only for senders who are not in your contacts.
 
+Since update 9, the Pi also checks every link in a message: official sites, brand names on other people's sites, and the public list of phishing sites. The app needs no change for this. See [url-detector.md](url-detector.md).
+
 ## Part A: the Pi
 
 ### First time only: start automatically

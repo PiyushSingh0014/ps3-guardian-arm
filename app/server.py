@@ -1,4 +1,4 @@
-"""PS3 Guardian app: SMS -> detector -> advisor -> API + phone page.
+"""PS3 Guardian app: SMS or link -> detectors -> advisor -> API + phone page.
 
 Run from the repo root:
     uvicorn app.server:app --host 0.0.0.0 --port 8000
@@ -14,8 +14,9 @@ and a job id; the Llama explanation is written in the background and fetched
 from GET /explain/{id} once the validator has checked it. Llama tokens are
 never streamed to the user unchecked.
 
-The web page (/ and /check) has no login: keep it on your own network. The
-Android companion uses POST /sms, which needs the pairing token in the
+POST /check takes a message (the links in it are checked too) or a single link;
+POST /url takes a link. The web page (/ and /check) has no login: keep it on your
+own network. The Android companion uses POST /sms, which needs the pairing token in the
 X-Guardian-Token header (GUARDIAN_TOKEN on the Pi; scripts/run_pi.sh creates
 one) and logs each message for measuring (app/sms_log.py).
 """
@@ -46,6 +47,20 @@ class CheckIn(BaseModel):
     channel: str = Field("sms", pattern="^(sms|chat)$")     # chat: RCS, MMS or WhatsApp, read from a notification
     app: Optional[str] = Field(None, max_length=40, pattern="^[a-z_]+$")   # the chat app: messages, whatsapp
     device: Optional[str] = Field(None, max_length=32)      # the phone's name typed in the app, e.g. "A"
+
+
+class UrlIn(BaseModel):
+    url: str = Field(..., min_length=1, max_length=2000)
+    language: str = Field("en", pattern="^(en|hi)$")
+
+
+def single_link(text):
+    """The link, if the text is one link and nothing else ("hdfc-kyc.top/x"), else None."""
+    from detectors.url.links import parse_link
+    s = (text or "").strip()
+    if not s or any(c.isspace() for c in s):
+        return None
+    return parse_link(s if "://" in s else "http://" + s) and s
 
 
 class JobStore:
@@ -106,10 +121,15 @@ def _public_finding(finding):
     return f
 
 
-def create_app(detector=None, advisor=None, sms_log=None):
+def create_app(detector=None, advisor=None, sms_log=None, url_detector=None):
     if detector is None:
         from detectors.sms.detector import SmsDetector
         detector = SmsDetector()
+    if url_detector is None:
+        url_detector = getattr(detector, "url", None)
+        if url_detector is None:
+            from detectors.url.detector import UrlDetector
+            url_detector = UrlDetector()
     advisor = advisor or Advisor(backend=backend_from_env())
     jobs = JobStore()
     app = FastAPI(title="PS3 Guardian")
@@ -132,7 +152,19 @@ def create_app(detector=None, advisor=None, sms_log=None):
     @app.post("/check")
     def check(req: CheckIn, wait: bool = False):
         t0 = time.time()
-        finding = detector.check(req.message, sender=req.sender, language=req.language)
+        if single_link(req.message) and not req.sender:        # a pasted link on its own
+            finding = url_detector.check(req.message, language=req.language)
+        else:
+            finding = detector.check(req.message, sender=req.sender, language=req.language)
+        return respond(finding, wait, t0, time.time())
+
+    @app.post("/url")
+    def url(req: UrlIn, wait: bool = False):
+        """One link: is it safe to open?"""
+        if not single_link(req.url):
+            raise HTTPException(status_code=422, detail="send one link, without spaces")
+        t0 = time.time()
+        finding = url_detector.check(req.url, language=req.language)
         return respond(finding, wait, t0, time.time())
 
     @app.post("/sms")
@@ -169,7 +201,8 @@ def create_app(detector=None, advisor=None, sms_log=None):
 
     @app.get("/health")
     def health():
-        h = {"ok": True, "backend": advisor.backend.name, "jobs_pending": jobs.queued()}
+        h = {"ok": True, "backend": advisor.backend.name, "jobs_pending": jobs.queued(),
+             "links": url_detector.info()}
         if hasattr(advisor.backend, "health"):
             h["llm"] = advisor.backend.health()
         return h
@@ -201,9 +234,9 @@ h1{font-size:20px;margin:8px 0}#head{font-weight:700;font-size:18px}
 .muted{color:var(--muted);font-size:13px}ol{padding-left:20px}
 #llm{border-left:3px solid var(--accent);padding-left:10px}
 </style></head><body><main>
-<h1>Check a message</h1>
+<h1>Check a message or a link</h1>
 <div class="card">
-<textarea id="msg" placeholder="Paste an SMS or WhatsApp message"></textarea>
+<textarea id="msg" placeholder="Paste an SMS, a WhatsApp message or a link"></textarea>
 <div class="row"><input id="sender" placeholder="Sender ID or number (optional)">
 <select id="lang"><option value="en">English</option><option value="hi">हिन्दी</option></select></div>
 <button id="go">Check</button></div>
@@ -250,8 +283,10 @@ $('go').onclick=async()=>{
     const d=await r.json();const a=d.advice,f=d.finding;
     $('out').hidden=false;$('head').textContent=a.headline;$('head').className=f.verdict;
     show(a);
+    const e=f.entities||{};
+    const links=(e.links||[]).map(l=>l.link+' '+l.verdict).concat(e.link?[e.link+' ('+e.link_kind+')']:[]);
     $('meta').textContent=`score ${f.score} | ${f.category} | backend ${d.backend}`
-      +` | detect ${d.timing_ms.detect} ms`;
+      +` | detect ${d.timing_ms.detect} ms`+(links.length?' | links: '+links.join(', '):'');
     $('llm').hidden=!d.explain;
     if(d.explain){$('llm').textContent='Llama is writing a plain-language explanation on this device...';
       follow(d.explain.id,Date.now());}

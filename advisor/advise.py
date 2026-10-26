@@ -47,6 +47,11 @@ SAFE_ADVICE = dict(headline="LIKELY SAFE: no red flags found",
                    what="We found no warning signs in this message.",
                    why="It does not match the scam patterns we know.",
                    steps=["Stay careful: never share an OTP, PIN or password, whoever asks."])
+SAFE_LINK_ADVICE = dict(headline="LIKELY SAFE: no red flags found",
+                        what="We found no warning signs in this link.",
+                        why="It does not look like the fake websites we know.",
+                        steps=["Even on a real website, type a password, PIN or OTP only into pages you opened "
+                               "yourself from the official app or by typing the address."])
 
 
 class Advisor:
@@ -62,6 +67,11 @@ class Advisor:
     def quick(self, finding):
         """Instant answer from the playbook. Never calls the LLM."""
         if finding.verdict == "safe":
+            if finding.source == "url":
+                advice = dict(SAFE_LINK_ADVICE)
+                if finding.reasons:                       # e.g. "the link is on SBI's official website"
+                    advice["why"] = finding.reasons[0][0].upper() + finding.reasons[0][1:] + "."
+                return Advice(source="none", **advice)
             return Advice(source="none", **SAFE_ADVICE)
         book = get_playbook(self.books, finding.category)
         if finding.reasons:
