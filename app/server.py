@@ -15,11 +15,15 @@ from GET /explain/{id} once the validator has checked it. Llama tokens are
 never streamed to the user unchecked.
 
 POST /check takes a message (the links in it are checked too) or a single link;
-POST /url takes a link. The web page (/ and /check) has no login: keep it on your
-own network. The Android companion uses POST /sms, which needs the pairing token in the
+POST /url takes a link. GET /alerts lists the network monitor's alerts
+(detectors/net/monitor.py writes them to logs/net_alerts.jsonl) with their advice.
+
+The web page (/ and /check) and /alerts have no login: keep them on your own
+network. The Android companion uses POST /sms, which needs the pairing token in the
 X-Guardian-Token header (GUARDIAN_TOKEN on the Pi; scripts/run_pi.sh creates
 one) and logs each message for measuring (app/sms_log.py).
 """
+import json
 import os
 import secrets
 import threading
@@ -33,7 +37,10 @@ from pydantic import BaseModel, Field
 
 from advisor.advise import Advisor
 from advisor.backends import backend_from_env
+from advisor.findings import Finding
 
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+NET_ALERTS = os.path.join(ROOT, "logs", "net_alerts.jsonl")
 JOB_TTL_S = 900
 MAX_JOBS = 200
 
@@ -121,7 +128,31 @@ def _public_finding(finding):
     return f
 
 
-def create_app(detector=None, advisor=None, sms_log=None, url_detector=None):
+def read_alerts(path, limit=50, max_bytes=2_000_000):
+    """The newest `limit` network alerts in the monitor's file, newest first."""
+    if not path or not os.path.exists(path):
+        return []
+    with open(path, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        f.seek(max(0, size - max_bytes))
+        lines = f.read().decode("utf-8", errors="replace").splitlines()
+    if size > max_bytes:
+        lines = lines[1:]                          # the first line may be cut
+    out = []
+    for line in reversed(lines):
+        try:
+            item = json.loads(line)
+            Finding(**item["finding"])
+        except (ValueError, KeyError, TypeError):
+            continue
+        out.append(item)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net_alerts=None):
     if detector is None:
         from detectors.sms.detector import SmsDetector
         detector = SmsDetector()
@@ -199,10 +230,24 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None):
             out["seconds"] = round(job["finished"] - job["created"], 1)
         return out
 
+    alerts_path = net_alerts or os.environ.get("NET_ALERTS", NET_ALERTS)
+
+    @app.get("/alerts")
+    def alerts(limit: int = 50):
+        """Network alerts, newest first, each with the playbook's advice."""
+        out = []
+        for item in read_alerts(alerts_path, max(1, min(limit, 200))):
+            finding = Finding(**item["finding"])
+            out.append({"time": item.get("time"), "finding": _public_finding(finding),
+                        "advice": advisor.quick(finding).to_dict()})
+        return {"alerts": out}
+
     @app.get("/health")
     def health():
         h = {"ok": True, "backend": advisor.backend.name, "jobs_pending": jobs.queued(),
-             "links": url_detector.info()}
+             "links": url_detector.info(),
+             "net": {"alerts_file": os.path.exists(alerts_path),
+                     "alerts_mb": round(os.path.getsize(alerts_path) / 1e6, 2) if os.path.exists(alerts_path) else 0}}
         if hasattr(advisor.backend, "health"):
             h["llm"] = advisor.backend.health()
         return h
@@ -244,6 +289,8 @@ h1{font-size:20px;margin:8px 0}#head{font-weight:700;font-size:18px}
 <div id="head"></div><p id="what"></p><p id="why"></p>
 <p class="muted" id="llm" hidden></p>
 <ol id="steps"></ol><p class="muted" id="meta"></p></div>
+<h1>Network alerts</h1>
+<div class="card"><p class="muted" id="netnote">No network alerts yet.</p><div id="alerts"></div></div>
 <script>
 const $=id=>document.getElementById(id);
 let poll=null;
@@ -273,6 +320,24 @@ async function follow(id,t0){
     else{$('llm').textContent='Llama explanation failed; the playbook text above is still correct.';}
   }catch(e){$('llm').textContent='Lost contact with the device: '+e;}
 }
+function alertItem(a){
+  const f=a.finding,e=f.entities||{},div=document.createElement('div');
+  div.style.borderTop='1px solid var(--line)';div.style.padding='8px 0';
+  const h=document.createElement('div');h.className=f.verdict;h.style.fontWeight='600';h.textContent=a.advice.headline;
+  const m=document.createElement('div');m.className='muted';
+  m.textContent=(a.time||'')+' | device '+(e.device_name?e.device_name+' ('+e.device+')':e.device)+(e.peer?' | other side '+e.peer:'');
+  const w=document.createElement('div');w.textContent=a.advice.why;
+  const s=document.createElement('div');s.className='muted';s.textContent='First step: '+(a.advice.steps[0]||'');
+  div.append(h,m,w,s);return div;
+}
+async function loadAlerts(){
+  try{
+    const r=await fetch('/alerts?limit=20');const d=await r.json();
+    $('alerts').replaceChildren(...d.alerts.map(alertItem));
+    $('netnote').textContent=d.alerts.length?'Newest first. The network monitor checks every device on this Pi\'s Wi-Fi.':'No network alerts yet.';
+  }catch(e){$('netnote').textContent='Could not load network alerts: '+e;}
+}
+loadAlerts();setInterval(loadAlerts,30000);
 $('go').onclick=async()=>{
   const body={message:$('msg').value,sender:$('sender').value||null,language:$('lang').value};
   if(!body.message.trim())return;
