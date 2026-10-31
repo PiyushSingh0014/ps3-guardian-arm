@@ -12,7 +12,7 @@ The Pi watches every connection of every device on its own Wi-Fi and raises an a
 
 Alerts appear on the Pi's page under **Network alerts**, with the same kind of advice as SMS alerts. It reads connection summaries (flows), never the content of the traffic.
 
-Results on CIC-IDS2017: [eval/results_net.md](../eval/results_net.md).
+Results on CIC-IDS2017: [eval/results_net.md](../eval/results_net.md). To see it catch a device live, use the ESP32 lab device and its harmless test modes: [esp32-lab-device.md](esp32-lab-device.md).
 
 ## How it works
 

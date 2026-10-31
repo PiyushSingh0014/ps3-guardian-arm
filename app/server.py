@@ -17,11 +17,14 @@ never streamed to the user unchecked.
 POST /check takes a message (the links in it are checked too) or a single link;
 POST /url takes a link. GET /alerts lists the network monitor's alerts
 (detectors/net/monitor.py writes them to logs/net_alerts.jsonl) with their advice.
+Lab devices (the ESP32, esp32/ps3_lab_device) post their readings to POST /iot and
+get back the test mode the page asked for (GET /iot, POST /iot/mode; app/lab_devices.py).
 
-The web page (/ and /check) and /alerts have no login: keep them on your own
-network. The Android companion uses POST /sms, which needs the pairing token in the
-X-Guardian-Token header (GUARDIAN_TOKEN on the Pi; scripts/run_pi.sh creates
-one) and logs each message for measuring (app/sms_log.py).
+The web page (/ and /check), /alerts, GET /iot and /iot/mode have no login: keep them
+on your own network (the lab Wi-Fi is WPA2). The Android companion uses POST /sms and
+lab devices POST /iot; both need the pairing token in the X-Guardian-Token header
+(GUARDIAN_TOKEN on the Pi; scripts/run_pi.sh creates one). /sms logs each message for
+measuring (app/sms_log.py).
 """
 import json
 import os
@@ -31,16 +34,19 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from advisor.advise import Advisor
 from advisor.backends import backend_from_env
 from advisor.findings import Finding
+from app.lab_devices import MODES, LabDevices, clean_readings
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NET_ALERTS = os.path.join(ROOT, "logs", "net_alerts.jsonl")
+NET_STATE = os.path.join(ROOT, "data", "net", "devices.json")     # what the monitor learned per device
+LEARN_S = 2 * 3600                                                 # the monitor's learning time per device
 JOB_TTL_S = 900
 MAX_JOBS = 200
 
@@ -59,6 +65,46 @@ class CheckIn(BaseModel):
 class UrlIn(BaseModel):
     url: str = Field(..., min_length=1, max_length=2000)
     language: str = Field("en", pattern="^(en|hi)$")
+
+
+class LabReport(BaseModel):
+    """POST /iot from a lab device: its readings and the mode it is in."""
+    device: str = Field(..., pattern=r"^[A-Za-z0-9_-]{1,32}$")
+    readings: dict = Field(default_factory=dict)
+    mode: str = Field("normal", pattern="^[a-z]{1,16}$")
+
+
+class LabMode(BaseModel):
+    device: str = Field(..., pattern=r"^[A-Za-z0-9_-]{1,32}$")
+    mode: str = Field(..., pattern="^[a-z]{1,16}$")
+
+
+def require_token(given):
+    token = os.environ.get("GUARDIAN_TOKEN", "")
+    if not token:
+        raise HTTPException(status_code=503, detail="no pairing token on the Pi: set GUARDIAN_TOKEN")
+    if not secrets.compare_digest((given or "").encode(), token.encode()):
+        raise HTTPException(status_code=401, detail="wrong pairing token")
+
+
+class LearnedState:
+    """When the network monitor started learning each device (data/net/devices.json, which it
+    saves every 10 minutes), re-read only when the file changes."""
+
+    def __init__(self, path):
+        self.path, self.mtime, self.first = path, None, {}
+
+    def first_seen(self, ip):
+        try:
+            mtime = os.path.getmtime(self.path)
+            if mtime != self.mtime:
+                with open(self.path, encoding="utf-8") as f:
+                    data = json.load(f)
+                self.first = {k: v.get("first_ms", 0) / 1000 for k, v in data.items() if isinstance(v, dict)}
+                self.mtime = mtime
+        except (OSError, ValueError, AttributeError):
+            pass
+        return self.first.get(ip)
 
 
 def single_link(text):
@@ -152,7 +198,8 @@ def read_alerts(path, limit=50, max_bytes=2_000_000):
     return out
 
 
-def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net_alerts=None):
+def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net_alerts=None,
+               lab=None, net_state=None):
     if detector is None:
         from detectors.sms.detector import SmsDetector
         detector = SmsDetector()
@@ -201,11 +248,7 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
     @app.post("/sms")
     def sms(req: CheckIn, x_guardian_token: Optional[str] = Header(None)):
         """For the Android companion: the SMS as received, with its sender ID."""
-        token = os.environ.get("GUARDIAN_TOKEN", "")
-        if not token:
-            raise HTTPException(status_code=503, detail="no pairing token on the Pi: set GUARDIAN_TOKEN")
-        if not secrets.compare_digest((x_guardian_token or "").encode(), token.encode()):
-            raise HTTPException(status_code=401, detail="wrong pairing token")
+        require_token(x_guardian_token)
         from detectors.sms.detector import classify_sender
         sender = req.sender
         if req.channel == "chat" and classify_sender(sender).kind != "mobile":
@@ -242,6 +285,46 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
                         "advice": advisor.quick(finding).to_dict()})
         return {"alerts": out}
 
+    lab = lab if lab is not None else LabDevices()
+    learned = LearnedState(net_state or os.environ.get("NET_STATE", NET_STATE))
+
+    @app.post("/iot")
+    def iot_report(req: LabReport, request: Request, x_guardian_token: Optional[str] = Header(None)):
+        """A lab device's readings (every 15 s); the answer is the mode it should be in."""
+        require_token(x_guardian_token)
+        try:
+            readings = clean_readings(req.readings)
+            return lab.report(req.device, request.client.host if request.client else "", readings, req.mode)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+    @app.get("/iot")
+    def iot_list():
+        """Lab devices for the page: readings, test mode, and their latest network alerts."""
+        devices, recent = lab.listing(), read_alerts(alerts_path, 200)
+        now = time.time()
+        for d in devices:
+            first = learned.first_seen(d["ip"])
+            d["learning_until"] = (time.strftime("%H:%M", time.localtime(first + LEARN_S))
+                                   if first and first + LEARN_S > now else None)
+            mine = [a for a in recent if a["finding"].get("entities", {}).get("device") == d["ip"]][:3]
+            d["alerts"] = []
+            for a in mine:
+                finding = Finding(**a["finding"])
+                d["alerts"].append({"time": a.get("time"), "verdict": finding.verdict,
+                                    "headline": advisor.quick(finding).headline})
+        return {"devices": devices, "modes": {k: v[0] for k, v in MODES.items()}}
+
+    @app.post("/iot/mode")
+    def iot_mode(req: LabMode):
+        """Start a harmless test on a lab device, or stop it ("normal")."""
+        try:
+            return lab.set_mode(req.device, req.mode)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="no lab device with that name has reported")
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
     @app.get("/health")
     def health():
         h = {"ok": True, "backend": advisor.backend.name, "jobs_pending": jobs.queued(),
@@ -277,6 +360,8 @@ button{background:var(--accent);color:#fff;border:0;cursor:pointer;margin-top:8p
 h1{font-size:20px;margin:8px 0}#head{font-weight:700;font-size:18px}
 .dangerous{color:var(--danger)}.suspicious{color:var(--warn)}.safe{color:var(--ok)}
 .muted{color:var(--muted);font-size:13px}ol{padding-left:20px}
+.btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.btns button{width:auto;flex:1 1 150px;margin-top:0;padding:8px;font-size:14px;background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.item{border-top:1px solid var(--line);padding:8px 0}
 #llm{border-left:3px solid var(--accent);padding-left:10px}
 </style></head><body><main>
 <h1>Check a message or a link</h1>
@@ -289,6 +374,8 @@ h1{font-size:20px;margin:8px 0}#head{font-weight:700;font-size:18px}
 <div id="head"></div><p id="what"></p><p id="why"></p>
 <p class="muted" id="llm" hidden></p>
 <ol id="steps"></ol><p class="muted" id="meta"></p></div>
+<h1>Lab devices</h1>
+<div class="card"><p class="muted" id="devnote">No lab device has reported yet.</p><div id="devices"></div></div>
 <h1>Network alerts</h1>
 <div class="card"><p class="muted" id="netnote">No network alerts yet.</p><div id="alerts"></div></div>
 <script>
@@ -337,7 +424,53 @@ async function loadAlerts(){
     $('netnote').textContent=d.alerts.length?'Newest first. The network monitor checks every device on the Wi-Fi of this Pi.':'No network alerts yet.';
   }catch(e){$('netnote').textContent='Could not load network alerts: '+e;}
 }
-loadAlerts();setInterval(loadAlerts,30000);
+loadAlerts();setInterval(loadAlerts,10000);
+const READ={temp_c:['Temperature','°C'],humidity:['Humidity','%'],bmp_temp_c:['Temperature (BMP180)','°C'],
+  pressure_hpa:['Pressure','hPa'],distance_cm:['Distance','cm'],knob:['Knob VR1',''],air_raw:['Air MQ-135 (raw)',''],
+  rssi:['Wi-Fi signal','dBm'],heap_kb:['Free memory','KB']};
+function reading(k,v){
+  if(k==='obstacle')return 'IR sensor: '+(v?'something in front':'clear');
+  if(k==='uptime_s'){const h=Math.floor(v/3600),m=Math.floor(v%3600/60);return 'Running for '+(h?h+' h ':'')+m+' min';}
+  const r=READ[k]||[k,''];return r[0]+': '+v+(r[1]?' '+r[1]:'');
+}
+function deviceItem(d,modes){
+  const div=document.createElement('div');div.className='item';
+  const h=document.createElement('div');h.style.fontWeight='600';h.textContent=d.device+' ('+d.ip+')';
+  const seen=document.createElement('div');seen.className='muted';
+  seen.textContent='Last report '+d.seen_s_ago+' s ago'+(d.learning_until?' | the network monitor is learning its normal until '
+    +d.learning_until+' (the beacon test needs that)':'');
+  const r=document.createElement('div');r.textContent=Object.entries(d.readings).map(([k,v])=>reading(k,v)).join(' | ');
+  const m=document.createElement('div');m.style.marginTop='6px';
+  m.textContent=d.wanted==='normal'?'Mode: normal':'Test running: '+modes[d.wanted]+', '
+    +Math.max(1,Math.ceil(d.seconds_left/60))+' min left'+(d.mode!==d.wanted?' (the device starts at its next report)':'');
+  const b=document.createElement('div');b.className='btns';
+  for(const [k,label] of Object.entries(modes)){
+    if(k===d.wanted)continue;
+    const btn=document.createElement('button');btn.textContent=k==='normal'?'Stop the test':label;
+    btn.onclick=()=>setMode(d.device,k);b.append(btn);
+  }
+  div.append(h,seen,r,m,b);
+  for(const a of d.alerts||[]){
+    const x=document.createElement('div');x.className=a.verdict;x.style.fontSize='14px';
+    x.textContent=(a.time||'')+'  '+a.headline;div.append(x);
+  }
+  return div;
+}
+async function loadDevices(){
+  try{
+    const r=await fetch('/iot');const d=await r.json();
+    $('devices').replaceChildren(...d.devices.map(x=>deviceItem(x,d.modes)));
+    $('devnote').textContent=d.devices.length?'Test modes only imitate what malware does on a network (look-ups of names that '
+      +'do not exist, a small page fetched on a timer). Nothing is attacked, and each test stops by itself.'
+      :'No lab device has reported yet: see docs/esp32-lab-device.md.';
+  }catch(e){$('devnote').textContent='Could not load lab devices: '+e;}
+}
+async function setMode(device,mode){
+  try{await fetch('/iot/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device,mode})});}
+  catch(e){}
+  loadDevices();
+}
+loadDevices();setInterval(loadDevices,5000);
 $('go').onclick=async()=>{
   const body={message:$('msg').value,sender:$('sender').value||null,language:$('lang').value};
   if(!body.message.trim())return;
