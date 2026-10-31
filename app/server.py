@@ -334,7 +334,7 @@ async function loadAlerts(){
   try{
     const r=await fetch('/alerts?limit=20');const d=await r.json();
     $('alerts').replaceChildren(...d.alerts.map(alertItem));
-    $('netnote').textContent=d.alerts.length?'Newest first. The network monitor checks every device on this Pi\'s Wi-Fi.':'No network alerts yet.';
+    $('netnote').textContent=d.alerts.length?'Newest first. The network monitor checks every device on the Wi-Fi of this Pi.':'No network alerts yet.';
   }catch(e){$('netnote').textContent='Could not load network alerts: '+e;}
 }
 loadAlerts();setInterval(loadAlerts,30000);

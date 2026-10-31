@@ -173,3 +173,28 @@ def test_every_network_alert_has_a_playbook(cat):
     from advisor.playbooks import load_playbooks
     books = load_playbooks()
     assert cat in books and books[cat].steps and books[cat].fact
+
+
+def test_device_names_from_the_copy_or_the_original_list(tmp_path):
+    copy, original = tmp_path / "leases", tmp_path / "dnsmasq-wlan0.leases"
+    original.write_text("1793460000 aa:bb:cc:dd:ee:01 10.42.0.23 sensor-esp32 01:aa\n"
+                        "1793460100 aa:bb:cc:dd:ee:02 10.42.0.50 * *\n")
+    e = engine(leases=(str(copy), str(original)))           # no copy yet: the original is read
+    assert e.device_name(DEV) == "sensor-esp32" and e.device_name("10.42.0.50") == ""
+    copy.write_text("10.42.0.23 kitchen-cam\n")
+    e = engine(leases=(str(copy), str(original)))           # the copy wins when it exists
+    hits = run(e, [flow(T0 + i * 100, PI, 1000 + i, rst=1, pin=1) for i in range(25)])
+    assert hits and hits[0].entities["device_name"] == "kitchen-cam"
+    assert "kitchen-cam" not in " ".join(hits[0].reasons)     # self-chosen names never reach Llama
+
+
+def test_monitor_prints_status_and_learns_the_pi_address(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "FIRST_STATUS_S", 0)
+    monkeypatch.setattr(monitor, "STATUS_EVERY_S", 0)
+    monkeypatch.setattr(monitor, "iface_address", lambda iface: PI)
+    e = engine()
+    assert e.gateway is None                                 # the Wi-Fi had no address at start
+    monitor.run(iter([flow(T0, "52.1.1.1", 443, syn=1, pin=5, bin_=900)]), e, None, show=True, iface="wlan0")
+    assert e.gateway == PI and e.base.gateway == PI
+    printed = capsys.readouterr().out
+    assert "1 flows so far (1 in the last 1 min), 0 alerts" in printed

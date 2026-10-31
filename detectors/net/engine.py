@@ -19,7 +19,29 @@ from .dns import NameChecks, load_dga_model
 from .flows import FlowRec
 from .rules import Beacon, default_rules
 
-LEASES = "/var/lib/NetworkManager/dnsmasq-wlan0.leases"
+# Names that devices on the Pi's hotspot gave themselves when they asked for an address.
+# NetworkManager's list is readable only by root, so install_netmon.sh keeps a copy with just
+# "address name" lines for the monitor (ps3-leases.path); the original is read if it can be.
+LEASES = ("/run/ps3-guardian/leases", "/var/lib/NetworkManager/dnsmasq-wlan0.leases")
+
+
+def read_lease_names(paths):
+    """{address: name} from the first readable file: "address name" lines (the copy) or
+    dnsmasq lease lines ("expiry mac address name client-id"). Unknown names ("*") are left out."""
+    for path in ([paths] if isinstance(paths, str) else paths or ()):
+        names = {}
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    parts = line.split()
+                    ip, name = (parts[0], parts[1]) if len(parts) == 2 else \
+                               (parts[2], parts[3]) if len(parts) >= 4 else (None, None)
+                    if ip and name and name != "*":
+                        names[ip] = name[:40]
+        except OSError:
+            continue
+        return names
+    return {}
 
 
 def defang(text):
@@ -59,17 +81,13 @@ class NetEngine:
     def device_name(self, ip):
         if self.leases and time.time() - self.lease_read > 60:
             self.lease_read = time.time()
-            names = {}
-            try:
-                with open(self.leases, encoding="utf-8", errors="replace") as f:
-                    for line in f:
-                        parts = line.split()
-                        if len(parts) >= 4 and parts[3] != "*":
-                            names[parts[2]] = parts[3][:40]
-            except OSError:
-                pass
-            self.lease_names = names
+            self.lease_names = read_lease_names(self.leases)
         return self.lease_names.get(ip, "")
+
+    def set_gateway(self, address):
+        """The Pi's own address on the watched Wi-Fi, once it is known (its traffic is not a device's)."""
+        if address:
+            self.gateway = self.base.gateway = address
 
     def _peer_name(self, r: FlowRec):
         """The server's registered domain when the flow names it (TLS or HTTP), else None."""

@@ -7,7 +7,8 @@
 Alerts go to logs/net_alerts.jsonl, one JSON object per line; the app shows them under
 "Network alerts" (GET /alerts). Live capture needs the CAP_NET_RAW and CAP_NET_ADMIN
 capabilities: scripts/install_netmon.sh runs this as a systemd service that has them.
-Only alerts and the per-device counts of baseline.py are kept, never packet contents.
+Only alerts and what baseline.py keeps per device (counts, names of the servers it uses)
+are kept, never packet contents. When live, a status line goes to the log every 15 minutes.
 """
 import argparse
 import json
@@ -25,6 +26,8 @@ from detectors.net.flows import read_cic_csv, read_flows             # noqa: E40
 
 ALERTS = os.path.join(ROOT, "logs", "net_alerts.jsonl")
 SAVE_EVERY_S = 600
+STATUS_EVERY_S = 900                         # live only: "[net] 19:30 1234 flows so far ..."
+FIRST_STATUS_S = 60                          # the first one a minute after starting
 
 
 def iface_address(iface):
@@ -57,7 +60,9 @@ def _interrupt(*_):
     raise KeyboardInterrupt                  # systemctl stop: end the capture cleanly, like Ctrl+C
 
 
-def run(flows, engine, out=None, show=True):
+def run(flows, engine, out=None, show=True, iface=None):
+    """Feed flows to the engine; write and print alerts. With `iface` (live), also print a
+    status line now and then, and learn the Pi's address there if it had none at start."""
     global _MAIN
     _MAIN = os.getpid()
     try:
@@ -65,6 +70,7 @@ def run(flows, engine, out=None, show=True):
     except ValueError:                       # not the main thread (tests)
         pass
     n_alerts, last_save = 0, time.time()
+    since, next_status, flows_then = time.time(), time.time() + FIRST_STATUS_S, 0
     try:
         for rec in flows:
             for f in engine.feed(rec):
@@ -78,6 +84,14 @@ def run(flows, engine, out=None, show=True):
             if time.time() - last_save > SAVE_EVERY_S:
                 engine.save()
                 last_save = time.time()
+            now = time.time()
+            if iface and now >= next_status:
+                if engine.gateway is None:           # the Wi-Fi had no address when this started
+                    engine.set_gateway(iface_address(iface))
+                minutes = max(1, round((now - since) / 60))
+                print(f"[net] {time.strftime('%H:%M')} {engine.flows} flows so far ({engine.flows - flows_then} "
+                      f"in the last {minutes} min), {n_alerts} alerts", flush=True)
+                since, next_status, flows_then = now, now + STATUS_EVERY_S, engine.flows
     except KeyboardInterrupt:
         pass
     finally:
@@ -100,7 +114,7 @@ def main():
         gateway = iface_address(a.iface)
         engine = NetEngine(gateway=gateway, learn_ms=int(a.learn_hours * 3600_000), state_path=default_state_path())
         print(f"[net] watching {a.iface} (this Pi is {gateway or 'unknown'}); alerts -> {a.out or ALERTS}", flush=True)
-        n = run(read_flows(a.iface), engine, a.out or ALERTS, not a.quiet)
+        n = run(read_flows(a.iface), engine, a.out or ALERTS, not a.quiet, iface=a.iface)
     elif a.pcap:
         engine = NetEngine(learn_ms=int(a.learn_hours * 3600_000), leases=None)
         n = run(read_flows(a.pcap), engine, a.out, not a.quiet)
