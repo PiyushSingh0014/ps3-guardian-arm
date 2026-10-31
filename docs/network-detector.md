@@ -71,10 +71,29 @@ bash scripts/install_netmon.sh
 
 ### 2. Make the Pi the hotspot for the ESP32 and lab devices
 
-The Pi's Wi-Fi becomes a hotspot, `PS3-Guardian-Lab` (2.4 GHz, WPA2, so an ESP32 can join). The Pi gets its internet from the phone over USB.
+The Pi's Wi-Fi becomes a hotspot, `PS3-Guardian-Lab` (2.4 GHz, WPA2, so an ESP32 can join). A phone plugged into the Pi gives it internet over USB:
 
-1. Plug the phone into a USB port of the Pi.
-2. On the phone, switch on **USB tethering**: Settings → Connections → Mobile Hotspot and Tethering → USB tethering.
+```
+internet ◄── internet phone ◄─USB tethering─ Pi ──► Wi-Fi PS3-Guardian-Lab, the Pi is 10.42.0.1
+                                                     ├─ ESP32
+                                                     ├─ laptop (SSH)
+                                                     └─ your phone with the companion app
+```
+
+The internet phone can be a second phone that does nothing else. Ours is a Motorola, because the Galaxy S25 would not switch to USB tethering. Your own phone then joins `PS3-Guardian-Lab` like the other devices, so the detector checks its connections too.
+
+**Prepare the internet phone (once):**
+
+1. **Its own internet:** a SIM with mobile data, or a Wi-Fi other than the hotspot of a phone that will join the lab Wi-Fi.
+2. **Never on the lab Wi-Fi:** it must not join `PS3-Guardian-Lab` itself, or its internet goes round in a circle.
+3. **Tethering by itself:** Settings → About phone → tap **Build number** 7 times. Then Developer options → **Default USB configuration** → **USB tethering**. Tethering now starts whenever the phone is plugged in and unlocked.
+4. **Data Saver off:** Android blocks tethering while it is on.
+5. **Optional,** for a spare phone with nothing personal on it: Screen lock → None, so tethering also restarts by itself after the Pi restarts.
+
+**Switch:**
+
+1. Plug the internet phone into a USB port of the Pi. Switch on **USB tethering** if it didn't start by itself.
+2. Leave the Pi on your phone's Wi-Fi hotspot for now. It is the way back if something goes wrong.
 3. On the Pi:
 
    ```bash
@@ -90,21 +109,28 @@ The Pi's Wi-Fi becomes a hotspot, `PS3-Guardian-Lab` (2.4 GHz, WPA2, so an ESP32
    cd ~/ps3-guardian && bash scripts/setup_gateway.sh --keep
    ```
 
-   If you don't run `--keep` within 10 minutes, the Pi switches back to the phone's hotspot by itself, and you can SSH in as before.
+   If you don't run `--keep` within 10 minutes, the Pi switches back to your phone's hotspot by itself, and you can SSH in as before.
 
-5. `--keep` prints the address your phone's app should use: the Pi's USB address. Put it in the companion app (Pi address). Teammates' phones and the laptop join `PS3-Guardian-Lab` and use `http://10.42.0.1:8000`.
+5. Switch off your phone's hotspot and join `PS3-Guardian-Lab` with it. In the companion app, set the Pi address to `http://10.42.0.1:8000` (same pairing token) and tap **Test connection**.
+
+If one phone does both jobs (internet over USB and the app), it stays off the lab Wi-Fi. Its app uses the USB address that `--keep` prints.
 
 **Other commands:**
 
-- `bash scripts/setup_gateway.sh --status` shows the current state.
-- `bash scripts/setup_gateway.sh --undo` goes back to the phone's hotspot.
+- `bash scripts/setup_gateway.sh --status` shows the Wi-Fi, the data used through the internet phone, and the devices on the hotspot.
+- `bash scripts/setup_gateway.sh --undo` goes back to your phone's hotspot. Switch that hotspot on first.
 
 **Things to know:**
 
-- **Power.** The phone charges from the Pi's USB port. The Pi has restarted by itself before, so check `vcgencmd get_throttled` after plugging the phone in.
-- **After a restart** of the Pi or the phone, switch USB tethering on again on the phone. Android turns it off when the cable resets.
-- **Mobile data.** Every device on `PS3-Guardian-Lab` uses the phone's mobile data.
-- **Consent.** Everyone whose device joins `PS3-Guardian-Lab` should know the Pi checks its connections. As with SMS: consent first. Only alerts and per-device counts are kept, never content.
+- **Power.** The internet phone charges from the Pi's USB port. The Pi has restarted by itself before, so check `vcgencmd get_throttled` after plugging the phone in.
+- **After a restart** of the Pi, tethering comes back by itself if the internet phone is unlocked or has no screen lock (with Default USB configuration set). Otherwise unlock it or switch tethering on again.
+- **Mobile data.** Every device on `PS3-Guardian-Lab` uses the internet phone's data.
+  - **Android phones** are told the hotspot is metered (the script adds Android's `ANDROID_METERED` hint to the hotspot's DHCP answers), so they hold back big background downloads there, such as app updates and backups.
+  - **On the laptop,** set it yourself. Windows: Settings → Network & internet → Wi-Fi → PS3-Guardian-Lab → Metered connection.
+  - **To see the data used:** `--status`.
+- **Consent.** Everyone whose device joins `PS3-Guardian-Lab` should know the Pi checks its connections. As with SMS: consent first.
+  - **What is kept:** alerts, per-device counts, and the addresses or names of the servers each device uses (`data/net/devices.json`). Never the content.
+  - **Removing a device:** stop `ps3-netmon`, delete its entry from that file and its lines from `logs/net_alerts.jsonl`, then start the service again.
 
 ## Use it on a capture file or the test data
 
