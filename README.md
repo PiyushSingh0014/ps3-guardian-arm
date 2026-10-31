@@ -32,8 +32,9 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | `detectors/url/` | Phishing link checker: link parsing, brand and official-domain lists, public phishing list (SQLite), link model (`url_model.npz`) |
 | `detectors/net/` | Network detector: flows from NFStream (live or pcap) or CIC-IDS2017 CSVs, behaviour rules, DNS checks, DGA model (`dga_model.npz`), per-device baseline, the monitor service |
 | `advisor/` | Turns a `Finding` into advice: playbooks, Llama prompt, output validator; `llm_engine.py` + `llm_service.py` keep Llama loaded on the Pi |
-| `app/` | FastAPI app: `POST /check` (a message or a link) and a phone-friendly page; `POST /url` for one link; `POST /sms` for the Android companion, with a traffic log; `GET /alerts` for network alerts |
+| `app/` | FastAPI app: `POST /check` (a message or a link) and a phone-friendly page; `POST /url` for one link; `POST /sms` for the Android companion, with a traffic log; `GET /alerts` for network alerts; `/iot` for lab devices and their test modes |
 | `android/` | Android companion: a complete Android Studio project (Kotlin). Forwards incoming SMS with their sender IDs to the Pi, and keeps them while the Pi is out of reach |
+| `esp32/` | Lab device: Arduino sketch for the ESP32 on the IoT Pro Kit. Sends its sensor readings to the Pi; harmless test modes imitate infected IoT devices for the network detector ([docs/esp32-lab-device.md](docs/esp32-lab-device.md)) |
 | `tests/` | pytest suite (fake model and fake `llama_main`, so no torch is needed) |
 | `deploy/` | Track B: export, Pi 4 build, benchmark script, test prompts |
 | `scripts/` | `run_pi.sh`: starts the Llama service and the app on the Pi; `install_service.sh`: starts them at every boot (systemd); `sms_traffic.py`: exports and measures the companion's traffic log; `get_url_data.py`: downloads the link checker's lists; `install_netmon.sh`: the network monitor service; `setup_gateway.sh`: the Pi as a Wi-Fi hotspot, with automatic undo |
