@@ -57,7 +57,7 @@ The same problem is reported at most once per 10 minutes, unless it gets worse (
 
 ### 1. Install and start the monitor
 
-This step needs no network change. It starts watching `wlan0` (today, mostly the Pi's own traffic):
+This step needs no network change. It starts watching `wlan0`, which carries mostly the Pi's own traffic until the Pi becomes the hotspot (part 2):
 
 ```bash
 cd ~/ps3-guardian
@@ -67,7 +67,10 @@ bash scripts/install_netmon.sh
 - It installs NFStream into `~/ps3-venv`.
 - It creates the systemd service `ps3-netmon`, which runs as your user with only the two capture capabilities (CAP_NET_RAW, CAP_NET_ADMIN).
 - It starts the service now and at every boot.
-- The log is `logs/netmon.log`.
+- It installs `ps3-leases`, so alerts can show device names. NetworkManager's list of devices on the hotspot is readable only by root. Whenever that list changes, `ps3-leases` copies each device's address and the name it gave itself (nothing else) to `/run/ps3-guardian/leases`, readable by your user.
+- The log is `logs/netmon.log`. It has every alert and, every 15 minutes, a status line such as `[net] 19:30 1234 flows so far (56 in the last 15 min), 1 alerts`.
+
+Running the script again is safe: it rewrites the services and restarts the monitor.
 
 ### 2. Make the Pi the hotspot for the ESP32 and lab devices
 

@@ -133,3 +133,22 @@ def test_api_answers_at_once_then_explains_in_background(detector):
     assert client.get("/explain/nope").status_code == 404
     sync = client.post("/check?wait=true", json={"message": SCAM}).json()
     assert sync["explain"] is None and sync["advice"]["source"] == "llm"
+
+
+# --- the web page --------------------------------------------------------------
+def test_page_script_is_valid_javascript(tmp_path):
+    """One stray quote stops the whole page script: no alerts shown, the Check button dead.
+    PAGE is a normal Python string, so an escape such as \\' reaches the browser as a bare '."""
+    import re
+    import shutil
+    import subprocess
+    from app.server import PAGE
+    scripts = re.findall(r"<script>(.*?)</script>", PAGE, re.S)
+    assert len(scripts) == 1 and "\\" not in PAGE
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed: only the escape check ran")
+    js = tmp_path / "page.js"
+    js.write_text(scripts[0], encoding="utf-8")
+    done = subprocess.run([node, "--check", str(js)], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
