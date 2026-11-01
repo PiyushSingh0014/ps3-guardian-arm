@@ -16,8 +16,10 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | Android companion: reads incoming SMS with their sender IDs | running on a Galaxy S25 with the Pi; first real SMS checked; real-traffic measurement next | [docs/android-companion.md](docs/android-companion.md) |
 | Chats (RCS, WhatsApp) from unknown numbers, via notification access; several phones | running on the Galaxy S25 (opt-in) | [docs/android-companion.md](docs/android-companion.md), Parts F–G |
 | Phishing link checker: official domains, brand rules, public phishing list, link model; links inside SMS and chats | done (update 9) | [eval/results_url.md](eval/results_url.md), [docs/url-detector.md](docs/url-detector.md) |
-| Network detector: scans, floods, password guessing, beacons, DGA names, DNS tunnels, phishing look-ups, per-device normal; the Pi as the Wi-Fi hotspot for lab devices | done (update 10); live on the Pi next | [eval/results_net.md](eval/results_net.md), [docs/network-detector.md](docs/network-detector.md) |
-| Llama explanations for network alerts; ESP32 demo device; fusion | planned | |
+| Network detector: scans, floods, password guessing, beacons, DGA names, DNS tunnels, phishing look-ups, per-device normal; the Pi as the Wi-Fi hotspot for lab devices | done (update 10); live on the Pi's own lab Wi-Fi since 1 November 2026 (updates 12–16) | [eval/results_net.md](eval/results_net.md), [docs/network-detector.md](docs/network-detector.md) |
+| ESP32 lab device: sensor readings on the Pi page, four harmless test modes | done: all four tests caught live (updates 14–16) | [docs/esp32-lab-device.md](docs/esp32-lab-device.md), [eval/results_net.md](eval/results_net.md) |
+| Llama explanations for network alerts: a prompt of their own, written in the background | built (update 17); time and review on the Pi next | [docs/network-detector.md](docs/network-detector.md#llama-explanations) |
+| Fusion of message, link and network alerts | planned | |
 
 ## Hardware and software
 

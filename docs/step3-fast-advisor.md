@@ -287,7 +287,7 @@ The results:
 
 ## Known limitations / next
 
-- Only one language prefix stays in the KV cache. Switching languages costs one prefix read (~45-60 s), after which the idle re-warm restores the default.
+- Only one language prefix stays in the KV cache. Switching languages costs one prefix read (~45-60 s), after which the idle re-warm restores the default. Network alerts (update 17) have a prefix of their own and work the same way: see [network-detector.md](network-detector.md#llama-explanations).
 - `categorize.py` and `brands.py` are keyword-based. Replace them with your model's scam-type output, keeping the playbook keys.
 - Playbook steps are English only. Hindi step text is the next content task.
 - There is no authentication yet. Keep the app on the lab network until the pairing token lands.

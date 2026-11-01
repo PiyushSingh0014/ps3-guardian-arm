@@ -17,6 +17,9 @@ never streamed to the user unchecked.
 POST /check takes a message (the links in it are checked too) or a single link;
 POST /url takes a link. GET /alerts lists the network monitor's alerts
 (detectors/net/monitor.py writes them to logs/net_alerts.jsonl) with their advice.
+With an LLM backend, Llama explains the newest network alerts in the background
+(NetExplanations), one at a time and only while no message waits for Llama; /alerts
+shows each explanation once it is checked. NET_EXPLAIN=0 switches this off.
 Lab devices (the ESP32, esp32/ps3_lab_device) post their readings to POST /iot and
 get back the test mode the page asked for (GET /iot, POST /iot/mode; app/lab_devices.py).
 
@@ -26,11 +29,13 @@ lab devices POST /iot; both need the pairing token in the X-Guardian-Token heade
 (GUARDIAN_TOKEN on the Pi; scripts/run_pi.sh creates one). /sms logs each message for
 measuring (app/sms_log.py).
 """
+import hashlib
 import json
 import os
 import secrets
 import threading
 import time
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
@@ -39,7 +44,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from advisor.advise import Advisor
-from advisor.backends import backend_from_env
+from advisor.backends import TemplateBackend, backend_from_env
 from advisor.findings import Finding
 from app.lab_devices import MODES, LabDevices, clean_readings
 
@@ -49,6 +54,11 @@ NET_STATE = os.path.join(ROOT, "data", "net", "devices.json")     # what the mon
 LEARN_S = 2 * 3600                                                 # the monitor's learning time per device
 JOB_TTL_S = 900
 MAX_JOBS = 200
+NET_EXPLAIN_EVERY_S = 15          # the background explainer looks for new network alerts this often,
+NET_EXPLAIN_NEWEST = 10           # and explains only the newest 10 alerts
+NET_EXPLAIN_MAX_AGE_S = 24 * 3600   # of the last day
+NET_EXPLAIN_RETRY_S = 300         # Llama was not reachable: try that alert again 5 minutes later
+NET_EXPLAIN_KEEP = 500
 
 
 class CheckIn(BaseModel):
@@ -123,7 +133,9 @@ class JobStore:
         self.jobs, self.lock = {}, threading.Lock()
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="llm")
 
-    def submit(self, fn):
+    def submit(self, fn, on_done=None):
+        """Run fn() (it returns an Advice) after the jobs before it; on_done() is called once
+        the result is stored."""
         job_id = secrets.token_urlsafe(9)
         now = time.time()
         with self.lock:
@@ -134,6 +146,9 @@ class JobStore:
             self.jobs[job_id] = {"status": "pending", "created": now}
 
         def run():
+            with self.lock:
+                if job_id in self.jobs:
+                    self.jobs[job_id]["started"] = time.time()
             try:
                 advice = fn()
                 result = {"status": "done" if advice.source == "llm" else "fallback",
@@ -143,6 +158,8 @@ class JobStore:
             with self.lock:
                 if job_id in self.jobs:
                     self.jobs[job_id].update(result, finished=time.time())
+            if on_done:
+                on_done()
 
         self.pool.submit(run)
         return job_id
@@ -198,8 +215,118 @@ def read_alerts(path, limit=50, max_bytes=2_000_000):
     return out
 
 
+def alert_key(item):
+    """One network alert's identity: its line in the monitor's file."""
+    return hashlib.sha1(json.dumps(item, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def alert_epoch(item):
+    """When the alert happened (the start of the flow that set it off), in seconds; None if unknown."""
+    ms = (item.get("finding") or {}).get("entities", {}).get("time_ms")
+    return ms / 1000 if isinstance(ms, (int, float)) and not isinstance(ms, bool) else None
+
+
+class NetExplanations:
+    """Llama explanations of network alerts, written in the background, newest first.
+
+    Nobody waits for them on a phone, so they stay out of the way of message checks: one
+    starts only when no other Llama job is queued, and only for the newest alerts of the last
+    day. When one finishes, the next starts at once, while Llama still has the network
+    examples in its KV cache. Results are kept in memory; after a restart the Llama service's
+    answer cache makes the same alerts instant again."""
+
+    def __init__(self, advisor, jobs, clock=time.time, newest=NET_EXPLAIN_NEWEST,
+                 max_age_s=NET_EXPLAIN_MAX_AGE_S):
+        self.advisor, self.jobs, self.clock = advisor, jobs, clock
+        self.newest, self.max_age_s = newest, max_age_s
+        self.lock = threading.Lock()
+        self.pending = {}               # alert key -> job id
+        self.done = OrderedDict()       # alert key -> {"status": "done" or "fallback", "advice", "seconds"}
+        self.retry = {}                 # alert key -> when to try again (Llama was not reachable)
+        self.wake = threading.Event()
+
+    def _wanted(self, items):
+        """(key, finding) of the alerts that should get an explanation, newest first."""
+        now = self.clock()
+        for item in items[:self.newest]:
+            t = alert_epoch(item)
+            if t is None or now - t > self.max_age_s:
+                continue
+            finding = Finding(**item["finding"])
+            if self.advisor.needs_llm(finding):
+                yield alert_key(item), finding
+
+    def _finished(self, key, job):
+        advice = (job or {}).get("advice") or {}
+        if job is None or job["status"] == "failed" or not advice.get("metrics"):
+            # No answer from Llama at all (service down, job lost): try again later. An answer
+            # the checker refused has metrics, and is final.
+            self.retry[key] = self.clock() + NET_EXPLAIN_RETRY_S
+            return
+        self.done[key] = {"status": job["status"], "advice": advice,
+                          "seconds": round(job["finished"] - job["created"], 1)}
+        while len(self.done) > NET_EXPLAIN_KEEP:
+            self.done.popitem(last=False)
+
+    def refresh(self, items):
+        """Collect finished explanations and start the next one if Llama is free.
+        items: the newest alerts, newest first (read_alerts)."""
+        with self.lock:
+            for key, job_id in list(self.pending.items()):
+                job = self.jobs.get(job_id)
+                if job is None or job["status"] != "pending":
+                    del self.pending[key]
+                    self._finished(key, job)
+            if self.pending or self.jobs.queued():
+                return                                    # one at a time; messages go first
+            now = self.clock()
+            self.retry = {k: t for k, t in self.retry.items() if t > now}
+            for key, finding in self._wanted(items):
+                if key not in self.done and key not in self.retry:
+                    self.pending[key] = self.jobs.submit(lambda f=finding: self.advisor.explain(f),
+                                                         on_done=self.wake.set)
+                    return
+
+    def view(self, items):
+        """For each alert: None, or {"status": "queued" | "pending"}, or the finished explanation
+        {"status": "done" | "fallback", "advice", "seconds"}."""
+        now = self.clock()
+        wanted = {key for key, _ in self._wanted(items)}
+        out = []
+        with self.lock:
+            for item in items:
+                key = alert_key(item)
+                if key in self.done:
+                    out.append(dict(self.done[key]))
+                elif key in self.pending:
+                    out.append({"status": "pending"})
+                elif key in wanted and self.retry.get(key, 0) <= now:
+                    out.append({"status": "queued"})
+                else:
+                    out.append(None)
+        return out
+
+    def info(self):
+        with self.lock:
+            return {"explained": len(self.done), "explaining": len(self.pending)}
+
+    def start(self, read_items, every_s=NET_EXPLAIN_EVERY_S):
+        """The background thread: refresh every every_s seconds, and at once when a job ends."""
+        def loop():
+            while True:
+                self.wake.wait(every_s)
+                self.wake.clear()
+                try:
+                    self.refresh(read_items())
+                except Exception as e:               # a broken line in the alert file must not stop it
+                    print(f"[net-explain] {type(e).__name__}: {e}", flush=True)
+        threading.Thread(target=loop, name="net-explain", daemon=True).start()
+
+
 def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net_alerts=None,
-               lab=None, net_state=None):
+               lab=None, net_state=None, net_explain=None, net_explain_every_s=NET_EXPLAIN_EVERY_S):
+    """net_explain: Llama explanations of network alerts (default: on, unless NET_EXPLAIN=0);
+    net_explain_every_s=None leaves out the background thread (tests drive it through /alerts)."""
     if detector is None:
         from detectors.sms.detector import SmsDetector
         detector = SmsDetector()
@@ -268,25 +395,43 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
         job = jobs.get(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="unknown or expired job")
-        out = {"status": job["status"], "advice": job.get("advice")}
+        out = {"status": job["status"], "advice": job.get("advice"), "started": "started" in job}
         if "finished" in job:
             out["seconds"] = round(job["finished"] - job["created"], 1)
         return out
 
     alerts_path = net_alerts or os.environ.get("NET_ALERTS", NET_ALERTS)
+    if net_explain is None:
+        net_explain = os.environ.get("NET_EXPLAIN", "1") != "0"
+    explainer = NetExplanations(advisor, jobs) if net_explain else None
+    if explainer and net_explain_every_s and not isinstance(advisor.backend, TemplateBackend):
+        explainer.start(lambda: read_alerts(alerts_path, NET_EXPLAIN_NEWEST), net_explain_every_s)
+    app.state.net_explanations = explainer
 
     @app.get("/alerts")
     def alerts(limit: int = 50):
-        """Network alerts, newest first, each with the playbook's advice."""
+        """Network alerts, newest first, each with the playbook's advice and, under "explain",
+        Llama's explanation: null (none planned), queued, pending, or done/fallback with the advice."""
+        items = read_alerts(alerts_path, max(1, min(limit, 200)))
+        if explainer:
+            explainer.refresh(items)
+        views = explainer.view(items) if explainer else [None] * len(items)
         out = []
-        for item in read_alerts(alerts_path, max(1, min(limit, 200))):
+        for item, explained in zip(items, views):
             finding = Finding(**item["finding"])
             out.append({"time": item.get("time"), "finding": _public_finding(finding),
-                        "advice": advisor.quick(finding).to_dict()})
+                        "advice": advisor.quick(finding).to_dict(), "explain": explained})
         return {"alerts": out}
 
     lab = lab if lab is not None else LabDevices()
     learned = LearnedState(net_state or os.environ.get("NET_STATE", NET_STATE))
+
+    def learning_until(ip):
+        """HH:MM when the network monitor stops learning this device's normal; None if it has."""
+        first = learned.first_seen(ip)
+        if first and first + LEARN_S > time.time():
+            return time.strftime("%H:%M", time.localtime(first + LEARN_S))
+        return None
 
     @app.post("/iot")
     def iot_report(req: LabReport, request: Request, x_guardian_token: Optional[str] = Header(None)):
@@ -302,12 +447,9 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
     def iot_list():
         """Lab devices for the page: readings, test mode, and their latest network alerts."""
         devices, recent = lab.listing(), read_alerts(alerts_path, 200)
-        now = time.time()
         for d in devices:
-            first = learned.first_seen(d["ip"])
-            d["learning_until"] = (time.strftime("%H:%M", time.localtime(first + LEARN_S))
-                                   if first and first + LEARN_S > now else None)
-            mine = [a for a in recent if a["finding"].get("entities", {}).get("device") == d["ip"]][:3]
+            d["learning_until"] = learning_until(d["ip"])
+            mine =[a for a in recent if a["finding"].get("entities", {}).get("device") == d["ip"]][:3]
             d["alerts"] = []
             for a in mine:
                 finding = Finding(**a["finding"])
@@ -318,6 +460,12 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
     @app.post("/iot/mode")
     def iot_mode(req: LabMode):
         """Start a harmless test on a lab device, or stop it ("normal")."""
+        if req.mode == "beacon":
+            ip = next((d["ip"] for d in lab.listing() if d["device"] == req.device), None)
+            until = learning_until(ip) if ip else None
+            if until:      # check-ins during learning would be learned as the device's normal
+                raise HTTPException(status_code=409, detail=f"the network monitor is learning this device's "
+                                                            f"normal until {until}; start the beacon test after that")
         try:
             return lab.set_mode(req.device, req.mode)
         except KeyError:
@@ -330,7 +478,8 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
         h = {"ok": True, "backend": advisor.backend.name, "jobs_pending": jobs.queued(),
              "links": url_detector.info(),
              "net": {"alerts_file": os.path.exists(alerts_path),
-                     "alerts_mb": round(os.path.getsize(alerts_path) / 1e6, 2) if os.path.exists(alerts_path) else 0}}
+                     "alerts_mb": round(os.path.getsize(alerts_path) / 1e6, 2) if os.path.exists(alerts_path) else 0,
+                     "llm": explainer.info() if explainer else None}}
         if hasattr(advisor.backend, "health"):
             h["llm"] = advisor.backend.health()
         return h
@@ -361,6 +510,7 @@ h1{font-size:20px;margin:8px 0}#head{font-weight:700;font-size:18px}
 .dangerous{color:var(--danger)}.suspicious{color:var(--warn)}.safe{color:var(--ok)}
 .muted{color:var(--muted);font-size:13px}ol{padding-left:20px}
 .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.btns button{width:auto;flex:1 1 150px;margin-top:0;padding:8px;font-size:14px;background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.btns button:disabled{opacity:.5;cursor:not-allowed}
 .item{border-top:1px solid var(--line);padding:8px 0}
 #llm{border-left:3px solid var(--accent);padding-left:10px}
 </style></head><body><main>
@@ -399,23 +549,27 @@ async function follow(id,t0){
   try{
     const r=await fetch('/explain/'+encodeURIComponent(id));const d=await r.json();
     if(d.status==='pending'){
-      $('llm').textContent='Llama is writing a plain-language explanation on this device... '
-        +Math.round((Date.now()-t0)/1000)+' s';
+      $('llm').textContent=(d.started?'Llama is writing a plain-language explanation on this device... '
+        :'Llama is finishing another explanation first... ')+Math.round((Date.now()-t0)/1000)+' s';
       poll=setTimeout(()=>follow(id,t0),1500);return;
     }
     if(d.advice){show(d.advice);$('llm').textContent=llmNote(d.advice,d.seconds);}
     else{$('llm').textContent='Llama explanation failed; the playbook text above is still correct.';}
   }catch(e){$('llm').textContent='Lost contact with the device: '+e;}
 }
+function line(text,muted){const x=document.createElement('div');if(muted)x.className='muted';x.textContent=text;return x;}
 function alertItem(a){
-  const f=a.finding,e=f.entities||{},div=document.createElement('div');
-  div.style.borderTop='1px solid var(--line)';div.style.padding='8px 0';
-  const h=document.createElement('div');h.className=f.verdict;h.style.fontWeight='600';h.textContent=a.advice.headline;
-  const m=document.createElement('div');m.className='muted';
-  m.textContent=(a.time||'')+' | device '+(e.device_name?e.device_name+' ('+e.device+')':e.device)+(e.peer?' | other side '+e.peer:'');
-  const w=document.createElement('div');w.textContent=a.advice.why;
-  const s=document.createElement('div');s.className='muted';s.textContent='First step: '+(a.advice.steps[0]||'');
-  div.append(h,m,w,s);return div;
+  const f=a.finding,e=f.entities||{},x=a.explain,div=document.createElement('div');div.className='item';
+  const h=line(a.advice.headline);h.className=f.verdict;h.style.fontWeight='600';
+  const parts=[h,line((a.time||'')+' | device '+(e.device_name?e.device_name+' ('+e.device+')':e.device)
+    +(e.peer?' | other side '+e.peer:''),true)];
+  const llm=x&&x.status==='done'?x.advice:null;
+  if(llm){parts.push(line(llm.what+(llm.why?' '+llm.why:'')),line(a.advice.why,true));}
+  else{parts.push(line(a.advice.why));}
+  if(x){parts.push(line(x.status==='pending'?'Llama is writing a plain-language explanation on this device...'
+    :x.status==='queued'?'Llama will explain this alert when it is free.':llmNote(x.advice,x.seconds),true));}
+  parts.push(line('First step: '+(a.advice.steps[0]||''),true));
+  div.append(...parts);return div;
 }
 async function loadAlerts(){
   try{
@@ -447,6 +601,7 @@ function deviceItem(d,modes){
   for(const [k,label] of Object.entries(modes)){
     if(k===d.wanted)continue;
     const btn=document.createElement('button');btn.textContent=k==='normal'?'Stop the test':label;
+    if(k==='beacon'&&d.learning_until){btn.disabled=true;btn.textContent=label+' (after '+d.learning_until+')';}
     btn.onclick=()=>setMode(d.device,k);b.append(btn);
   }
   div.append(h,seen,r,m,b);

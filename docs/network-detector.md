@@ -34,6 +34,7 @@ Each alert has:
 - **Verdict:** suspicious or dangerous.
 - **Reasons in plain English,** with addresses and numbers. A device's self-chosen name and the domain names it looked up are kept out of the reasons; they appear only in the details, made unclickable.
 - **Advice:** the playbook's first steps.
+- **Llama's explanation,** when the Pi runs the Llama service: two plain-language sentences, written in the background ([below](#llama-explanations)).
 
 The same problem is reported at most once per 10 minutes, unless it gets worse (for example, a scan going from 20 to 100 ports).
 
@@ -52,6 +53,34 @@ The same problem is reported at most once per 10 minutes, unless it gets worse (
 
 - **Thresholds.** These are prior assumptions from how the attacks work, not values fitted to a test set. One round of fixes used only Monday's normal traffic of CIC-IDS2017.
 - **Learning.** A device's first 2 hours are learning only: no unusual-device or beacon alerts then.
+
+## Llama explanations
+
+With the Llama service running, a new alert appears on the page at once with the checked playbook text. Llama's explanation follows under it: two sentences on what the device did, what the attacker or malware wants, and why it is a warning sign. The steps still come from the playbook.
+
+- **What Llama sees.** The alert type, the playbook's checked fact and what the attacker wants, and the monitor's reasons in plain words:
+  - the device in the alert becomes "the device";
+  - other addresses become "another device on your network" or "a server on the internet";
+  - website names become "a website".
+
+  The device's own name and the names it looked up never reach Llama: whoever chose them could hide instructions in them. Network alerts have their own system text and three worked examples (`advisor/prompt.py`), because "who the message pretends to be from" does not fit a device.
+- **The same checker as for messages.** An answer that calls the alert normal or harmless is refused, and a sentence with a link or a number is dropped. The page then keeps the playbook text.
+- **One at a time, messages first.** The app explains the newest 10 alerts of the last day, newest first. A new explanation starts only when no message is waiting for Llama. A message checked while Llama explains a network alert waits for it, and the page says so. Its verdict and steps still appear at once.
+- **Time on the Pi** (estimates from the message timings, not yet measured):
+  - The first network explanation after a message is the slowest: Llama first reads the network examples, about 500 tokens or 40 s.
+  - Alerts explained right after it reuse them.
+  - The same alert again is instant from the answer cache, for example a repeat of an ESP32 test.
+  - Afterwards Llama re-reads the message examples when idle (about 35 s), so the next message check is fast again.
+- **To switch it off,** set `NET_EXPLAIN=0` in the app's environment.
+
+To review the answers and their time, and to fill the answer cache before a demo, run this on the Pi with the Llama service running:
+
+```bash
+cd ~/ps3-guardian && source ~/ps3-venv/bin/activate
+python -m advisor.warm_cache --net
+```
+
+It explains one sample of each of the 10 alert kinds, plus every alert in `logs/net_alerts.jsonl`. The table goes to `eval/advisor_net_review.md`. Add `--fresh` to time every answer without the cache.
 
 ## Set up on the Pi
 
@@ -149,4 +178,4 @@ python detectors/net/eval_net.py --data "TrafficLabelling "          # the full 
 - **Encrypted DNS** (DNS over HTTPS) hides look-ups from the DNS checks; the server-name (TLS) check still sees the website.
 - **Beacons** can also be normal apps that call home on a timer. They are only "suspicious", and come after the device's learning period.
 - **Beacons over one open connection are not seen.** Only new connections count, because apps that keep a connection open ping it at a fixed rhythm too ([eval/results_net.md](../eval/results_net.md)). Malware that checks in over a connection it keeps open would need a separate "long connection" check.
-- **Llama explanations.** Network alerts use the checked playbook text for now. Llama's prompt is written for messages; a network version will be tested on the Pi next.
+- **Llama explains network alerts in English only.** Messages can also get Hindi.
