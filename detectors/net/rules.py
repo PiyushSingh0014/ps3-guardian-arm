@@ -230,6 +230,12 @@ class Beacon:
     Many apps also call home regularly (updates, cloud sensors), so a beacon alone is only
     suspicious, and only for servers outside the most visited websites and the device's
     own normal list (baseline.py tells the engine which are normal).
+
+    Only new connections count, as in tools such as RITA that time connection starts. Apps
+    that keep one connection open (chat, push, sync) send a keep-alive at a fixed rhythm,
+    and the flow meter cuts the open connection into a new flow at each one: TCP pieces
+    without a handshake, UDP (QUIC) pieces without a server name. On the lab Wi-Fi these
+    made a laptop "call home every 45 seconds" to Cloudflare and Google addresses.
     """
     min_events, max_cv, min_interval_ms = 10, 0.15, 30_000
 
@@ -240,6 +246,10 @@ class Beacon:
     def update(self, r: FlowRec, peer_name=""):
         if not is_private(r.src) or is_private(r.dst) or r.dport in (53, 123, 5353) or r.proto not in (TCP, UDP):
             return []
+        if not r.new_connection:                     # the rest of an open TCP connection
+            return []
+        if r.proto == UDP and r.from_capture and not peer_name:
+            return []                                # a nameless UDP piece: usually the rest of a QUIC session
         key = (r.src, peer_name or r.dst, r.dport)
         self.seen += 1
         if self.seen % 50000 == 0:              # forget servers not contacted for an hour

@@ -47,7 +47,7 @@ The same problem is reported at most once per 10 minutes, unless it gets worse (
 | Phishing look-up | a device looks up a site on the phishing list, or a brand's name on someone else's site | dangerous |
 | DGA names | ≥ 5 machine-made-looking names from one device (10 min) | dangerous |
 | DNS tunnel | ≥ 25 long (≥ 18 characters), never-repeating sub-names under one site (10 min) | dangerous |
-| Beacon | ≥ 10 contacts at a fixed rhythm (≥ 30 s apart) to a server outside the device's normal and the top 10,000 sites | suspicious |
+| Beacon | ≥ 10 new connections at a fixed rhythm (≥ 30 s apart) to a server outside the device's normal and the top 10,000 sites; keep-alives inside one open connection do not count | suspicious |
 | Unusual device | a 5-minute period over 3× the device's own 99th percentile in connections, data sent, servers, ports or DNS look-ups, plus ≥ 5 new servers | suspicious |
 
 - **Thresholds.** These are prior assumptions from how the attacks work, not values fitted to a test set. One round of fixes used only Monday's normal traffic of CIC-IDS2017.
@@ -148,4 +148,5 @@ python detectors/net/eval_net.py --data "TrafficLabelling "          # the full 
 - **Attacks inside normal-looking web traffic** (SQL injection, XSS, Heartbleed in CIC-IDS2017): seeing them needs the content of the packets. It reads only connection summaries.
 - **Encrypted DNS** (DNS over HTTPS) hides look-ups from the DNS checks; the server-name (TLS) check still sees the website.
 - **Beacons** can also be normal apps that call home on a timer. They are only "suspicious", and come after the device's learning period.
+- **Beacons over one open connection are not seen.** Only new connections count, because apps that keep a connection open ping it at a fixed rhythm too ([eval/results_net.md](../eval/results_net.md)). Malware that checks in over a connection it keeps open would need a separate "long connection" check.
 - **Llama explanations.** Network alerts use the checked playbook text for now. Llama's prompt is written for messages; a network version will be tested on the Pi next.
