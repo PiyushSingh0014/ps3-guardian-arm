@@ -37,17 +37,21 @@
 // ---- This device's name: on the Pi page, in alerts, and on the Wi-Fi ----
 const char *DEVICE_NAME = "esp32-lab";
 
-// ---- Pins: set them to the labels on your IoT Pro Kit board. -1 = not connected. ----
-const int DHT_PIN = 4;              // DHT11/DHT22 data
+// ---- Pins: the ESP32 header pin each sensor's jumper wire goes to. -1 = not connected. ----
+// On the IoT Pro Kit, jumper the sensor's signal pin to the ESP32 header pin with that GPIO
+// number, and switch the sensor's power on with its PWR SWITCH (docs/esp32-lab-device.md).
+const int DHT_PIN = 4;              // DHT11 O/P
 const uint8_t DHT_TYPE = DHT11;     // DHT22 if yours is the white one
-const int TRIG_PIN = 5;             // ultrasonic sensor: trigger
-const int ECHO_PIN = 18;            // ultrasonic sensor: echo
-const int IR_PIN = 19;              // IR obstacle sensor: output
+const int TRIG_PIN = -1;            // ultrasonic TRIG: 5 once ECHO has a divider (see below)
+const int ECHO_PIN = -1;            // ultrasonic ECHO: 18, through a 1k/2k divider
+const int IR_PIN = -1;              // IR sensor O/P: 19, through a 1k/2k divider
 const bool IR_ACTIVE_LOW = true;    // most IR modules pull their output low when something is in front
-const int VR1_PIN = 34;             // VR1 knob (potentiometer): must be GPIO 32-39, see below
-const int MQ135_PIN = 35;           // MQ-135 air-quality sensor, analog output: must be GPIO 32-39
-const int I2C_SDA = 21;             // BMP180 (I2C)
-const int I2C_SCL = 22;
+const int VR1_PIN = 34;             // VR1 SIGNAL (its 3.3/5V pin to 3.3V, GND to GND)
+const int MQ135_PIN = -1;           // MQ-135 A0: 35, through a 1k/2k divider
+const int I2C_SDA = 21;             // BMP-180 SDA
+const int I2C_SCL = 22;             // BMP-180 SCL
+// The ESP32's pins take at most 3.3 V. The ultrasonic, IR and MQ-135 modules run on 5 V, so their
+// outputs need a divider first: signal -> 1 kOhm -> ESP32 pin, ESP32 pin -> 2 kOhm -> GND.
 // Analog pins: only GPIO 32-39 (ADC1) can be read while Wi-Fi is on. The others (ADC2) cannot.
 
 const unsigned long REPORT_EVERY_MS = 15000;
@@ -139,7 +143,7 @@ void startMode(const String &wanted, long seconds) {
   if (wanted != "dga" && wanted != "phishing" && wanted != "tunnel" && wanted != "beacon") return;
   mode = wanted;
   modeStart = millis();
-  modeLength = (unsigned long)constrain(seconds, 30L, 1800L) * 1000UL;  // the Pi decides; 30 min at most
+  modeLength = (unsigned long)constrain(seconds, 1L, 1800L) * 1000UL;   // the Pi decides; 30 min at most
   steppedYet = false;
   if (mode == "phishing") fakeSite = (fakeSite + 1) % NUM_FAKE_SITES;
   Serial.printf("Test started: %s for %ld s (harmless: nothing is attacked)\n", mode.c_str(), seconds);
@@ -255,6 +259,10 @@ void loop() {
       Serial.println("Waiting for the Wi-Fi ...");
     }
   }
+  // Read the clock again: report() takes a moment and may just have started a test. With the
+  // older reading, "now - modeStart" went below zero, which for unsigned numbers is huge, so a
+  // test ended the moment it started.
+  now = millis();
   if (mode != "normal") {
     if (now - modeStart >= modeLength) {
       Serial.println("Test over: back to normal");
