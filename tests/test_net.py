@@ -198,3 +198,43 @@ def test_monitor_prints_status_and_learns_the_pi_address(monkeypatch, capsys):
     assert e.gateway == PI and e.base.gateway == PI
     printed = capsys.readouterr().out
     assert "1 flows so far (1 in the last 1 min), 0 alerts" in printed
+
+
+def _after_learning(e, t):
+    """Some ordinary traffic to the Pi so the device's learning time starts, then ends."""
+    run(e, [flow(t, PI, 8000, pin=4, bin_=200) for t in (t, t + 120_000)])
+
+
+def test_keepalives_in_one_open_connection_are_not_beacons():
+    """A laptop app keeps one connection to a CDN open and pings it every 45 s: the flow meter
+    cuts it into a piece per ping, without a TCP handshake (seen live on the lab Wi-Fi)."""
+    e = engine(learn_ms=60_000)
+    _after_learning(e, T0)
+    t = T0 + 180_000
+    pings = [flow(t + i * 45_000, "104.18.37.228", 443, syn=0, pin=1, bout=31, bin_=31) for i in range(20)]
+    quic = [flow(t + 7_000 + i * 31_000, "142.250.134.94", 443, proto=UDP, syn=0, pin=1, bout=30, bin_=30)
+            for i in range(20)]
+    assert run(e, sorted(pings + quic, key=lambda r: r.start_ms)) == []
+
+
+def test_new_connections_at_a_fixed_rhythm_are_still_beacons():
+    e = engine(learn_ms=60_000)
+    _after_learning(e, T0)
+    t = T0 + 180_000
+    tcp = [flow(t + i * 60_000, "93.184.215.14", 80, syn=1, pin=5, bout=90, bin_=1300) for i in range(10)]
+    found = run(e, tcp)
+    assert [f.category for f in found] == ["malware_beacon"]          # the ESP32's example.com test
+    e = engine(learn_ms=60_000)
+    _after_learning(e, T0)
+    named = [flow(t + i * 60_000, "45.33.32.156", 443, proto=UDP, syn=0, pin=2, bout=1200, bin_=900,
+                  name="c2-checkin.xyz") for i in range(10)]
+    assert [f.category for f in run(e, named)] == ["malware_beacon"]  # a new QUIC session names its server
+
+
+def test_cic_rows_still_count_every_flow_as_a_start():
+    """CIC-IDS2017's SYN counts are 0 even for port scans, so their rows count as new connections."""
+    e = engine(learn_ms=60_000)
+    _after_learning(e, T0)
+    rows = [FlowRec(**{**flow(T0 + 180_000 + i * 60_000, "205.174.165.73", 8080, syn=0, pin=5,
+                              bout=200, bin_=300).__dict__, "from_capture": False}) for i in range(10)]
+    assert [f.category for f in run(e, rows)] == ["malware_beacon"]

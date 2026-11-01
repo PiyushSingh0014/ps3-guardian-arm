@@ -35,6 +35,10 @@ class FlowRec:
     server_name: str = ""  # DNS name asked, TLS server name or HTTP host (live only)
     src_mac: str = ""
     label: str = ""        # ground truth, for test data only
+    # False for CIC-IDS2017 CSV rows: they carry no server names, and their SYN counts are 0
+    # even for port scans (a CICFlowMeter fault), so they cannot tell a new connection from
+    # the rest of an open one.
+    from_capture: bool = True
 
     @property
     def duration_ms(self):
@@ -60,6 +64,13 @@ class FlowRec:
         """From a service port to a client's temporary port: the tail of a server's answer
         cut off as a flow of its own, not a new connection."""
         return 0 < self.sport < 1024 and self.dport >= 1024
+
+    @property
+    def new_connection(self):
+        """Did this flow open a connection (a TCP handshake), rather than carry on one that was
+        already open? The flow meter cuts a long connection into a new flow after 10 s of
+        silence, so a keep-alive every 45 s shows up as a flow every 45 s, without a SYN."""
+        return self.proto != TCP or not self.from_capture or self.syn_out > 0
 
     @property
     def is_dns(self):
@@ -149,7 +160,7 @@ def from_cic_row(row) -> Optional[FlowRec]:
         pkts_out=int(_num(row, "Total Fwd Packets")), pkts_in=int(_num(row, "Total Backward Packets")),
         bytes_out=int(_num(row, "Total Length of Fwd Packets")), bytes_in=int(_num(row, "Total Length of Bwd Packets")),
         syn_out=int(_num(row, "SYN Flag Count")), rst_in=int(_num(row, "RST Flag Count")),
-        label=(row.get("Label") or "").strip())
+        label=(row.get("Label") or "").strip(), from_capture=False)
 
 
 def read_cic_csv(path) -> Iterator[FlowRec]:
