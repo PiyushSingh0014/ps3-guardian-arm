@@ -46,20 +46,21 @@ You need Arduino IDE 2 with the **esp32 by Espressif** boards package, and the l
 
    The first line printed is the Wi-Fi password; the second is the token.
 
-4. **Pins.** At the top of the sketch, set each pin to the label printed on your board. Use `-1` for anything that is not connected.
+4. **Wiring and pins.** On the IoT Pro Kit, the sensors are separate modules with their own pin headers. The ESP32 has two header strips beside it, labelled with GPIO numbers. A female–female jumper wire joins a sensor's signal pin to the ESP32 pin. Each sensor gets its power from its **PWR SWITCH** (the red DIP switches); set it to ON.
 
-   | Constant | Default | Sensor |
+   Wire with the kit switched off. The Pi is on the same board: run `sudo shutdown -h now` first. The sketch's pins match this wiring:
+
+   | Sensor pin | ESP32 header pin | Power |
    | --- | --- | --- |
-   | `DHT_PIN`, `DHT_TYPE` | 4, `DHT11` | DHT11 (blue) or DHT22 (white): temperature, humidity |
-   | `TRIG_PIN`, `ECHO_PIN` | 5, 18 | ultrasonic distance sensor |
-   | `IR_PIN`, `IR_ACTIVE_LOW` | 19, true | IR obstacle sensor; most modules pull the output low when something is in front |
-   | `VR1_PIN` | 34 | VR1 knob (potentiometer) |
-   | `MQ135_PIN` | 35 | MQ-135 air-quality sensor: a raw value, higher means more gas; it is not calibrated to ppm |
-   | `I2C_SDA`, `I2C_SCL` | 21, 22 | BMP180: pressure and temperature |
+   | DHT11 **O/P** | **GPIO4** | DHT11-PWR on |
+   | BMP-180 **SDA**, **SCL** | **GPIO21**, **GPIO22** | BMP180-PWR on |
+   | VR1 **SIGNAL** | **GPIO34** | VR1 **3.3/5V** → **3.3V**, VR1 **GND** → **GND**: VR1 has no power switch |
 
-   Analog sensors (VR1, MQ-135) must be on **GPIO 32–39**. The ESP32 cannot read its other analog pins while Wi-Fi is on, and the sketch says so on the Serial Monitor.
+   - **The 5 V sensors** (ultrasonic, IR, MQ-135) are left out (`-1`). The ESP32's pins take at most **3.3 V**, and these modules run on 5 V. To add one, put a divider on its output: signal → **1 kΩ** → ESP32 pin, ESP32 pin → **2 kΩ** → GND. Then set its pin in the sketch: ultrasonic TRIG 5 and ECHO 18, IR 19, MQ-135 35.
+   - **Analog sensors** (VR1, MQ-135) must be on **GPIO 32–39**. The ESP32 cannot read its other analog pins while Wi-Fi is on, and the sketch says so on the Serial Monitor.
+   - **MQ-135 readings** are raw values: higher means more gas. They are not calibrated to ppm.
 
-5. **Upload.** Tools → Board → **ESP32 Dev Module**, choose the port, then **Upload**. If the upload stops at `Connecting....`, hold the board's **BOOT** button until it starts.
+5. **Upload.** Tools → Board → **ESP32 Dev Module**, then choose the port. The kit's ESP32 has a **CP2102** USB chip, so its port is **Silicon Labs CP210x USB to UART Bridge (COMx)**. If Windows lists it under *Other devices* instead, install the **CP210x Universal Windows Driver** from silabs.com. Then **Upload**. If the upload stops at `Connecting....`, hold the board's **BOOT** button until it starts.
 
 6. **Check.** Open the Serial Monitor at **115200** baud. It shows the sensors found, the Wi-Fi address, and the first report. Within 15 s, `esp32-lab` appears on the Pi page under **Lab devices**, with its readings.
 
