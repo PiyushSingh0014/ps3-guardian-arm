@@ -66,6 +66,32 @@ def test_telnet_sweep_is_a_botnet_sign():
     assert found[1].verdict == "dangerous" and "Mirai" in " ".join(found[1].reasons)
 
 
+def test_closing_old_connections_is_not_a_network_scan():
+    """Seen live (2 November): a laptop "tried to connect to 15 different machines on port 443".
+    Closing idle connections ends many at once, as pieces without a handshake, often refused by
+    servers that forgot them; browsers also close raced connections that were answered."""
+    e = engine()
+    ends = [flow(T0 + i * 3000, f"151.101.{i}.1", 443, syn=0, pout=2, pin=1, rst=1) for i in range(20)]
+    races = [flow(T0 + i * 3000 + 1, f"23.{i}.4.5", 443, pout=2, pin=1) for i in range(20)]    # SYN/ACK, closed
+    quic = [flow(T0 + i * 3000 + 2, f"142.250.{i}.9", 443, proto=UDP, syn=0) for i in range(20)]
+    assert run(e, sorted(ends + races + quic, key=lambda r: r.start_ms)) == []
+
+
+def test_new_tries_without_answer_are_still_a_scan():
+    found = run(engine(), [flow(T0 + i * 3000, f"51.{i}.7.7", 8080) for i in range(20)])          # no answer
+    assert [f.category for f in found] == ["network_scan"] and "port 8080" in found[0].reasons[0]
+    refused = run(engine(), [flow(T0 + i * 3000, f"51.{i}.7.7", 8080, pin=1, rst=1) for i in range(20)])
+    assert [f.category for f in refused] == ["network_scan"]
+    rows = [FlowRec(**{**flow(T0 + i * 3000, f"52.{i}.7.7", 8080, pout=2, pin=1).__dict__, "from_capture": False})
+            for i in range(20)]                     # CIC-IDS2017 rows keep the older test: a bare handshake counts
+    assert [f.category for f in run(engine(), rows)] == ["network_scan"]
+
+
+def test_pauses_in_an_ssh_session_are_not_password_guessing():
+    pieces = [flow(T0 + i * 2000, PI, 22, syn=0, pin=3, pout=3, bout=300, bin_=400, dur=500) for i in range(20)]
+    assert run(engine(), pieces) == []
+
+
 def test_flood_and_password_guessing():
     e = engine()
     flood = run(e, [flow(T0 + i * 20, "10.42.0.50", 80, syn=1, pout=1) for i in range(400)])

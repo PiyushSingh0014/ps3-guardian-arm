@@ -123,7 +123,15 @@ class PortScan:
 class HostSweep:
     """One address trying the same port on many machines that never answer: a worm or bot
     spreading. Machines that answered once in the window do not count, so a browser that
-    opens many connections to working websites is not a sweep."""
+    opens many connections to working websites is not a sweep.
+
+    On live traffic a try is a new connection that got no answer or was refused. A machine
+    that sent anything else answered, even if the device then closed the connection unused
+    (browsers race connections). The end of a connection opened earlier is no try either:
+    closing idle connections ends many at once, often refused by servers that have already
+    forgotten them. Seen on the lab Wi-Fi (2 November 2026): a laptop "tried 15 machines on
+    port 443". A nameless UDP piece on port 443 is the rest of a QUIC session. CIC-IDS2017 rows
+    cannot tell these apart (FlowRec.from_capture), so they keep the older test."""
     window_ms, at, high = 60_000, 15, 50
 
     def __init__(self):
@@ -134,10 +142,15 @@ class HostSweep:
         if r.proto not in (TCP, UDP) or r.looks_like_reply or r.dport in (53, 123, 5353, 1900, 137, 138):
             return []
         key = (r.src, r.dport)
-        if not r.failed:
+        unanswered = not r.answered if r.from_capture else r.failed
+        if not unanswered:
             self.answered.add(key, r.dst, r.start_ms)
             self.hosts.items.get(key, {}).pop(r.dst, None)
             return []
+        if not r.new_connection:                     # the end of a connection opened earlier
+            return []
+        if r.from_capture and r.proto == UDP and r.dport == 443 and not r.server_name:
+            return []                                # the rest of a QUIC session
         if r.dst in self.answered.items.get(key, {}):
             return []
         d = self.hosts.add(key, r.dst, r.start_ms)
@@ -196,7 +209,9 @@ class SlowDos:
 
 
 class BruteForce:
-    """Many short tries at a login port: password guessing."""
+    """Many short tries at a login port: password guessing. On live traffic only new
+    connections count: a pause in an open session (SSH, mail) starts a new piece of the
+    same connection, not a new login."""
     window_ms, at, high = 60_000, 15, 40
 
     def __init__(self):
@@ -204,6 +219,8 @@ class BruteForce:
 
     def update(self, r: FlowRec):
         if r.proto != TCP or r.dport not in AUTH_PORTS or r.duration_ms > 15_000 or r.bytes_out > 10_000:
+            return []
+        if not r.new_connection:
             return []
         n = self.tries.add((r.src, r.dst, r.dport), r.start_ms)
         if n < self.at:

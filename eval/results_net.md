@@ -111,9 +111,33 @@ The Pi is the hotspot `PS3-Guardian-Lab`. On it: a laptop, a Galaxy S25 and the 
 - **Learning matters for the beacon test.** Run during the device's first 2 hours, its check-ins became part of its normal and no alert came. The test was run again after the learning time.
 - **CIC-IDS2017 cannot measure this.** Its CSV rows show 0 SYN packets even for port-scan traffic, which is nearly all SYN packets: 158,923 of 158,923 PortScan flows. They also carry no server names. So CSV rows keep the old rule, and the CIC-IDS2017 numbers above are unchanged. The lab Wi-Fi's own alerts are the measurement.
 
+**A second false alarm, the next day (2 November, 12:47): the laptop "tried to connect to 15 different machines on port 443 within a minute, mostly without answer".** Port 443 is HTTPS. Only the laptop raised it, so an internet outage, which makes every busy device fail at once, is unlikely.
+
+- **The likely cause.** The alert does not record which connections they were. Two kinds of normal flows counted as failed tries:
+  - the ends of idle connections that the laptop's apps closed: pieces without a handshake, often refused by servers that had already forgotten them;
+  - connections that a server answered but the laptop closed unused (browsers open spare connections).
+
+  CIC-IDS2017's Monday has the same kind: 18 of its 47 false alarms are such "scans", all on port 443.
+- **The fix (update 18).** On live traffic, a network-scan try is now a new connection that got no answer or was refused. The same "new connections only" rule now applies to password guessing, so pauses in an SSH session are not logins. The CIC-IDS2017 numbers above are unchanged (checked: the same 162 false alarms and the same detections).
+
+## Llama's explanations of network alerts (Pi 4, 2 November 2026)
+
+`python -m advisor.warm_cache --net` on the Pi explained one sample of each of the 10 alert kinds, worded as the monitor writes them, plus the 2 alerts then in the monitor's file. That made 11 different prompts: the ESP32's beacon alert has the same prompt as the beacon sample, because addresses and names are replaced before Llama sees them. The answers are in [advisor_net_review.md](advisor_net_review.md).
+
+| | Result |
+| --- | --- |
+| Answers accepted by the checker | 11 of 11 |
+| First explanation after a message (Llama reads ~590 tokens of network examples) | 67 s, the first word after 52 s |
+| The next ones (examples reused) | 21–30 s |
+| The same 11 again (answer cache) | 0.1 s for all 11 |
+| Writing speed | 2.7–3.1 tokens/s |
+
+- **All answers stick to what the monitor saw,** for example: "A device on your Wi-Fi opened a fake website that uses SBI's name to steal a password, card details or OTP. Real Indian bank websites end in .bank.in, and this address is not SBI's official website."
+- **Five answers are one sentence.** Llama ended them itself after about 35–45 tokens, well below the 72-token limit (estimated from each answer's writing time and speed). They say what happened but leave out the checked fact. The page shows the monitor's checked red flags under every answer anyway.
+- **Weakest answers.** The Telnet scan's second sentence is muddled ("trying to connect to other devices to join a network"). The laptop's port-443 "scan" was blamed on Mirai-type botnets, because the playbook's checked fact named only Mirai and Telnet. That fact is now general (update 18).
+
 ## Not measured yet
 
-- **Llama's explanations of network alerts** (update 17): their time on the Pi and a review of the answers, with `python -m advisor.warm_cache --net` ([docs/network-detector.md](../docs/network-detector.md#llama-explanations)).
 - **A longer real-traffic count.** False alarms per day on the lab Wi-Fi after the beacon fix, and the **per-device normal** for small home devices.
 - **Speed on the Pi.** It will be measured with the monitor running there.
 

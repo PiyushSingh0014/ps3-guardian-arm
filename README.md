@@ -18,7 +18,7 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | Phishing link checker: official domains, brand rules, public phishing list, link model; links inside SMS and chats | done (update 9) | [eval/results_url.md](eval/results_url.md), [docs/url-detector.md](docs/url-detector.md) |
 | Network detector: scans, floods, password guessing, beacons, DGA names, DNS tunnels, phishing look-ups, per-device normal; the Pi as the Wi-Fi hotspot for lab devices | done (update 10); live on the Pi's own lab Wi-Fi since 1 November 2026 (updates 12–16) | [eval/results_net.md](eval/results_net.md), [docs/network-detector.md](docs/network-detector.md) |
 | ESP32 lab device: sensor readings on the Pi page, four harmless test modes | done: all four tests caught live (updates 14–16) | [docs/esp32-lab-device.md](docs/esp32-lab-device.md), [eval/results_net.md](eval/results_net.md) |
-| Llama explanations for network alerts: a prompt of their own, written in the background | built (update 17); time and review on the Pi next | [docs/network-detector.md](docs/network-detector.md#llama-explanations) |
+| Llama explanations for network alerts: a prompt of their own, written in the background | done on the Pi 4 (updates 17–18): 11 of 11 answers accepted; 21–30 s each, 67 s for the first after a message, repeats instant | [eval/results_net.md](eval/results_net.md), [docs/network-detector.md](docs/network-detector.md#llama-explanations) |
 | Fusion of message, link and network alerts | planned | |
 
 ## Hardware and software
