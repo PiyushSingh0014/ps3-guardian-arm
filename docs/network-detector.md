@@ -90,7 +90,7 @@ The SMS and link checks see a scam message; the network monitor sees what device
 
 ## Devices on this Wi-Fi
 
-`GET /devices` lists every device the monitor has seen this week, riskiest first. The Pi's page and the phone app show it.
+`GET /devices` lists every device that was active on the lab Wi-Fi this week, riskiest first. The Pi's page and the phone app show it. Addresses that are not a device's own, such as `0.0.0.0` (a device still asking for an address), are left out.
 
 - **At risk:** a dangerous alert in the last 24 hours. **Check:** a suspicious one. **OK:** none.
 - **Each device shows:**

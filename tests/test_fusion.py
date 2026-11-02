@@ -90,11 +90,12 @@ def test_only_lookups_after_the_message_and_within_a_day_count(tmp_path):
 def test_the_monitor_remembers_when_each_device_was_last_active(tmp_path):
     path, t0 = str(tmp_path / "devices.json"), 1_793_000_000_000
     b = Baselines(path=path)
-    for t in (t0, t0 + 5_000):
-        b.update(FlowRec(start_ms=t, end_ms=t + 10, src=PHONE, dst="142.250.1.1", sport=40000, dport=443,
+    for t, src in ((t0, PHONE), (t0 + 5_000, PHONE), (t0, "0.0.0.0"), (t0, "169.254.10.20")):
+        b.update(FlowRec(start_ms=t, end_ms=t + 10, src=src, dst="142.250.1.1", sport=40000, dport=443,
                          proto=TCP, pkts_out=3, pkts_in=3, bytes_out=500, bytes_in=900, syn_out=1))
     b.save()
-    assert json.loads(open(path).read())[PHONE]["last_ms"] == t0 + 5_000
+    data = json.loads(open(path).read())
+    assert data[PHONE]["last_ms"] == t0 + 5_000 and set(data) == {PHONE}     # not 0.0.0.0 or link-local
     assert Baselines(path=path).devices[PHONE].last_ms == t0 + 5_000
 
 
@@ -122,6 +123,8 @@ def test_devices_are_listed_riskiest_first(detector, tmp_path, monkeypatch):
         PHONE: {"first_ms": now_ms - 3 * 3600_000, "last_ms": now_ms - 120_000},
         "10.42.0.33": {"first_ms": now_ms - 600_000, "last_ms": now_ms - 60_000},           # new: learning
         "10.140.209.9": {"first_ms": now_ms - 20 * 86400_000, "last_ms": now_ms - 15 * 86400_000},  # long gone
+        "10.140.209.154": {"first_ms": now_ms - 5 * 86400_000},       # saved before "last active" existed
+        "0.0.0.0": {"first_ms": now_ms - 3600_000, "last_ms": now_ms - 60_000},    # asking for an address
     }))
     (tmp_path / "leases").write_text(f"{PHONE} Piyush-s-S25\n")
     d = client(detector, tmp_path, monkeypatch).get("/devices").json()["devices"]

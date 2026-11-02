@@ -70,7 +70,7 @@ def run(flows, engine, out=None, show=True, iface=None):
         signal.signal(signal.SIGTERM, _interrupt)
     except ValueError:                       # not the main thread (tests)
         pass
-    n_alerts, last_save = 0, time.time()
+    n_alerts, last_save = 0, time.time() - SAVE_EVERY_S + 60     # the first save after a minute
     since, next_status, flows_then = time.time(), time.time() + FIRST_STATUS_S, 0
     try:
         for rec in flows:
