@@ -66,10 +66,10 @@ With the Llama service running, a new alert appears on the page at once with the
 
   The device's own name and the names it looked up never reach Llama: whoever chose them could hide instructions in them. Network alerts have their own system text and three worked examples (`advisor/prompt.py`), because "who the message pretends to be from" does not fit a device.
 - **The same checker as for messages.** An answer that calls the alert normal or harmless is refused, and a sentence with a link or a number is dropped. The page then keeps the playbook text.
-- **One at a time, messages first.** The app explains the newest 10 alerts of the last day, newest first. A new explanation starts only when no message is waiting for Llama. A message checked while Llama explains a network alert waits for it, and the page says so. Its verdict and steps still appear at once.
+- **One at a time, messages first.** The app explains the newest 20 alerts of the last week (the page lists 20), newest first. A new explanation starts only when no message is waiting for Llama. A message checked while Llama explains a network alert waits for it, and the page says so. Its verdict and steps still appear at once.
 - **Time on the Pi** (measured on 2 November 2026, 11 network prompts):
-  - The first network explanation after a message took 67 s: Llama first reads the network examples, about 590 tokens, and its first word came after 52 s.
-  - The next ones took 21–30 s, because they reuse the examples.
+  - The first network explanation after a message took 68 s: Llama first reads the network examples, about 590 tokens, and its first word came after 52 s.
+  - The next ones took 20–30 s, because they reuse the examples.
   - The same alerts again took 0.1 s for all 11, from the answer cache. A repeat of an ESP32 test is instant this way.
   - Afterwards Llama re-reads the message examples when idle (about 38 s), so the next message check is fast again.
 - **To switch it off,** set `NET_EXPLAIN=0` in the app's environment.

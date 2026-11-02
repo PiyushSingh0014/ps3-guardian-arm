@@ -55,8 +55,8 @@ LEARN_S = 2 * 3600                                                 # the monitor
 JOB_TTL_S = 900
 MAX_JOBS = 200
 NET_EXPLAIN_EVERY_S = 15          # the background explainer looks for new network alerts this often,
-NET_EXPLAIN_NEWEST = 10           # and explains only the newest 10 alerts
-NET_EXPLAIN_MAX_AGE_S = 24 * 3600   # of the last day
+NET_EXPLAIN_NEWEST = 20           # and explains only the newest 20 alerts (the page lists 20)
+NET_EXPLAIN_MAX_AGE_S = 7 * 24 * 3600   # of the last week
 NET_EXPLAIN_RETRY_S = 300         # Llama was not reachable: try that alert again 5 minutes later
 NET_EXPLAIN_KEEP = 500
 
@@ -231,7 +231,7 @@ class NetExplanations:
 
     Nobody waits for them on a phone, so they stay out of the way of message checks: one
     starts only when no other Llama job is queued, and only for the newest alerts of the last
-    day. When one finishes, the next starts at once, while Llama still has the network
+    week. When one finishes, the next starts at once, while Llama still has the network
     examples in its KV cache. Results are kept in memory; after a restart the Llama service's
     answer cache makes the same alerts instant again."""
 

@@ -144,7 +144,7 @@ def alerts_until(client, done, timeout=5.0):
 
 def test_alerts_are_explained_in_the_background_newest_first(tmp_path):
     now_ms = int(time.time() * 1000)
-    old = beacon(entities={"device": DEV, "time_ms": now_ms - 2 * 86_400_000})        # two days ago
+    old = beacon(entities={"device": DEV, "time_ms": now_ms - 8 * 86_400_000})        # eight days ago
     scan = beacon(category="port_scan", verdict="dangerous", score=0.95,
                   reasons=[f"{DEV} tried 100 different ports on 10.42.0.1 within 5 seconds"],
                   entities={"device": DEV, "time_ms": now_ms})
