@@ -86,6 +86,13 @@ def net_findings(alerts_path):
     return out
 
 
+def total_cell(m):
+    """The table's time: a saved answer also shows how long it took when it was written."""
+    if m.get("cached"):
+        return f"cached (first {m['total_s']})" if m.get("total_s") else "cached"
+    return m.get("total_s", "")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("csv", nargs="?", help="messages to explain (not needed with --net)")
@@ -160,7 +167,7 @@ def main():
             shown = re.sub(r"[\x00-\x1f\x7f|]", " ", shown)          # keep the Markdown table intact
             out.write(f"| {i} | {f.category} | {n} | {m.get('prompt_tokens', '')} ({m.get('reused_tokens', '')}) | "
                       f"{m.get('ttft_s', '')} | {m.get('decode_tok_s', '')} | "
-                      f"{'cached' if m.get('cached') else m.get('total_s', '')} | "
+                      f"{total_cell(m)} | "
                       f"{'yes' if c.ok else 'no: ' + '; '.join(c.flags)[:60]} | {shown[:300]} |\n")
     print(f"review table -> {a.report}")
 

@@ -41,7 +41,7 @@ The same problem is reported at most once per 10 minutes, unless it gets worse (
 | Alert | Fires when (within the window) | Verdict |
 | --- | --- | --- |
 | Port scan | one address tries ≥ 20 closed ports on another (60 s) | suspicious; dangerous at 100 |
-| Network scan | one address tries the same port on ≥ 15 machines that never answer (60 s) | suspicious; dangerous at 50, or for Telnet (Mirai) |
+| Network scan | one address tries the same port on ≥ 15 machines that do not answer or refuse (60 s) | suspicious; dangerous at 50, or for Telnet (Mirai) |
 | Flood | ≥ 300 connections (or 200 half-open ones) to one target port (10 s); or ≥ 50 slow, nearly empty connections (60 s) | dangerous |
 | Password guessing | ≥ 15 short connections to a login port: SSH, FTP, Telnet, RDP, mail, databases, SMB, VNC (60 s) | dangerous at 40 |
 | Malware port | a home device connects out on Telnet, IRC, Tor, SMB or 4444 | suspicious |
@@ -53,6 +53,7 @@ The same problem is reported at most once per 10 minutes, unless it gets worse (
 
 - **Thresholds.** These are prior assumptions from how the attacks work, not values fitted to a test set. One round of fixes used only Monday's normal traffic of CIC-IDS2017.
 - **Learning.** A device's first 2 hours are learning only: no unusual-device or beacon alerts then.
+- **Only new connections are tries** for network scans, password guessing and beacons on live traffic. The flow meter cuts a long connection into pieces after 10 s of silence, and those pieces are not new tries. For a network scan, a machine that answered at all does not count, even if the device then closed the connection unused, as browsers do. Both kinds raised false alarms on the lab Wi-Fi ([eval/results_net.md](../eval/results_net.md)). CIC-IDS2017's rows cannot tell these apart, so they keep the older test.
 
 ## Llama explanations
 
@@ -66,11 +67,11 @@ With the Llama service running, a new alert appears on the page at once with the
   The device's own name and the names it looked up never reach Llama: whoever chose them could hide instructions in them. Network alerts have their own system text and three worked examples (`advisor/prompt.py`), because "who the message pretends to be from" does not fit a device.
 - **The same checker as for messages.** An answer that calls the alert normal or harmless is refused, and a sentence with a link or a number is dropped. The page then keeps the playbook text.
 - **One at a time, messages first.** The app explains the newest 10 alerts of the last day, newest first. A new explanation starts only when no message is waiting for Llama. A message checked while Llama explains a network alert waits for it, and the page says so. Its verdict and steps still appear at once.
-- **Time on the Pi** (estimates from the message timings, not yet measured):
-  - The first network explanation after a message is the slowest: Llama first reads the network examples, about 500 tokens or 40 s.
-  - Alerts explained right after it reuse them.
-  - The same alert again is instant from the answer cache, for example a repeat of an ESP32 test.
-  - Afterwards Llama re-reads the message examples when idle (about 35 s), so the next message check is fast again.
+- **Time on the Pi** (measured on 2 November 2026, 11 network prompts):
+  - The first network explanation after a message took 67 s: Llama first reads the network examples, about 590 tokens, and its first word came after 52 s.
+  - The next ones took 21–30 s, because they reuse the examples.
+  - The same alerts again took 0.1 s for all 11, from the answer cache. A repeat of an ESP32 test is instant this way.
+  - Afterwards Llama re-reads the message examples when idle (about 38 s), so the next message check is fast again.
 - **To switch it off,** set `NET_EXPLAIN=0` in the app's environment.
 
 To review the answers and their time, and to fill the answer cache before a demo, run this on the Pi with the Llama service running:
@@ -179,3 +180,4 @@ python detectors/net/eval_net.py --data "TrafficLabelling "          # the full 
 - **Beacons** can also be normal apps that call home on a timer. They are only "suspicious", and come after the device's learning period.
 - **Beacons over one open connection are not seen.** Only new connections count, because apps that keep a connection open ping it at a fixed rhythm too ([eval/results_net.md](../eval/results_net.md)). Malware that checks in over a connection it keeps open would need a separate "long connection" check.
 - **Llama explains network alerts in English only.** Messages can also get Hindi.
+- **An internet outage can look like a scan.** When the internet phone loses its connection, every new connection from the lab Wi-Fi fails. A device that retries many servers within a minute then looks like it is scanning.
