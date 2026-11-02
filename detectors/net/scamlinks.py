@@ -52,8 +52,8 @@ def where_from(channel, sender_type):
     if channel == "chat":
         return "a chat message from an unknown number"
     if channel == "url":
-        return "a link checked on the Pi's page"
-    return "a message checked on the Pi's page"
+        return "a link checked on the page"
+    return "a message checked on the page"
 
 
 class ScamLinks:

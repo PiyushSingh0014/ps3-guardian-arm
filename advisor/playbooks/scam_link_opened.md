@@ -3,7 +3,7 @@ severity: critical
 summary: A device on your Wi-Fi opened a website that came in a message the Pi had flagged as a scam. Someone may be about to type a password, card number or OTP into a fake page.
 pretends: a bank, shop or service you use
 wants: to steal a password, card details or OTP through the link in the message
-fact: The message was flagged as a scam before its link was opened; fake pages copy real ones, so anything typed there goes to the scammer.
+fact: A message carrying this website's link was flagged as a scam before the link was opened; fake pages copy real ones, so anything typed there goes to the scammer.
 
 ## Steps
 1. On that device, close the page without typing anything.

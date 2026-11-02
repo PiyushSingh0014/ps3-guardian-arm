@@ -671,7 +671,7 @@ function alertItem(a){
   const parts=[h,line((a.time||'')+' | device '+(e.device_name?e.device_name+' ('+e.device+')':e.device)
     +(e.peer?' | other side '+e.peer:''),true)];
   const llm=x&&x.status==='done'?x.advice:null;
-  if(llm){parts.push(line(llm.what+(llm.why?' '+llm.why:'')),line(a.advice.why,true));}
+  if(llm){parts.push(line(llm.what+(llm.why&&llm.why!==a.advice.why?' '+llm.why:'')),line(a.advice.why,true));}
   else{parts.push(line(a.advice.why));}
   if(x){parts.push(line(x.status==='pending'?'Llama is writing a plain-language explanation on this device...'
     :x.status==='queued'?'Llama will explain this alert when it is free.':llmNote(x.advice,x.seconds),true));}

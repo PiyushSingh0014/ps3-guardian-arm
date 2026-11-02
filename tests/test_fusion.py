@@ -67,7 +67,7 @@ def test_opening_a_link_from_a_scam_message_is_an_alert_for_that_device(tmp_path
     e, now_ms = engine(tmp_path), int(time.time() * 1000)
     found = e.feed(lookup(now_ms + 5_000, "po9.in"))       # the link checker alone rates po9.in safe
     assert [f.category for f in found] == ["scam_link_opened"] and found[0].verdict == "dangerous"
-    assert "opened a website that came in a message the Pi flagged as a scam at" in found[0].reasons[0]
+    assert "opened a website from a scam message: the message was flagged at" in found[0].reasons[0]
     assert "an SMS from a mobile number" in found[0].reasons[0] and "po9" not in found[0].reasons[0]
     assert found[0].entities["peer"] == "po9[.]in" and found[0].entities["device"] == LAPTOP
     # a phishing name that also came in a message: one alert, the one that says where it came from

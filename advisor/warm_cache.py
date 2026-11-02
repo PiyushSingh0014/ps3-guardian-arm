@@ -73,8 +73,8 @@ NET_SAMPLES = [   # (kind, verdict, score, reasons), worded as detectors/net wri
     ("device_anomaly", "suspicious", 0.7, [f"{DEV} is behaving unlike its normal self: 5.2 MB data sent in 5 "
                                            "minutes (its usual most is 300 KB)",
                                            f"{DEV} talked to 12 servers it never used before"]),
-    ("scam_link_opened", "dangerous", 0.95, [f"{DEV} opened a website that came in a message the Pi flagged as a "
-                                             "scam at 21:02: an SMS from a mobile number"]),
+    ("scam_link_opened", "dangerous", 0.95, [f"{DEV} opened a website from a scam message: the message was "
+                                             "flagged at 21:02 (an SMS from a mobile number)"]),
 ]
 
 
