@@ -122,19 +122,23 @@ The Pi is the hotspot `PS3-Guardian-Lab`. On it: a laptop, a Galaxy S25 and the 
 
 ## Llama's explanations of network alerts (Pi 4, 2 November 2026)
 
-`python -m advisor.warm_cache --net` on the Pi explained one sample of each of the 10 alert kinds, worded as the monitor writes them, plus the 2 alerts then in the monitor's file. That made 11 different prompts: the ESP32's beacon alert has the same prompt as the beacon sample, because addresses and names are replaced before Llama sees them. The answers are in [advisor_net_review.md](advisor_net_review.md).
+`python -m advisor.warm_cache --net` on the Pi explained one sample of each of the 10 alert kinds, worded as the monitor writes them, plus the 2 alerts then in the monitor's file. That made 11 different prompts: the ESP32's beacon alert has the same prompt as the beacon sample, because addresses and names are replaced before Llama sees them.
+
+It ran twice. The first run used the old network-scan fact. After update 18, a fresh run wrote every answer again, without the answer cache: [advisor_net_review.md](advisor_net_review.md).
 
 | | Result |
 | --- | --- |
-| Answers accepted by the checker | 11 of 11 |
-| First explanation after a message (Llama reads ~590 tokens of network examples) | 67 s, the first word after 52 s |
-| The next ones (examples reused) | 21–30 s |
-| The same 11 again (answer cache) | 0.1 s for all 11 |
-| Writing speed | 2.7–3.1 tokens/s |
+| Answers accepted by the checker | 11 of 11, in both runs |
+| First explanation after a message (692-token prompt; Llama reads the network examples, about 590 tokens, from scratch) | 67.6 s, the first word after 52.2 s |
+| The next ones (576–640 tokens reused) | 20.6–28.0 s, the first word after 5.6–9.8 s |
+| The same 11 again, from the answer cache (first run) | 0.1 s for all 11 |
+| Writing speed | 3.06–3.11 tokens/s |
 
 - **All answers stick to what the monitor saw,** for example: "A device on your Wi-Fi opened a fake website that uses SBI's name to steal a password, card details or OTP. Real Indian bank websites end in .bank.in, and this address is not SBI's official website."
+- **The network-scan fact mattered.** In the first run, Llama blamed the laptop's port-443 "scan" on Mirai-type botnets: the playbook's checked fact named only Mirai and Telnet. With the general fact, the answer ends: "Normal devices connect to a few servers, and those answer, so this is a warning sign to check, not proof."
+- **Weakest answer:** the Telnet scan (row 2) reads clumsily ("trying to connect to weak passwords or known flaws", "infect devices from infected cameras and routers"), though its facts are right.
 - **Five answers are one sentence.** Llama ended them itself after about 35–45 tokens, well below the 72-token limit (estimated from each answer's writing time and speed). They say what happened but leave out the checked fact. The page shows the monitor's checked red flags under every answer anyway.
-- **Weakest answers.** The Telnet scan's second sentence is muddled ("trying to connect to other devices to join a network"). The laptop's port-443 "scan" was blamed on Mirai-type botnets, because the playbook's checked fact named only Mirai and Telnet. That fact is now general (update 18).
+- **On the page,** the laptop's port-443 alert got its explanation in the background, in 85 s: it waited behind the benchmark, which was running at the same time.
 
 ## Not measured yet
 
