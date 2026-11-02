@@ -129,6 +129,37 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:paddingTop="16dp"
+            android:text="Network alerts (the Pi's Wi-Fi)"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="What the Pi's network monitor finds on PS3-Guardian-Lab, for every device there. The app asks the Pi about once a minute, every 10 s while this screen is open, and shows new alerts as notifications." />
+
+        <CheckBox
+            android:id="@+id/net_on"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Show network alerts and notify me" />
+
+        <TextView
+            android:id="@+id/net_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp" />
+
+        <TextView
+            android:id="@+id/net_alerts"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp"
+            android:textIsSelectable="true" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingTop="16dp"
             android:text="Recent messages"
             android:textStyle="bold" />
 

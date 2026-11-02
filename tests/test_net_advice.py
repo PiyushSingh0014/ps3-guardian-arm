@@ -160,7 +160,10 @@ def test_alerts_are_explained_in_the_background_newest_first(tmp_path):
     assert first[2]["explain"] is None                                           # too old: never explained
     assert first[0]["advice"]["source"] == "template"                           # the checked text, at once
 
+    ids = [a["id"] for a in first]
+    assert len(set(ids)) == 3 and all(len(i) == 16 for i in ids)        # one id per alert, for the phone app
     shown = alerts_until(c, lambda a: all(x["explain"] and x["explain"]["status"] == "done" for x in a[:2]))
+    assert [a["id"] for a in shown] == ids                               # and it stays the same
     assert shown[1]["explain"]["advice"]["what"].startswith("A device on your Wi-Fi")
     assert shown[1]["explain"]["advice"]["steps"] == shown[1]["advice"]["steps"]
     assert shown[2]["explain"] is None and len(backend.calls) == 2              # one job per alert

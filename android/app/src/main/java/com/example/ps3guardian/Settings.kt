@@ -8,8 +8,8 @@ import java.util.UUID
 
 /**
  * Kept in the app's private storage: the Pi address, pairing token and phone name typed on the
- * main screen, the chat switches, the last results, and messages that arrived while the Pi could
- * not be reached.
+ * main screen, the chat switches, the last results, messages that arrived while the Pi could
+ * not be reached, and the network alerts last fetched from the Pi.
  */
 object Settings {
     private const val PREFS = "guardian"
@@ -19,6 +19,13 @@ object Settings {
     const val KEY_PENDING = "pending"
     const val CHAT_CONTACTS = "chat_contacts"
     const val DEFAULT_URL = "http://10.140.209.76:8000"
+    const val NET_ON = "net_on"
+    const val KEY_NET_LIST = "net_list"
+    private const val NET_SEEN = "net_seen"
+    private const val NET_WAITING = "net_waiting"
+    private const val NET_CHECKED = "net_checked"
+    private const val NET_FAILED = "net_failed"
+    private const val MAX_NET_SEEN = 300
 
     fun prefs(c: Context): SharedPreferences = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -103,4 +110,44 @@ object Settings {
     }
 
     fun pendingCount(c: Context): Int = array(c, KEY_PENDING).length()
+
+    /** Network alerts from the Pi's lab Wi-Fi: on unless switched off on the main screen. */
+    fun netOn(c: Context): Boolean = prefs(c).getBoolean(NET_ON, true)
+
+    private fun strings(c: Context, key: String): List<String> {
+        val arr = array(c, key)
+        return List(arr.length()) { arr.getString(it) }
+    }
+
+    private fun jsonOf(items: List<String>): String {
+        val arr = JSONArray()
+        for (item in items) arr.put(item)
+        return arr.toString()
+    }
+
+    /** Network alert ids already handled (notified, or listed only), oldest first. */
+    fun netSeen(c: Context): List<String> = strings(c, NET_SEEN)
+
+    /** Network alerts notified with the playbook's text: their notification gets Llama's text once it is ready. */
+    fun netWaiting(c: Context): List<String> = strings(c, NET_WAITING)
+
+    /** The network alerts for the main screen, newest first, as text. */
+    fun netList(c: Context): List<String> = strings(c, KEY_NET_LIST)
+
+    /** One answer from the Pi: the alerts handled, those still waiting for Llama, the list, the time. */
+    @Synchronized
+    fun saveNet(c: Context, seen: List<String>, waiting: List<String>, list: List<String>) {
+        prefs(c).edit().putString(NET_SEEN, jsonOf(seen.takeLast(MAX_NET_SEEN)))
+            .putString(NET_WAITING, jsonOf(waiting)).putString(KEY_NET_LIST, jsonOf(list))
+            .putLong(NET_CHECKED, System.currentTimeMillis()).apply()
+    }
+
+    fun netFailed(c: Context) {
+        prefs(c).edit().putLong(NET_FAILED, System.currentTimeMillis()).apply()
+    }
+
+    /** When the Pi last answered, and when it last could not be reached (ms; 0 = never). */
+    fun netCheckedAt(c: Context): Long = prefs(c).getLong(NET_CHECKED, 0L)
+
+    fun netFailedAt(c: Context): Long = prefs(c).getLong(NET_FAILED, 0L)
 }
