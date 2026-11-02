@@ -7,10 +7,11 @@ The Pi watches every connection of every device on its own Wi-Fi and raises an a
 - guesses passwords,
 - calls home like malware,
 - looks up phishing or machine-made names,
+- opens a link from a message the Pi flagged as a scam,
 - hides data in DNS,
 - or suddenly behaves unlike its normal self.
 
-Alerts appear on the Pi's page under **Network alerts**, with the same kind of advice as SMS alerts, and as notifications in the phone app ([android-companion.md](android-companion.md), Part H). It reads connection summaries (flows), never the content of the traffic.
+Alerts appear on the Pi's page under **Network alerts**, with the same kind of advice as SMS alerts, and as notifications in the phone app ([android-companion.md](android-companion.md), Part H). Above them, **Devices on this Wi-Fi** lists every device with a risk level. It reads connection summaries (flows), never the content of the traffic.
 
 Results on CIC-IDS2017: [eval/results_net.md](../eval/results_net.md). To see it catch a device live, use the ESP32 lab device and its harmless test modes: [esp32-lab-device.md](esp32-lab-device.md).
 
@@ -22,10 +23,13 @@ Pi's Wi-Fi (wlan0) ──► NFStream: packets → flows (who, to whom, which po
                     ──► engine.py
                          ├─ rules.py     port scan · sweep of many machines (worms, Mirai) · flood (DoS)
                          │               · slow flood (slowloris) · password guessing · malware ports
-                         ├─ dns.py       phishing look-up (the link checker) · DGA names · DNS tunnel
+                         ├─ dns.py       link from a scam message opened (scamlinks.py) · phishing look-up
+                         │               (the link checker) · DGA names · DNS tunnel
                          ├─ baseline.py  each device's normal: alert on a sudden change
                          └─ beacon       a fixed rhythm to a server outside the device's normal
-                    ──► logs/net_alerts.jsonl ──► GET /alerts ──► Pi page
+                    ──► logs/net_alerts.jsonl ──► GET /alerts, GET /devices ──► Pi page, phone app
+
+flagged SMS, chat or pasted message ──► app/server.py ──► data/fusion/watch.json (its websites, 24 h) ──► dns.py
 ```
 
 Each alert has:
@@ -45,6 +49,7 @@ The same problem is reported at most once per 10 minutes, unless it gets worse (
 | Flood | ≥ 300 connections (or 200 half-open ones) to one target port (10 s); or ≥ 50 slow, nearly empty connections (60 s) | dangerous |
 | Password guessing | ≥ 15 short connections to a login port: SSH, FTP, Telnet, RDP, mail, databases, SMB, VNC (60 s) | dangerous at 40 |
 | Malware port | a home device connects out on Telnet, IRC, Tor, SMB or 4444 | suspicious |
+| Link from a scam message opened | a device looks up a website that came in a message the Pi flagged as a scam in the last 24 hours (below) | dangerous |
 | Phishing look-up | a device looks up a site on the phishing list, or a brand's name on someone else's site | dangerous |
 | DGA names | ≥ 5 machine-made-looking names from one device (10 min) | dangerous |
 | DNS tunnel | ≥ 25 long (≥ 18 characters), never-repeating sub-names under one site (10 min) | dangerous |
@@ -54,6 +59,46 @@ The same problem is reported at most once per 10 minutes, unless it gets worse (
 - **Thresholds.** These are prior assumptions from how the attacks work, not values fitted to a test set. One round of fixes used only Monday's normal traffic of CIC-IDS2017.
 - **Learning.** A device's first 2 hours are learning only: no unusual-device or beacon alerts then.
 - **Only new connections are tries** for network scans, password guessing and beacons on live traffic. The flow meter cuts a long connection into pieces after 10 s of silence, and those pieces are not new tries. For a network scan, a machine that answered at all does not count, even if the device then closed the connection unused, as browsers do. Both kinds raised false alarms on the lab Wi-Fi ([eval/results_net.md](../eval/results_net.md)). CIC-IDS2017's rows cannot tell these apart, so they keep the older test.
+
+## Messages meet network traffic
+
+The SMS and link checks see a scam message; the network monitor sees what devices open. Together they can tell when someone opened a link from a scam:
+
+1. When the Pi flags an SMS, a chat or a message pasted on its page, the app writes the websites in its links to `data/fusion/watch.json`, for 24 hours (`detectors/net/scamlinks.py`).
+2. The network monitor reads that list. When a device on the lab Wi-Fi looks up one of those websites, it raises **"Link from a scam message opened"** for that device. The alert says when the message came and how ("an SMS from a mobile number"). This replaces the phishing look-up alert for that name.
+
+- **Why it matters.** Real Indian scam links often use short domains that look just like genuine bulk-SMS link domains, so the link checker alone rates them safe ([eval/results_url.md](../eval/results_url.md)). The message's sender and text gave the scam away, and the look-up shows that the link was opened.
+- **Left out:** official sites, popular sites, link shorteners, chat links and shared services such as Google Drive. Everyone opens those all day, so a match would say nothing. Messages judged safe or plain marketing add nothing either.
+- **Kept:** only the website names, each for 24 hours. No text, no sender.
+- **Look-ups only after the message came** count (with one minute of slack for clocks).
+
+**Test it from the laptop** (on `PS3-Guardian-Lab`):
+
+1. On the Pi's page, check this message with the sender `9812345678`. It should come out DANGEROUS:
+
+   ```
+   Dear customer your SBI account will be blocked today. Update KYC now: http://sbi-kyc-verify-ps3lab.xyz/login
+   ```
+
+2. In PowerShell on the laptop, look the name up. Only look it up: don't open it in a browser.
+
+   ```powershell
+   Resolve-DnsName sbi-kyc-verify-ps3lab.xyz -Server 10.42.0.1 -ErrorAction SilentlyContinue
+   ```
+
+3. About 10–20 s later: "DANGEROUS: Link from a scam message opened" for the laptop on the page, the laptop "At risk" under **Devices on this Wi-Fi**, and a notification on the phone app.
+
+## Devices on this Wi-Fi
+
+`GET /devices` lists every device the monitor has seen this week, riskiest first. The Pi's page and the phone app show it.
+
+- **At risk:** a dangerous alert in the last 24 hours. **Check:** a suspicious one. **OK:** none.
+- **Each device shows:**
+  - its name (from the hotspot, or from the ESP32's reports);
+  - when it was last active (the monitor saves this every 10 minutes);
+  - whether the monitor is still learning its normal;
+  - a one-line summary;
+  - its latest 3 alerts.
 
 ## Llama explanations
 
@@ -162,7 +207,7 @@ If one phone does both jobs (internet over USB and the app), it stays off the la
   - **On the laptop,** set it yourself. Windows: Settings → Network & internet → Wi-Fi → PS3-Guardian-Lab → Metered connection.
   - **To see the data used:** `--status`.
 - **Consent.** Everyone whose device joins `PS3-Guardian-Lab` should know the Pi checks its connections. As with SMS: consent first.
-  - **What is kept:** alerts, per-device counts, and the addresses or names of the servers each device uses (`data/net/devices.json`). Never the content.
+  - **What is kept:** alerts, per-device counts, when each device was last active, and the addresses or names of the servers each device uses (`data/net/devices.json`). Never the content. From flagged messages, the website names in their links, for 24 hours (`data/fusion/watch.json`).
   - **Removing a device:** stop `ps3-netmon`, delete its entry from that file and its lines from `logs/net_alerts.jsonl`, then start the service again.
 
 ## Use it on a capture file or the test data

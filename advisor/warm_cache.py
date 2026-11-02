@@ -18,7 +18,7 @@ What it does:
      hand and paste into the report (timings included).
 --fresh bypasses the answer cache, to measure real generation time.
 
---net does the same for network alerts: one sample of each of the 10 alert kinds, plus
+--net does the same for network alerts: one sample of each of the 11 alert kinds, plus
 every alert in the monitor's file (logs/net_alerts.jsonl), into eval/advisor_net_review.md.
 The samples' reasons are written the way the monitor writes them.
 """
@@ -73,6 +73,8 @@ NET_SAMPLES = [   # (kind, verdict, score, reasons), worded as detectors/net wri
     ("device_anomaly", "suspicious", 0.7, [f"{DEV} is behaving unlike its normal self: 5.2 MB data sent in 5 "
                                            "minutes (its usual most is 300 KB)",
                                            f"{DEV} talked to 12 servers it never used before"]),
+    ("scam_link_opened", "dangerous", 0.95, [f"{DEV} opened a website that came in a message the Pi flagged as a "
+                                             "scam at 21:02: an SMS from a mobile number"]),
 ]
 
 

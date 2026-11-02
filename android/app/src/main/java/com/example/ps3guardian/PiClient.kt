@@ -34,6 +34,9 @@ class PiClient(private val baseUrl: String, private val token: String) {
     /** The newest network alerts from the Pi's lab Wi-Fi, newest first: the list the Pi's page shows. */
     fun alerts(limit: Int): JSONObject = request("GET", "/alerts?limit=$limit", null)
 
+    /** The devices on the Pi's lab Wi-Fi with a risk level each, riskiest first. */
+    fun devices(): JSONObject = request("GET", "/devices", null)
+
     private fun request(method: String, path: String, body: JSONObject?): JSONObject {
         val conn = URI(baseUrl + path).toURL().openConnection() as HttpURLConnection
         try {

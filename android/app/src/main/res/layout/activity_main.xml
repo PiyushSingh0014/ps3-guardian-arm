@@ -135,7 +135,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="What the Pi's network monitor finds on PS3-Guardian-Lab, for every device there. The app asks the Pi about once a minute, every 10 s while this screen is open, and shows new alerts as notifications." />
+            android:text="What the Pi's network monitor finds on PS3-Guardian-Lab, for every device there. The app asks the Pi about once a minute, every 10 s while this screen is open, and shows new alerts as notifications. Each device gets a risk level from its alerts of the last 24 hours: at risk (a dangerous one), check (a suspicious one) or OK." />
 
         <CheckBox
             android:id="@+id/net_on"
@@ -150,10 +150,31 @@
             android:paddingTop="8dp" />
 
         <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp"
+            android:text="Devices, riskiest first"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/dev_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="4dp"
+            android:textIsSelectable="true" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp"
+            android:text="Alerts, newest first"
+            android:textStyle="bold" />
+
+        <TextView
             android:id="@+id/net_alerts"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingTop="8dp"
+            android:paddingTop="4dp"
             android:textIsSelectable="true" />
 
         <TextView

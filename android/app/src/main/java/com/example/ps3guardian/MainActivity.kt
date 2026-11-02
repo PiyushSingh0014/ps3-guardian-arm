@@ -32,17 +32,18 @@ class MainActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var chatStatus: TextView
     private lateinit var netStatus: TextView
+    private lateinit var devList: TextView
     private lateinit var netAlerts: TextView
     private lateinit var recent: TextView
     private val handler = Handler(Looper.getMainLooper())
 
-    // While the screen is open, ask the Pi for network alerts every 10 s.
+    // While the screen is open, ask the Pi for network alerts and its device list every 10 s.
     private val netLoop = object : Runnable {
         override fun run() {
             if (Settings.netOn(this@MainActivity)) {
                 val app = applicationContext
                 Thread {
-                    NetAlerts.check(app)
+                    if (NetAlerts.check(app)) Devices.check(app)
                     runOnUiThread { showNet() }
                 }.start()
             }
@@ -70,6 +71,7 @@ class MainActivity : AppCompatActivity() {
         status = findViewById(R.id.status)
         chatStatus = findViewById(R.id.chat_status)
         netStatus = findViewById(R.id.net_status)
+        devList = findViewById(R.id.dev_list)
         netAlerts = findViewById(R.id.net_alerts)
         recent = findViewById(R.id.recent)
         url.setText(Settings.piUrl(this))
@@ -107,7 +109,7 @@ class MainActivity : AppCompatActivity() {
     // While the screen is open, show new results as soon as they are saved.
     private val refresh = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == Settings.KEY_RECENT || key == Settings.KEY_PENDING) runOnUiThread { showRecent() }
-        if (key == Settings.KEY_NET_LIST) runOnUiThread { showNet() }
+        if (key == Settings.KEY_NET_LIST || key == Settings.KEY_DEV_LIST) runOnUiThread { showNet() }
     }
 
     override fun onResume() {
@@ -202,6 +204,7 @@ class MainActivity : AppCompatActivity() {
     private fun showNet() {
         if (!Settings.netOn(this)) {
             netStatus.text = "Off: this phone does not ask the Pi for network alerts."
+            devList.text = ""
             netAlerts.text = ""
             return
         }
@@ -214,6 +217,8 @@ class MainActivity : AppCompatActivity() {
                 ". Network alerts come while this phone is on the Pi's Wi-Fi, PS3-Guardian-Lab."
             else -> "Checked at ${clock(checked)}. New alerts come as notifications."
         }
+        val devices = Settings.devList(this)
+        devList.text = if (devices.isEmpty()) "No device seen yet." else devices.joinToString("\n\n")
         val lines = Settings.netList(this)
         netAlerts.text = if (lines.isEmpty()) "No network alerts." else lines.joinToString("\n\n")
     }

@@ -92,7 +92,7 @@ def test_playbook_facts_have_no_website_names():
     # Llama may copy the fact; a website name in its answer makes the checker drop the sentence.
     from advisor.prompt import _URL_RE
     for key in ["port_scan", "network_scan", "dos_flood", "brute_force", "risky_port", "malware_beacon",
-                "phishing_lookup", "dga_domains", "dns_tunnel", "device_anomaly"]:
+                "phishing_lookup", "dga_domains", "dns_tunnel", "device_anomaly", "scam_link_opened"]:
         fact = BOOKS[key].fact.replace(".bank.in", "").replace(".gov.in", "")
         assert not _URL_RE.search(fact), (key, fact)
 

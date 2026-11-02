@@ -46,6 +46,15 @@ object ChatApps {
 
     private val NUMBER = Regex("^\\+?[0-9]{8,15}$")
     private val SPACING = Regex("[\\s()\\-.\\u200E\\u200F\\u202A-\\u202E\\u2066-\\u2069]")
+    private val INVISIBLE = Regex("[\\s\\u200E\\u200F\\u202A-\\u202E\\u2066-\\u2069]")
+    private val SENDER_ID = Regex("^[A-Z]{2}-[A-Z0-9]{6}(?:-[PSTG])?$")
+
+    /**
+     * A business's registered SMS sender ID, such as "JD-BOBSMS-S" or "AX-HDFCBK". Messages shows
+     * SMS from these in its notifications too; the SMS receiver already checks them with their
+     * real sender ID, so they are never checked again as chats (not even in testing mode).
+     */
+    fun isSenderId(sender: String): Boolean = SENDER_ID.matches(sender.replace(INVISIBLE, "").uppercase())
 
     /**
      * The phone number, if the app shows the sender as a number: someone who is not in your

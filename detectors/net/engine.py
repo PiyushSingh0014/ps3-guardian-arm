@@ -18,6 +18,7 @@ from .baseline import Baselines
 from .dns import NameChecks, load_dga_model
 from .flows import FlowRec
 from .rules import Beacon, default_rules
+from .scamlinks import ScamLinks
 
 # Names that devices on the Pi's hotspot gave themselves when they asked for an address.
 # NetworkManager's list is readable only by root, so install_netmon.sh keeps a copy with just
@@ -61,7 +62,7 @@ class NetEngine:
     cooldown_ms = 10 * 60_000
 
     def __init__(self, url_detector="auto", dga_model="auto", gateway=None, learn_ms=2 * 3600_000,
-                 state_path=None, leases=LEASES, beacons=True):
+                 state_path=None, leases=LEASES, beacons=True, watch_path=None):
         if url_detector == "auto":
             from detectors.url.detector import UrlDetector
             url_detector = UrlDetector()
@@ -70,7 +71,7 @@ class NetEngine:
         self.url = url_detector
         self.rules = default_rules()
         self.beacon = Beacon() if beacons else None
-        self.names = NameChecks(url_detector, dga_model)
+        self.names = NameChecks(url_detector, dga_model, watch=ScamLinks(watch_path) if watch_path else None)
         self.base = Baselines(learn_ms=learn_ms, gateway=gateway, path=state_path)
         self.gateway = gateway
         self.recent = {}

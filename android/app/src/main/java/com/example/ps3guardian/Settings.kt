@@ -21,6 +21,7 @@ object Settings {
     const val DEFAULT_URL = "http://10.140.209.76:8000"
     const val NET_ON = "net_on"
     const val KEY_NET_LIST = "net_list"
+    const val KEY_DEV_LIST = "dev_list"
     private const val NET_SEEN = "net_seen"
     private const val NET_WAITING = "net_waiting"
     private const val NET_CHECKED = "net_checked"
@@ -140,6 +141,13 @@ object Settings {
         prefs(c).edit().putString(NET_SEEN, jsonOf(seen.takeLast(MAX_NET_SEEN)))
             .putString(NET_WAITING, jsonOf(waiting)).putString(KEY_NET_LIST, jsonOf(list))
             .putLong(NET_CHECKED, System.currentTimeMillis()).apply()
+    }
+
+    /** The devices on the Pi's Wi-Fi for the main screen, riskiest first, as text. */
+    fun devList(c: Context): List<String> = strings(c, KEY_DEV_LIST)
+
+    fun saveDevList(c: Context, list: List<String>) {
+        prefs(c).edit().putString(KEY_DEV_LIST, jsonOf(list)).apply()
     }
 
     fun netFailed(c: Context) {

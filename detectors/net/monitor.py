@@ -23,6 +23,7 @@ if ROOT not in sys.path:
 
 from detectors.net.engine import NetEngine, default_state_path       # noqa: E402
 from detectors.net.flows import read_cic_csv, read_flows             # noqa: E402
+from detectors.net.scamlinks import WATCH                             # noqa: E402
 
 ALERTS = os.path.join(ROOT, "logs", "net_alerts.jsonl")
 SAVE_EVERY_S = 600
@@ -112,7 +113,8 @@ def main():
 
     if a.iface:
         gateway = iface_address(a.iface)
-        engine = NetEngine(gateway=gateway, learn_ms=int(a.learn_hours * 3600_000), state_path=default_state_path())
+        engine = NetEngine(gateway=gateway, learn_ms=int(a.learn_hours * 3600_000), state_path=default_state_path(),
+                           watch_path=os.environ.get("NET_WATCH", WATCH))     # links from flagged messages
         print(f"[net] watching {a.iface} (this Pi is {gateway or 'unknown'}); alerts -> {a.out or ALERTS}", flush=True)
         n = run(read_flows(a.iface), engine, a.out or ALERTS, not a.quiet, iface=a.iface)
     elif a.pcap:
