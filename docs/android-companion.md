@@ -170,7 +170,7 @@ Android never passes chat messages to other apps, but it shows them the notifica
 - **Which senders:** only senders shown as a phone number, that is, people who are not in your contacts, where scam chats come from. Chats from your contacts and from businesses are ignored and never leave the phone, unless you turn on the testing switch.
 - **On the Pi:** a chat is scored on its text, plus the same extra weight as an SMS from a phone number when it has a link, money or urgency. Its text is stored only if it was flagged (digits masked), and its sender only as `mobile` (or `name` while testing).
 - **Not seen:** chats whose notification you have turned off or muted, and notifications Android hides from apps like this one (on Android 15 and later, notifications that carry an OTP).
-- An SMS also shows up as a Messages notification; it is checked once, as an SMS.
+- An SMS also shows up as a Messages notification; it is checked once, as an SMS. A notification from a business's sender ID, such as `JD-BOBSMS-S`, is never checked as a chat, not even in testing mode: the SMS check reads its real sender ID.
 
 1. In the app, tick **Check chats in Messages (RCS)** and, if you want, **Check WhatsApp chats**.
 2. Tap **Allow notification access**, find **PS3 Guardian** and allow it. Android warns that the app can read notifications: that is what it needs. If the switch is grey or says "restricted setting": App info → **⋮** → **Allow restricted settings**, then try again.
@@ -190,7 +190,9 @@ When labelling (Part E), each person labels their own phone's rows: they know be
 
 ## Part H: network alerts from the Pi's Wi-Fi
 
-When the phone is on the Pi's Wi-Fi `PS3-Guardian-Lab`, the app also shows what the Pi's network monitor finds there ([network-detector.md](network-detector.md)). Every phone with the app sees the alerts for every device on that Wi-Fi, the same list as the Pi's page.
+When the phone can reach the Pi, the app also shows what the Pi's network monitor finds on `PS3-Guardian-Lab` ([network-detector.md](network-detector.md)). Every phone with the app sees the alerts for every device on that Wi-Fi, the same list as the Pi's page.
+
+- **Devices, riskiest first** (update 21): each device on the lab Wi-Fi with a risk level from its alerts of the last 24 hours: AT RISK (a dangerous one), CHECK (a suspicious one) or OK. It is fetched only while the app's screen is open.
 
 - **Notifications.** A new alert, dangerous or suspicious, becomes a notification in the channel "Network alerts". If Llama's explanation is not ready yet, the notification shows the playbook's checked text first. When the Pi has Llama's text, the same notification shows it instead, without sounding again.
 - **How quickly.** The app asks the Pi about once a minute, and every 10 s while its screen is open. While the phone sleeps, Android delays these checks, by 15 minutes or more. Away from the lab Wi-Fi it tries every 15 minutes.

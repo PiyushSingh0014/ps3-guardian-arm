@@ -40,6 +40,7 @@ def _amount(metric, x):
 @dataclass
 class Device:
     first_ms: int
+    last_ms: int = 0                                   # its latest connection (for the app's device list)
     peers: set = field(default_factory=set)            # servers used while learning: its normal
     later: set = field(default_factory=set)            # servers first used after learning (reported once)
     history: list = field(default_factory=list)        # one dict of METRICS per 5 minutes
@@ -85,6 +86,7 @@ class Baselines:
         if r.start_ms >= d.start + BUCKET_MS:
             hits = self._close(r.src, d, r.start_ms)
         peer = peer or r.dst
+        d.last_ms = max(d.last_ms, r.start_ms)
         c = d.cur
         c["flows"] += 1
         c["bytes_out"] += r.bytes_out
@@ -132,8 +134,9 @@ class Baselines:
         if not path:
             return
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        data = {ip: {"first_ms": d.first_ms, "peers": sorted(d.peers)[:MAX_PEERS], "later": sorted(d.later)[:MAX_PEERS],
-                     "history": d.history[-MAX_HISTORY:]} for ip, d in self.devices.items()}
+        data = {ip: {"first_ms": d.first_ms, "last_ms": d.last_ms, "peers": sorted(d.peers)[:MAX_PEERS],
+                     "later": sorted(d.later)[:MAX_PEERS], "history": d.history[-MAX_HISTORY:]}
+                for ip, d in self.devices.items()}
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f)
@@ -146,7 +149,8 @@ class Baselines:
         except (OSError, ValueError):
             return
         for ip, v in data.items():
-            d = Device(first_ms=int(v.get("first_ms", 0)), peers=set(v.get("peers", [])),
-                       later=set(v.get("later", [])), history=list(v.get("history", [])))
+            d = Device(first_ms=int(v.get("first_ms", 0)), last_ms=int(v.get("last_ms", 0)),
+                       peers=set(v.get("peers", [])), later=set(v.get("later", [])),
+                       history=list(v.get("history", [])))
             d.reset(0)
             self.devices[ip] = d

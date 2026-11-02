@@ -1,5 +1,7 @@
 """Checks on the names devices look up (DNS) and the servers they connect to by name.
 
+  * a website that came in a message the Pi flagged as a scam (scamlinks.py): someone on
+    the lab Wi-Fi opened the link. This replaces the phishing check below for that name;
   * a known phishing site, or a brand's name on someone else's site: the link checker
     (detectors/url) judges the name, and only its decisive findings count here;
   * many random-looking names in a short time: malware searching for its controller
@@ -11,9 +13,11 @@ to Llama) and appear only, made unclickable, in the alert's details.
 """
 import os
 
+import time
+
 from detectors.url.links import parse_link
 
-from .flows import FlowRec
+from .flows import FlowRec, is_private
 from .rules import Hit, _Recent
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -26,9 +30,10 @@ class NameChecks:
     tunnel_window_ms, tunnel_names, tunnel_len = 10 * 60_000, 25, 18
     cache_max = 20_000
 
-    def __init__(self, url_detector=None, dga_model=None, top_sites=None):
+    def __init__(self, url_detector=None, dga_model=None, top_sites=None, watch=None):
         self.url = url_detector
         self.dga = dga_model
+        self.watch = watch               # ScamLinks: websites from flagged messages
         self.top = set(top_sites or ()) | (set(url_detector.top_sites) if url_detector is not None else set())
         self.dga_seen = _Recent(self.dga_window_ms)
         self.subs = _Recent(self.tunnel_window_ms)
@@ -60,7 +65,15 @@ class NameChecks:
         if link is None:
             return []
         hits = []
-        if verdict is not None and (verdict.decisive or verdict.listed):
+        opened = (self.watch.get(link.registered, r.start_ms)
+                  if self.watch is not None and link.registered and is_private(r.src) else None)
+        if opened:
+            at = time.strftime("%H:%M", time.localtime(opened.get("at_ms", 0) / 1000))
+            hits.append(Hit("scam_link_opened", r.src, link.registered, 0.95,
+                            [f"{r.src} opened a website that came in a message the Pi flagged as a scam at {at}: "
+                             f"{opened.get('where') or 'a message'}"],
+                            {"name": name, "message_at": at, "message_kind": opened.get("category", "")}))
+        elif verdict is not None and (verdict.decisive or verdict.listed):
             why = (f"{r.src} looked up a website that is on the public list of phishing sites" if verdict.listed
                    else f"{r.src} looked up a fake website: {verdict.reasons[0]}" if verdict.reasons
                    else f"{r.src} looked up a dangerous website")

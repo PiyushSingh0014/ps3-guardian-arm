@@ -20,7 +20,7 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | ESP32 lab device: sensor readings on the Pi page, four harmless test modes | done: all four tests caught live (updates 14–16) | [docs/esp32-lab-device.md](docs/esp32-lab-device.md), [eval/results_net.md](eval/results_net.md) |
 | Llama explanations for network alerts: a prompt of their own, written in the background | done on the Pi 4 (updates 17–18): 11 of 11 answers accepted; 20–30 s each, 68 s for the first after a message, repeats instant | [eval/results_net.md](eval/results_net.md), [docs/network-detector.md](docs/network-detector.md#llama-explanations) |
 | Network alerts in the phone app: a notification per new alert, Llama's text when ready | built (update 20); install from Android Studio next | [docs/android-companion.md](docs/android-companion.md), Part H |
-| Fusion of message, link and network alerts | planned | |
+| Per-device risk view; messages meet network traffic: "Link from a scam message opened" | built (update 21) | [docs/network-detector.md](docs/network-detector.md) |
 
 ## Hardware and software
 

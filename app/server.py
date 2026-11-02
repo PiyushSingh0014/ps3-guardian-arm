@@ -31,6 +31,7 @@ lab devices POST /iot; both need the pairing token in the X-Guardian-Token heade
 measuring (app/sms_log.py).
 """
 import hashlib
+import ipaddress
 import json
 import os
 import secrets
@@ -47,7 +48,10 @@ from pydantic import BaseModel, Field
 from advisor.advise import Advisor
 from advisor.backends import TemplateBackend, backend_from_env
 from advisor.findings import Finding
+from advisor.playbooks import get_playbook
 from app.lab_devices import MODES, LabDevices, clean_readings
+from detectors.net.engine import LEASES as NET_LEASES, read_lease_names
+from detectors.net.scamlinks import WATCH, ScamLinks, sites_from, where_from
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NET_ALERTS = os.path.join(ROOT, "logs", "net_alerts.jsonl")
@@ -60,6 +64,8 @@ NET_EXPLAIN_NEWEST = 20           # and explains only the newest 20 alerts (the 
 NET_EXPLAIN_MAX_AGE_S = 7 * 24 * 3600   # of the last week
 NET_EXPLAIN_RETRY_S = 300         # Llama was not reachable: try that alert again 5 minutes later
 NET_EXPLAIN_KEEP = 500
+DEVICE_WEEK_S = 7 * 24 * 3600     # the device list shows devices active (or alerted) this week
+RISK_ORDER = {"at_risk": 0, "check": 1, "ok": 2}
 
 
 class CheckIn(BaseModel):
@@ -99,23 +105,33 @@ def require_token(given):
 
 
 class LearnedState:
-    """When the network monitor started learning each device (data/net/devices.json, which it
-    saves every 10 minutes), re-read only when the file changes."""
+    """What the network monitor knows about each device (data/net/devices.json, which it saves
+    every 10 minutes): when it was first and last seen. Re-read only when the file changes."""
 
     def __init__(self, path):
-        self.path, self.mtime, self.first = path, None, {}
+        self.path, self.mtime, self.first, self.last = path, None, {}, {}
 
-    def first_seen(self, ip):
+    def _load(self):
         try:
             mtime = os.path.getmtime(self.path)
             if mtime != self.mtime:
                 with open(self.path, encoding="utf-8") as f:
                     data = json.load(f)
-                self.first = {k: v.get("first_ms", 0) / 1000 for k, v in data.items() if isinstance(v, dict)}
+                items = {k: v for k, v in data.items() if isinstance(v, dict)}
+                self.first = {k: v.get("first_ms", 0) / 1000 for k, v in items.items()}
+                self.last = {k: v.get("last_ms", 0) / 1000 for k, v in items.items()}
                 self.mtime = mtime
         except (OSError, ValueError, AttributeError):
             pass
+
+    def first_seen(self, ip):
+        self._load()
         return self.first.get(ip)
+
+    def devices(self):
+        """{ip: (first seen, last seen)} in seconds; last seen is 0 if the monitor is older."""
+        self._load()
+        return {ip: (t, self.last.get(ip, 0)) for ip, t in self.first.items()}
 
 
 def single_link(text):
@@ -324,10 +340,41 @@ class NetExplanations:
         threading.Thread(target=loop, name="net-explain", daemon=True).start()
 
 
+def _is_private(ip):
+    try:
+        return ipaddress.ip_address(ip).is_private
+    except ValueError:
+        return False
+
+
+def _when(t, now):
+    """'23:36' today, '01 Nov 13:29' before."""
+    if not t:
+        return None
+    same_day = time.localtime(t)[:3] == time.localtime(now)[:3]
+    return time.strftime("%H:%M" if same_day else "%d %b %H:%M", time.localtime(t))
+
+
+def risk_summary(day, week, books):
+    """One line about a device's alerts. day, week: (time, alert) pairs, newest first."""
+    if not day:
+        return "No alerts in the last 24 hours." + (f" {len(week)} earlier this week." if week else "")
+    n_d = sum(1 for _, a in day if a["finding"]["verdict"] == "dangerous")
+    n_s = sum(1 for _, a in day if a["finding"]["verdict"] == "suspicious")
+    kinds = " and ".join(p for p in (f"{n_d} dangerous" if n_d else "", f"{n_s} suspicious" if n_s else "") if p)
+    latest = day[0][1]
+    title = get_playbook(books, latest["finding"]["category"]).title
+    return (f"{kinds} alert{'s' if n_d + n_s != 1 else ''} in the last 24 hours. "
+            f"The latest: {title}, at {str(latest.get('time') or '')[11:16]}.")
+
+
 def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net_alerts=None,
-               lab=None, net_state=None, net_explain=None, net_explain_every_s=NET_EXPLAIN_EVERY_S):
+               lab=None, net_state=None, net_explain=None, net_explain_every_s=NET_EXPLAIN_EVERY_S,
+               net_watch=None, leases=None):
     """net_explain: Llama explanations of network alerts (default: on, unless NET_EXPLAIN=0);
-    net_explain_every_s=None leaves out the background thread (tests drive it through /alerts)."""
+    net_explain_every_s=None leaves out the background thread (tests drive it through /alerts).
+    net_watch: where flagged messages' websites go for the network monitor (scamlinks.py);
+    leases: the files with device names (tests pass their own)."""
     if detector is None:
         from detectors.sms.detector import SmsDetector
         detector = SmsDetector()
@@ -340,7 +387,20 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
     jobs = JobStore()
     app = FastAPI(title="PS3 Guardian")
 
-    def respond(finding, wait, t0, t1):
+    watch = ScamLinks(net_watch or os.environ.get("NET_WATCH", WATCH))
+
+    def watch_links(finding, channel):
+        """A flagged message's websites, so the network monitor can tell when one is opened."""
+        if finding.verdict == "safe" or get_playbook(advisor.books, finding.category).severity == "low":
+            return
+        try:
+            watch.add(sites_from(finding), finding.verdict, finding.category,
+                      where_from(channel, finding.entities.get("sender_type")))
+        except OSError as e:                      # never fail a message check over this
+            print(f"[app] could not write {watch.path}: {e}", flush=True)
+
+    def respond(finding, wait, t0, t1, channel="check"):
+        watch_links(finding, channel)
         explain = None
         if advisor.needs_llm(finding) and not wait:
             advice = advisor.quick(finding)
@@ -371,7 +431,7 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
             raise HTTPException(status_code=422, detail="send one link, without spaces")
         t0 = time.time()
         finding = url_detector.check(req.url, language=req.language)
-        return respond(finding, wait, t0, time.time())
+        return respond(finding, wait, t0, time.time(), channel="url")
 
     @app.post("/sms")
     def sms(req: CheckIn, x_guardian_token: Optional[str] = Header(None)):
@@ -385,7 +445,7 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
         finding = detector.check(req.message, sender=sender, language=req.language)
         text_only = detector.check(req.message, sender=None, language=req.language)
         t1 = time.time()
-        out = respond(finding, False, t0, t1)
+        out = respond(finding, False, t0, t1, channel=req.channel)
         out["text_only"] = {"verdict": text_only.verdict, "score": text_only.score}
         out["log_id"] = None if req.test else (sms_log or default_log()).add(
             req.message, req.sender, finding, text_only, channel=req.channel, app=req.app, device=req.device)
@@ -459,6 +519,51 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
                                     "headline": advisor.quick(finding).headline})
         return {"devices": devices, "modes": {k: v[0] for k, v in MODES.items()}}
 
+    lease_files = leases if leases is not None else NET_LEASES
+
+    @app.get("/devices")
+    def devices_view():
+        """The devices on the lab Wi-Fi this week, riskiest first. The risk comes from each one's
+        network alerts of the last 24 hours: At risk (a dangerous one), Check (a suspicious one), OK."""
+        now = time.time()
+        names, labs, seen = read_lease_names(lease_files), {d["ip"]: d for d in lab.listing()}, learned.devices()
+        alerts = {}
+        for a in read_alerts(alerts_path, 200):
+            ip, t = a["finding"].get("entities", {}).get("device"), alert_epoch(a)
+            if ip and t is not None and now - t <= DEVICE_WEEK_S:
+                alerts.setdefault(ip, []).append((t, a))
+        for found in alerts.values():       # the monitor writes alerts as flows end: not always in time order
+            found.sort(key=lambda ta: -ta[0])
+        ips = set(alerts) | set(labs) | {ip for ip, (first, last) in seen.items()
+                                         if now - max(first, last) <= DEVICE_WEEK_S}
+        out = []
+        for ip in (ip for ip in ips if _is_private(ip)):
+            week = alerts.get(ip, [])
+            day = [(t, a) for t, a in week if now - t <= 24 * 3600]
+            verdicts = {a["finding"]["verdict"] for _, a in day}
+            risk = "at_risk" if "dangerous" in verdicts else ("check" if "suspicious" in verdicts else "ok")
+            first, last = seen.get(ip, (0, 0))
+            lab_dev = labs.get(ip)
+            active = max([last, week[0][0] if week else 0] + ([now - lab_dev["seen_s_ago"]] if lab_dev else []))
+            alert_name = next((a["finding"]["entities"].get("device_name") for _, a in week
+                               if a["finding"]["entities"].get("device_name")), "")
+            latest = []
+            for _, a in week[:3]:
+                f = Finding(**a["finding"])
+                latest.append({"time": a.get("time"), "verdict": f.verdict, "headline": advisor.quick(f).headline})
+            out.append({"ip": ip, "name": names.get(ip) or (lab_dev or {}).get("device") or alert_name,
+                        "risk": risk, "summary": risk_summary(day, week, advisor.books), "latest": latest,
+                        "alerts_24h": {"dangerous": sum(1 for _, a in day if a["finding"]["verdict"] == "dangerous"),
+                                       "suspicious": sum(1 for _, a in day if a["finding"]["verdict"] == "suspicious")},
+                        "alerts_week": len(week), "lab_device": lab_dev is not None,
+                        "first_seen": _when(first, now), "last_active": _when(active, now),
+                        "learning_until": learning_until(ip),
+                        "_order": (RISK_ORDER[risk], -(week[0][0] if week else 0), -active)})
+        out.sort(key=lambda d: d["_order"])
+        for d in out:
+            d.pop("_order")
+        return {"devices": out}
+
     @app.post("/iot/mode")
     def iot_mode(req: LabMode):
         """Start a harmless test on a lab device, or stop it ("normal")."""
@@ -513,6 +618,8 @@ h1{font-size:20px;margin:8px 0}#head{font-weight:700;font-size:18px}
 .muted{color:var(--muted);font-size:13px}ol{padding-left:20px}
 .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.btns button{width:auto;flex:1 1 150px;margin-top:0;padding:8px;font-size:14px;background:transparent;color:var(--accent);border:1px solid var(--accent)}
 .btns button:disabled{opacity:.5;cursor:not-allowed}
+.badge{display:inline-block;margin-left:8px;padding:0 8px;border-radius:10px;font-size:12px;color:var(--bg)}
+.risk-at_risk{background:var(--danger)}.risk-check{background:var(--warn)}.risk-ok{background:var(--ok)}
 .item{border-top:1px solid var(--line);padding:8px 0}
 #llm{border-left:3px solid var(--accent);padding-left:10px}
 </style></head><body><main>
@@ -526,6 +633,8 @@ h1{font-size:20px;margin:8px 0}#head{font-weight:700;font-size:18px}
 <div id="head"></div><p id="what"></p><p id="why"></p>
 <p class="muted" id="llm" hidden></p>
 <ol id="steps"></ol><p class="muted" id="meta"></p></div>
+<h1>Devices on this Wi-Fi</h1>
+<div class="card"><p class="muted" id="riskynote">No device seen yet.</p><div id="risky"></div></div>
 <h1>Lab devices</h1>
 <div class="card"><p class="muted" id="devnote">No lab device has reported yet.</p><div id="devices"></div></div>
 <h1>Network alerts</h1>
@@ -581,6 +690,29 @@ async function loadAlerts(){
   }catch(e){$('netnote').textContent='Could not load network alerts: '+e;}
 }
 loadAlerts();setInterval(loadAlerts,10000);
+const RISK={at_risk:'At risk',check:'Check',ok:'OK'};
+function riskItem(d){
+  const div=document.createElement('div');div.className='item';
+  const h=line(d.name?d.name+' ('+d.ip+')':d.ip);h.style.fontWeight='600';
+  const b=document.createElement('span');b.className='badge risk-'+d.risk;b.textContent=RISK[d.risk]||d.risk;h.append(b);
+  const meta=[];
+  if(d.last_active)meta.push('last active '+d.last_active);
+  if(d.first_seen)meta.push('first seen '+d.first_seen);
+  if(d.learning_until)meta.push('learning its normal until '+d.learning_until);
+  const parts=[h];if(meta.length)parts.push(line(meta.join(' | '),true));
+  parts.push(line(d.summary));
+  for(const a of d.latest||[]){const x=line((a.time||'').slice(5,16)+'  '+a.headline);x.className=a.verdict;x.style.fontSize='14px';parts.push(x);}
+  div.append(...parts);return div;
+}
+async function loadRisk(){
+  try{
+    const r=await fetch('/devices');const d=await r.json();
+    $('risky').replaceChildren(...d.devices.map(riskItem));
+    $('riskynote').textContent=d.devices.length?'Riskiest first. At risk: a dangerous alert in the last 24 hours; Check: a suspicious one.'
+      :'No device seen yet: devices appear once they use the Wi-Fi of this Pi.';
+  }catch(e){$('riskynote').textContent='Could not load the devices: '+e;}
+}
+loadRisk();setInterval(loadRisk,10000);
 const READ={temp_c:['Temperature','°C'],humidity:['Humidity','%'],bmp_temp_c:['Temperature (BMP180)','°C'],
   pressure_hpa:['Pressure','hPa'],distance_cm:['Distance','cm'],knob:['Knob VR1',''],air_raw:['Air MQ-135 (raw)',''],
   rssi:['Wi-Fi signal','dBm'],heap_kb:['Free memory','KB']};

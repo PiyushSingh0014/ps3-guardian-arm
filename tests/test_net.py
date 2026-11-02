@@ -193,7 +193,7 @@ def test_cic_rows_and_the_monitor_file(tmp_path):
     assert c.get("/health").json()["net"]["alerts_file"] is True
 
 
-@pytest.mark.parametrize("cat", ["port_scan", "network_scan", "dos_flood", "brute_force", "risky_port",
+@pytest.mark.parametrize("cat", ["port_scan", "network_scan", "dos_flood", "brute_force", "risky_port", "scam_link_opened",
                                  "malware_beacon", "phishing_lookup", "dga_domains", "dns_tunnel", "device_anomaly"])
 def test_every_network_alert_has_a_playbook(cat):
     from advisor.playbooks import load_playbooks
