@@ -70,8 +70,8 @@ class NameChecks:
         if opened:
             at = time.strftime("%H:%M", time.localtime(opened.get("at_ms", 0) / 1000))
             hits.append(Hit("scam_link_opened", r.src, link.registered, 0.95,
-                            [f"{r.src} opened a website that came in a message the Pi flagged as a scam at {at}: "
-                             f"{opened.get('where') or 'a message'}"],
+                            [f"{r.src} opened a website from a scam message: the message was flagged at {at} "
+                             f"({opened.get('where') or 'a message'})"],
                             {"name": name, "message_at": at, "message_kind": opened.get("category", "")}))
         elif verdict is not None and (verdict.decisive or verdict.listed):
             why = (f"{r.src} looked up a website that is on the public list of phishing sites" if verdict.listed

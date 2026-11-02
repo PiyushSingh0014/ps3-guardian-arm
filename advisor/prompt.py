@@ -190,12 +190,15 @@ def static_prefix(language="en", n_examples=len(EXAMPLES)):
     return "".join(parts)
 
 
-def build_prompt(finding, playbook, n_examples=len(EXAMPLES)):
+def build_prompt(finding, playbook, n_examples=None):
+    """n_examples: how many worked examples to include (default: all of that prompt's)."""
     if finding.source == "net":
-        return (static_prefix_net(min(n_examples, len(EXAMPLES_NET)))
+        n = len(EXAMPLES_NET) if n_examples is None else min(n_examples, len(EXAMPLES_NET))
+        return (static_prefix_net(n)
                 + _header("user") + build_net_user_turn(finding, playbook) + "<|eot_id|>"
                 + _header("assistant"))
-    return (static_prefix(finding.language, n_examples)
+    n = len(EXAMPLES) if n_examples is None else n_examples
+    return (static_prefix(finding.language, n)
             + _header("user") + build_user_turn(finding, playbook) + "<|eot_id|>"
             + _header("assistant"))
 
@@ -254,6 +257,18 @@ EXAMPLES_NET = [
         "answer": ("A device on your Wi-Fi opened a fake website that uses HDFC Bank's name to steal a "
                    "password, card details or OTP. Real Indian bank websites end in .bank.in, and this "
                    "address is not HDFC Bank's official website."),
+    },
+    {   # added after the Pi: without it, Llama wrote "flagged as a scam by the device itself"
+        "result": RESULT_TEXT_NET["dangerous"],
+        "alert_type": "Link from a scam message opened",
+        "wants": "to steal a password, card details or OTP through the link in the message",
+        "fact": ("A message carrying this website's link was flagged as a scam before the link was opened; fake pages "
+                 "copy real ones, so anything typed there goes to the scammer."),
+        "saw": ["the device opened a website from a scam message: the message was flagged at 21:02 (an SMS from a "
+                "mobile number)"],
+        "answer": ("A device on your Wi-Fi opened the link from a scam SMS that came from a mobile number at 21:02, a "
+                   "fake page made to steal a password, card details or OTP. The message was flagged as a scam before "
+                   "the link was opened, and anything typed on such a page goes to the scammer."),
     },
 ]
 

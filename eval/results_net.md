@@ -139,6 +139,7 @@ It ran twice. The first run used the old network-scan fact. After update 18, a f
 - **Weakest answer:** the Telnet scan (row 2) reads clumsily ("trying to connect to weak passwords or known flaws", "infect devices from infected cameras and routers"), though its facts are right.
 - **Five answers are one sentence.** Llama ended them itself after about 35–45 tokens, well below the 72-token limit (estimated from each answer's writing time and speed). They say what happened but leave out the checked fact. The page shows the monitor's checked red flags under every answer anyway.
 - **On the page,** the laptop's port-443 alert got its explanation in the background, in 85 s: it waited behind the benchmark, which was running at the same time.
+- **Later (3 November):** the first live "Link from a scam message opened" alert got a wrong answer: the message was "flagged as a scam by the device itself" (the Pi flagged it). Update 23 rewords that alert without "the Pi" and adds a fourth worked example for it. The table above was measured with three examples.
 
 ## Not measured yet
 
