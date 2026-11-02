@@ -22,10 +22,12 @@ MAX_SENTENCES = 2
 MAX_WORDS = {"en": 60, "hi": 80}       # Hindi writes postpositions as separate words
 
 # "...updating your KYC, which is a legitimate process" (seen on the Pi) also counts: in a
-# scam warning it reads as approval of what the scammer asks for.
+# scam warning it reads as approval of what the scammer asks for. The second line is for
+# network alerts ("this is normal", "not malware").
 _CONTRADICTION_RE = re.compile(
     r"\b(?:is|seems|looks|appears)\s+(?:to\s+be\s+)?(?:an?\s+)?(?:safe|legit|legitimate|genuine|harmless|trustworthy)\b"
     r"|\bnot\s+a\s+scam\b|\bno\s+need\s+to\s+worry\b|\bnothing\s+to\s+worry\b|\byou\s+can\s+trust\b"
+    r"|\bnot\s+(?:an?\s+)?(?:attack|malware|virus|threat|hacker)\b|\b(?:this|it|that)\s+is\s+(?:completely\s+|perfectly\s+)?normal\b"
     r"|सुरक्षित है|असली है|घोटाला नहीं|धोखाधड़ी नहीं",
     re.I)
 _URL_RE = re.compile(r"\b(?:https?://|www\.)\S+|\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/\S*)?", re.I)

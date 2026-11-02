@@ -93,24 +93,27 @@ The alert needs **5 different such names from one device within 10 minutes**, so
 
 The Pi is the hotspot `PS3-Guardian-Lab`. On it: a laptop, a Galaxy S25 and the ESP32 lab device ([docs/esp32-lab-device.md](../docs/esp32-lab-device.md)). The monitor ran live on `wlan0` (NFStream), with about 2,250 flows every 15 minutes.
 
-**The ESP32's test modes were all caught, each naming `esp32-lab (10.42.0.170)`:**
+**All four of the ESP32's test modes were caught, each naming `esp32-lab (10.42.0.170)`:**
 
 | Test (what the ESP32 did) | Alert | After |
 | --- | --- | --- |
 | made-up `.com` names, one every 6 s | DANGEROUS: Malware looking for its controller | the 5th name (about 30 s) |
 | `sbi-kyc-update-verify.xyz`, every 30 s | DANGEROUS: Device opened a phishing website | the first look-up |
 | 30-character sub-names of one made-up name, every 4 s | DANGEROUS: Data hidden in DNS lookups | the 25th look-up (about 2 minutes) |
+| `http://example.com/` every 60 s, a new connection each time (after the device's 2-hour learning time) | SUSPICIOUS: Device calling home at fixed times | the 10th check-in (13:29:05); no repeat for the other 5 |
 
 **False alarms: keep-alives looked like beacons.** Between 11:40 and 12:31 the laptop got about a dozen "calling home at fixed times" alerts: Cloudflare and Google addresses, every 31 or 45 seconds, with no server name.
 
 - **The cause.** Those are apps that keep one connection open and ping it. The flow meter starts a new flow after 10 s of silence, so every ping became a "contact", without a TCP handshake or a server name.
 - **The fix.** On live traffic, a beacon now counts only new connections: TCP flows that start with a handshake, and UDP flows that name their server (a new QUIC session does). Tools that time connection starts, such as RITA, look for beacons the same way. The ESP32's beacon test opens a new connection for each check-in, so it still counts (tests cover both cases).
 - **What it can no longer see.** Malware that checks in over one connection it keeps open.
+- **After the fix** (the monitor restarted with it the same afternoon), the laptop got no more "calling home" alerts, while the ESP32's beacon test was still caught. A longer count follows below.
+- **Learning matters for the beacon test.** Run during the device's first 2 hours, its check-ins became part of its normal and no alert came. The test was run again after the learning time.
 - **CIC-IDS2017 cannot measure this.** Its CSV rows show 0 SYN packets even for port-scan traffic, which is nearly all SYN packets: 158,923 of 158,923 PortScan flows. They also carry no server names. So CSV rows keep the old rule, and the CIC-IDS2017 numbers above are unchanged. The lab Wi-Fi's own alerts are the measurement.
 
 ## Not measured yet
 
-- **The beacon test** on the ESP32. It needs the device's first 2 hours on the Wi-Fi as learning.
+- **Llama's explanations of network alerts** (update 17): their time on the Pi and a review of the answers, with `python -m advisor.warm_cache --net` ([docs/network-detector.md](../docs/network-detector.md#llama-explanations)).
 - **A longer real-traffic count.** False alarms per day on the lab Wi-Fi after the beacon fix, and the **per-device normal** for small home devices.
 - **Speed on the Pi.** It will be measured with the monitor running there.
 

@@ -21,8 +21,9 @@ ESP32 ──Wi-Fi PS3-Guardian-Lab──► Pi (10.42.0.1)
 | Checks in like clockwork (beacon) | every 60 s, fetches `http://example.com/` | SUSPICIOUS: Device calling home at fixed times | after about 10 minutes |
 
 - **Run times.** The first three tests run for 5 minutes and the beacon test for 15. **Stop the test** ends one early.
-- **Beacon test.** It only alerts once the monitor has known the device for 2 hours: the monitor first learns each device's normal. The page shows "learning its normal until HH:MM" until then. Switch the ESP32 on at least 2 hours before you film this test.
+- **Beacon test.** It only alerts once the monitor has known the device for 2 hours: the monitor first learns each device's normal. Until then the page shows "learning its normal until HH:MM", and the beacon button stays grey: check-ins during learning would become part of the device's normal, and the test would never alert. Switch the ESP32 on at least 2 hours before you film this test.
 - **Repeating a test.** The same problem is reported at most once every 10 minutes, so wait that long between runs of the same test.
+- **Llama's explanation.** With the Llama service running, Llama's two-sentence explanation appears under each alert once it is written. The first one takes longest, and a test explained before is instant: see [network-detector.md](network-detector.md#llama-explanations). To have all four instant in a video, run `python -m advisor.warm_cache --net` on the Pi once beforehand.
 
 The page shows which test is running and the latest alerts about the device. Mode buttons need no token, like the rest of the page, so only people on the lab Wi-Fi can use them.
 

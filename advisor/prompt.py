@@ -20,7 +20,17 @@ What changed from v2, and why:
     reads it once at start-up and reuses its KV cache. Only the ~100 tokens of
     the alert itself are read per request.
   * Llama writes only the explanation. The code picks the remediation steps.
+
+Network alerts (source "net") get a prompt of their own: other system text and other
+worked examples, because "who the message pretends to be from" does not fit a device that
+scans or calls home. The service reads that prefix when a network alert comes and goes back
+to the message prefix when idle. Addresses and names in the monitor's reasons are replaced
+before Llama sees them: the alerting device becomes "the device", other addresses "another
+device on your network" or "a server on the internet", and website names "a website".
+Names are chosen by whoever registered them, so none reaches Llama, and two alerts of the
+same kind share one prompt (the answer cache then makes the second one instant).
 """
+import ipaddress
 import re
 
 from .findings import describe_org
@@ -31,6 +41,7 @@ INCLUDE_BOS_TOKEN = True
 MAX_UNTRUSTED_CHARS = 300
 MAX_SIGNS = 4
 MAX_NEW_TOKENS = {"en": 64, "hi": 160}      # Hindi needs ~3x more tokens for the same text
+MAX_NEW_TOKENS_NET = 72                    # network answers name an action and a fact: a little longer
 LANG_NAMES = {"en": "simple English", "hi": "simple Hindi, written in Devanagari script"}
 
 _SPECIAL_TOKEN_RE = re.compile(r"<\|[^|>]{0,40}\|>")
@@ -180,10 +191,115 @@ def static_prefix(language="en", n_examples=len(EXAMPLES)):
 
 
 def build_prompt(finding, playbook, n_examples=len(EXAMPLES)):
+    if finding.source == "net":
+        return (static_prefix_net(min(n_examples, len(EXAMPLES_NET)))
+                + _header("user") + build_net_user_turn(finding, playbook) + "<|eot_id|>"
+                + _header("assistant"))
     return (static_prefix(finding.language, n_examples)
             + _header("user") + build_user_turn(finding, playbook) + "<|eot_id|>"
             + _header("assistant"))
 
 
-def max_new_tokens(language):
+def max_new_tokens(language, source="sms"):
+    if source == "net":
+        return MAX_NEW_TOKENS_NET
     return MAX_NEW_TOKENS.get(language, MAX_NEW_TOKENS["en"])
+
+
+# --- network alerts ------------------------------------------------------------------
+SYSTEM_NET = (
+    "You explain network alerts to people in India in {lang}. "
+    "A monitor on their Wi-Fi has already checked a device's connections and listed what it saw. "
+    "Using only those facts, write exactly 2 short sentences. "
+    "Sentence 1: what the device did and what the attacker or malware wants. "
+    "Sentence 2: the checked fact and why it is a warning sign."
+)
+
+RESULT_TEXT_NET = {"dangerous": "attack or malware (high confidence)",
+                   "suspicious": "possible attack or malware (medium confidence)"}
+
+EXAMPLES_NET = [
+    {
+        "result": RESULT_TEXT_NET["dangerous"],
+        "alert_type": "Port scan on your network",
+        "wants": "to find an open door into your devices",
+        "fact": ("Normal phones, laptops and sensors connect to a few ports on a few servers; trying dozens "
+                 "of ports on one device in a minute is what scanning tools do."),
+        "saw": ["the device tried 100 different ports on another device on your network within 5 seconds, "
+                "most of them closed: that is how attackers look for a way in"],
+        "answer": ("A device on your Wi-Fi tried 100 different ports on another device in a few seconds, "
+                   "looking for an open door into your devices. Normal phones and sensors use only a few "
+                   "ports, so this is what scanning tools do."),
+    },
+    {
+        "result": RESULT_TEXT_NET["suspicious"],
+        "alert_type": "Device calling home at fixed times (possible malware)",
+        "wants": "to keep control of your device and wait for orders",
+        "fact": ("Malware contacts its controller at fixed intervals; normal apps do too, so a rhythm to an "
+                 "unknown server is a warning sign, not proof."),
+        "saw": ["the device contacts a server on the internet every 2 minutes, like clockwork (12 times so "
+                "far): malware checks in with its controller this way"],
+        "answer": ("A device on your Wi-Fi contacts the same unknown server every 2 minutes, which is how "
+                   "malware keeps control of a device and waits for orders. Some normal apps also call home "
+                   "on a timer, so this is a warning sign to check, not proof."),
+    },
+    {
+        "result": RESULT_TEXT_NET["dangerous"],
+        "alert_type": "Device opened a phishing website",
+        "wants": "to steal a password, card details or OTP through a fake website",
+        "fact": ("Real Indian bank websites end in .bank.in and government websites end in .gov.in; a site on "
+                 "the phishing lists has been reported for stealing details."),
+        "saw": ["the device looked up a fake website: the website address uses HDFC Bank's name, but it is "
+                "not HDFC Bank's official website"],
+        "answer": ("A device on your Wi-Fi opened a fake website that uses HDFC Bank's name to steal a "
+                   "password, card details or OTP. Real Indian bank websites end in .bank.in, and this "
+                   "address is not HDFC Bank's official website."),
+    },
+]
+
+_IP_RE = re.compile(r"(?<![\w.:])(?:(?:\d{1,3}\.){3}\d{1,3}|[0-9a-f]{0,4}(?::[0-9a-f]{0,4}){2,7})(?![\w.:])", re.I)
+
+
+def net_reason(text, device=""):
+    """A monitor reason with its addresses and names replaced by plain words."""
+    def address(m):
+        a = m.group(0)
+        try:
+            ip = ipaddress.ip_address(a)
+        except ValueError:
+            return a                           # not an address after all, e.g. a time "13:29:05"
+        if a == device:
+            return "the device"
+        return "another device on your network" if ip.is_private else "a server on the internet"
+    t = _IP_RE.sub(address, str(text or ""))
+    t = _URL_RE.sub("a website", t)
+    return _field(t, 260)
+
+
+def format_net_case(result, alert_type, wants, fact, saw):
+    # As for messages, the lines fixed per alert type come first.
+    lines = [f"Alert type: {_field(alert_type)}"]
+    if wants:
+        lines.append(f"Attacker or malware wants: {_field(wants)}")
+    if fact:
+        lines.append(f"Fact: {_field(fact, 300)}")
+    lines += [f"Monitor result: {_field(result)}", "What the monitor saw:"]
+    lines += [f"- {_field(s, 260)}" for s in saw[:MAX_SIGNS]] or ["- unusual connections"]
+    return "\n".join(lines)
+
+
+def build_net_user_turn(finding, playbook):
+    device = str(finding.entities.get("device", ""))
+    return format_net_case(result=RESULT_TEXT_NET.get(finding.verdict, RESULT_TEXT_NET["suspicious"]),
+                           alert_type=playbook.title, wants=playbook.wants, fact=playbook.fact,
+                           saw=[net_reason(r, device) for r in finding.reasons])
+
+
+def static_prefix_net(n_examples=len(EXAMPLES_NET)):
+    """System text plus worked examples for network alerts (English): identical for every alert."""
+    bos = "<|begin_of_text|>" if INCLUDE_BOS_TOKEN else ""
+    parts = [bos, _header("system"), SYSTEM_NET.format(lang=LANG_NAMES["en"]), "<|eot_id|>"]
+    for ex in EXAMPLES_NET[:n_examples]:
+        case = format_net_case(ex["result"], ex["alert_type"], ex["wants"], ex["fact"], ex["saw"])
+        parts += [_header("user"), case, "<|eot_id|>", _header("assistant"), ex["answer"], "<|eot_id|>"]
+    return "".join(parts)

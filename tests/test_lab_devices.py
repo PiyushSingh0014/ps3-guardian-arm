@@ -103,6 +103,18 @@ def test_page_view_with_readings_alerts_and_learning(setup):
     assert c.get("/iot").json()["devices"][0]["learning_until"] is None
 
 
+def test_beacon_test_waits_until_the_monitor_has_learned_the_device(setup):
+    # Check-ins during the learning time would be learned as the device's normal: no alert, ever.
+    c, clock, alerts, state = setup
+    post(c)
+    state.write_text(json.dumps({"testclient": {"first_ms": int(time.time() * 1000) - 600_000}}))
+    r = c.post("/iot/mode", json={"device": "esp32-lab", "mode": "beacon"})
+    assert r.status_code == 409 and "learning" in r.json()["detail"]
+    assert c.post("/iot/mode", json={"device": "esp32-lab", "mode": "dga"}).status_code == 200   # the others may run
+    state.write_text(json.dumps({"testclient": {"first_ms": int(time.time() * 1000) - 3 * 3600_000}}))
+    assert c.post("/iot/mode", json={"device": "esp32-lab", "mode": "beacon"}).json()["mode"] == "beacon"
+
+
 def test_devices_are_limited_and_forgotten():
     clock = Clock()
     lab = LabDevices(clock=clock)

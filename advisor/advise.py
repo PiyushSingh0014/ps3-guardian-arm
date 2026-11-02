@@ -10,6 +10,8 @@ Order of operations (fast and safe first):
      and is instant for alerts it has explained before.
 The remediation steps always come verbatim from the playbook and are picked
 by code, never by the LLM; the emergency step (call 1930) is always included.
+Network alerts (source "net") get a prompt of their own (advisor/prompt.py); the app
+explains them in the background, newest first (NetExplanations in app/server.py).
 """
 from dataclasses import dataclass, field, asdict
 
@@ -62,8 +64,6 @@ class Advisor:
     def needs_llm(self, finding):
         if finding.verdict == "safe" or isinstance(self.backend, TemplateBackend):
             return False
-        if finding.source == "net":              # the Llama prompt is written for messages; network
-            return False                         # alerts use the checked playbook text for now
         return get_playbook(self.books, finding.category).severity not in SKIP_LLM_SEVERITIES
 
     def quick(self, finding):
@@ -92,7 +92,7 @@ class Advisor:
         n_examples = getattr(self.backend, "n_examples", None)
         prompt = (build_prompt(finding, book, n_examples) if n_examples is not None
                   else build_prompt(finding, book))
-        res = self.backend.generate(prompt, max_new_tokens=max_new_tokens(finding.language))
+        res = self.backend.generate(prompt, max_new_tokens=max_new_tokens(finding.language, finding.source))
         base.metrics = res.metrics
         if res.error or not res.text:
             base.flags.append(res.error or "no LLM output")
