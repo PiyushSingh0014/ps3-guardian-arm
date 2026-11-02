@@ -12,9 +12,15 @@ Every 5 s it reads /proc (no extra packages) for three groups of processes:
 plus the whole Pi: CPU, free memory, temperature and the power/heat flags of
 `vcgencmd get_throttled`. Every sample goes to logs/pi_usage-<date>-<time>.csv; the end prints
 a table of averages and peaks. CPU is a share of all 4 cores: 25% is one core fully busy.
+
+If a run was cut off before its table (the SSH window closed, the laptop slept), print the
+table from the samples it saved:
+
+    python scripts/pi_usage.py --from last
 """
 import argparse
 import csv
+import glob
 import os
 import subprocess
 import sys
@@ -117,7 +123,7 @@ def summary(rows):
         lines.append(f"| {name} | {c[0]:.1f}% | {c[1]:.1f}% | {m[0]:.0f} MB | {m[1]:.0f} MB |")
     c = stat("pi_cpu")
     free = [r["mem_free_mb"] for r in rows if r.get("mem_free_mb") is not None]
-    lines.append(f"| whole Pi | {c[0]:.1f}% | {c[1]:.1f}% | free memory at least {min(free) if free else 0} MB | |")
+    lines.append(f"| whole Pi | {c[0]:.1f}% | {c[1]:.1f}% | free memory at least {min(free) if free else 0:.0f} MB | |")
     temps = [r["temp_c"] for r in rows if r.get("temp_c") is not None]
     seen = [r["throttled"] for r in rows if r.get("throttled") is not None]
     flags = 0
@@ -129,16 +135,55 @@ def summary(rows):
     return "\n".join(lines)
 
 
+def read_rows(path):
+    """The samples of a saved run, as numbers again (empty cells: not readable then)."""
+    rows = []
+    with open(path, newline="", encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            row = {}
+            for k, v in r.items():
+                if k is None or k == "time":
+                    if k:
+                        row[k] = v
+                    continue
+                try:
+                    row[k] = int(v) if k == "throttled" else float(v)
+                except (TypeError, ValueError):
+                    row[k] = None
+            rows.append(row)
+    return rows
+
+
+def latest(root=None):
+    """The newest logs/pi_usage-<date>-<time>.csv, or None."""
+    found = sorted(glob.glob(os.path.join(root or ROOT, "logs", "pi_usage-*.csv")))
+    return found[-1] if found else None
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--minutes", type=float, default=30)
     ap.add_argument("--every", type=float, default=5.0, help="seconds between samples")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--from", dest="source", default=None,
+                    help="print the table of a saved run instead of sampling: a CSV path, or 'last'")
     a = ap.parse_args()
+    if a.source:
+        path = latest() if a.source == "last" else a.source
+        if not path or not os.path.exists(path):
+            print("No saved run found." if a.source == "last" else f"Not found: {a.source}")
+            return 1
+        rows = read_rows(path)
+        if not rows:
+            print(f"No samples in {path}.")
+            return 1
+        print(f"From {path}:\n\n" + summary(rows))
+        return 0
     out = a.out or os.path.join(ROOT, "logs", time.strftime("pi_usage-%Y%m%d-%H%M.csv"))
     os.makedirs(os.path.dirname(out), exist_ok=True)
     rows, state, end = [], None, time.time() + a.minutes * 60
     print(f"Sampling every {a.every:g} s for {a.minutes:g} minutes (Ctrl+C stops early) -> {out}")
+    print("If this window closes before the end: python scripts/pi_usage.py --from last")
     try:
         with open(out, "w", newline="") as f:
             w = None
