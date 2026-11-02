@@ -214,16 +214,21 @@ def test_device_names_from_the_copy_or_the_original_list(tmp_path):
     assert "kitchen-cam" not in " ".join(hits[0].reasons)     # self-chosen names never reach Llama
 
 
-def test_monitor_prints_status_and_learns_the_pi_address(monkeypatch, capsys):
+def test_monitor_prints_status_and_learns_the_pi_address(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(monitor, "FIRST_STATUS_S", 0)
     monkeypatch.setattr(monitor, "STATUS_EVERY_S", 0)
     monkeypatch.setattr(monitor, "iface_address", lambda iface: PI)
-    e = engine()
+    e, days = engine(), tmp_path / "days.json"
     assert e.gateway is None                                 # the Wi-Fi had no address at start
-    monitor.run(iter([flow(T0, "52.1.1.1", 443, syn=1, pin=5, bin_=900)]), e, None, show=True, iface="wlan0")
+    monitor.run(iter([flow(T0, "52.1.1.1", 443, syn=1, pin=5, bin_=900)]), e, None, show=True, iface="wlan0",
+                days=str(days))
     assert e.gateway == PI and e.base.gateway == PI
     printed = capsys.readouterr().out
     assert "1 flows so far (1 in the last 1 min), 0 alerts" in printed
+    today = json.loads(days.read_text())[__import__("time").strftime("%Y-%m-%d")]
+    assert today["flows"] == 1 and today["alerts"] == 0 and today["minutes"] >= 0     # for false alarms per day
+    monitor.add_day(str(days), 15, 2000, 1)
+    assert json.loads(days.read_text())[__import__("time").strftime("%Y-%m-%d")]["flows"] == 2001
 
 
 def _after_learning(e, t):

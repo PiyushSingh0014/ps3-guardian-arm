@@ -112,12 +112,12 @@ With the Llama service running, a new alert appears on the page at once with the
   The device's own name and the names it looked up never reach Llama: whoever chose them could hide instructions in them. Network alerts have their own system text and four worked examples (`advisor/prompt.py`), because "who the message pretends to be from" does not fit a device.
 - **The same checker as for messages.** An answer that calls the alert normal or harmless is refused, and a sentence with a link or a number is dropped. The page then keeps the playbook text.
 - **One at a time, messages first.** The app explains the newest 20 alerts of the last week (the page lists 20), newest first. A new explanation starts only when no message is waiting for Llama. A message checked while Llama explains a network alert waits for it, and the page says so. Its verdict and steps still appear at once.
-- **Time on the Pi** (measured on 2 November 2026, 11 network prompts):
-  - The first network explanation after a message took 68 s: Llama first reads the network examples, about 590 tokens, and its first word came after 52 s.
-  - The next ones took 20–30 s, because they reuse the examples.
-  - The same alerts again took 0.1 s for all 11, from the answer cache. A repeat of an ESP32 test is instant this way.
+- **Time on the Pi** (measured on 3 November 2026, 13 network prompts, four worked examples):
+  - The first network explanation after a message took 86 s: Llama first reads the network examples, about 770 tokens, and its first word came after 67 s.
+  - The next ones took 21–31 s, because they reuse the examples.
+  - The same alerts again are instant, from the answer cache (0.1 s for all of them). A repeat of an ESP32 test is instant this way.
   - Afterwards Llama re-reads the message examples when idle (about 38 s), so the next message check is fast again.
-  - These times are with three worked examples. Update 23 added a fourth, for "Link from a scam message opened" (Llama had written that the message was "flagged by the device itself"). It makes the network examples about 180 tokens longer, so the first explanation after a message takes about 15 s more; the others are not affected.
+  - The fourth example (update 23) is for "Link from a scam message opened": without it, Llama wrote that the message was "flagged by the device itself". It added about 19 s to the first explanation; the others did not change.
 - **To switch it off,** set `NET_EXPLAIN=0` in the app's environment.
 
 To review the answers and their time, and to fill the answer cache before a demo, run this on the Pi with the Llama service running:
@@ -201,7 +201,12 @@ If one phone does both jobs (internet over USB and the app), it stays off the la
 
 **Things to know:**
 
-- **Power.** The internet phone charges from the Pi's USB port. The Pi has restarted by itself before, so check `vcgencmd get_throttled` after plugging the phone in.
+- **Power.** The internet phone charges from the Pi's USB port. The Pi has restarted by itself before (the last time on 3 November, just after the services were restarted while the S25 charged from it at about 20% battery), so check `vcgencmd get_throttled` after plugging the phone in. Plug the phone in with a charged battery.
+- **Keep the system log across restarts,** so the next unexpected restart shows its cause (`journalctl -b -1`). Run this once:
+
+  ```bash
+  sudo mkdir -p /var/log/journal && sudo systemctl restart systemd-journald
+  ```
 - **After a restart** of the Pi, tethering comes back by itself if the internet phone is unlocked or has no screen lock (with Default USB configuration set). Otherwise unlock it or switch tethering on again.
 - **Mobile data.** Every device on `PS3-Guardian-Lab` uses the internet phone's data.
   - **Android phones** are told the hotspot is metered (the script adds Android's `ANDROID_METERED` hint to the hotspot's DHCP answers), so they hold back big background downloads there, such as app updates and backups.
@@ -210,6 +215,41 @@ If one phone does both jobs (internet over USB and the app), it stays off the la
 - **Consent.** Everyone whose device joins `PS3-Guardian-Lab` should know the Pi checks its connections. As with SMS: consent first.
   - **What is kept:** alerts, per-device counts, when each device was last active, and the addresses or names of the servers each device uses (`data/net/devices.json`). Never the content. From flagged messages, the website names in their links, for 24 hours (`data/fusion/watch.json`).
   - **Removing a device:** stop `ps3-netmon`, delete its entry from that file and its lines from `logs/net_alerts.jsonl`, then start the service again.
+
+## Measure it on real traffic
+
+Two tools for the report. Run them on the Pi, from `~/ps3-guardian` with `source ~/ps3-venv/bin/activate`.
+
+**False alarms per day.** The monitor keeps the hours it watched and the flows it saw per day (`data/net/days.json`). The app logs every test started from its page (`logs/lab_tests.jsonl`).
+
+1. Export the alerts to a sheet. Alerts during the ESP32's test modes come labelled `test` already.
+
+   ```bash
+   python scripts/net_traffic.py export alerts.csv
+   ```
+
+2. Fill the empty `label` cells:
+   - `test`: you caused it on purpose, such as the laptop's look-ups;
+   - `false`: a false alarm, nothing was wrong;
+   - `real`: a real problem.
+
+3. Measure:
+
+   ```bash
+   python scripts/net_traffic.py measure alerts.csv
+   ```
+
+   It prints a table per day (hours watched, flows, alerts, and how they were labelled) and the false alarms per day, by kind and by device.
+
+**CPU, memory and temperature:**
+
+```bash
+python scripts/pi_usage.py --minutes 30
+```
+
+- **What it samples:** every 5 s, the monitor, the app and Llama, and the whole Pi. It prints a table of averages and peaks and writes every sample to `logs/pi_usage-….csv`.
+- **CPU figures** are a share of all four cores: 25% is one core fully busy.
+- **What to do during the 30 minutes** so the table covers the real work: one ESP32 test, and one message check that Llama explains.
 
 ## Use it on a capture file or the test data
 
