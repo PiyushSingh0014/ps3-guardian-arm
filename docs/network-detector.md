@@ -222,24 +222,29 @@ Two tools for the report. Run them on the Pi, from `~/ps3-guardian` with `source
 
 **False alarms per day.** The monitor keeps the hours it watched and the flows it saw per day (`data/net/days.json`). The app logs every test started from its page (`logs/lab_tests.jsonl`).
 
-1. Export the alerts to a sheet. Alerts during the ESP32's test modes come labelled `test` already.
+1. Leave the lab Wi-Fi in normal use for a day or more: the laptop and phones on `PS3-Guardian-Lab`, used as usual.
+2. Say what each alert was, in the terminal:
 
    ```bash
-   python scripts/net_traffic.py export alerts.csv
+   python scripts/net_traffic.py label
    ```
 
-2. Fill the empty `label` cells:
-   - `test`: you caused it on purpose, such as the laptop's look-ups;
-   - `false`: a false alarm, nothing was wrong;
-   - `real`: a real problem.
+   It shows the alerts of the days the monitor watched, one at a time, with the device, the kind and the red flags. Type a letter and press Enter:
+   - `t`: a test, you caused it on purpose (such as the laptop's look-ups);
+   - `f`: a false alarm, nothing was wrong;
+   - `r`: a real problem.
+
+   Enter on its own skips an alert you are not sure about, and `q` (or Ctrl+C) stops. Each answer is saved at once in `data/net/labels.json`, so running it again carries on where you stopped; `--again` goes through the labelled ones too. Alerts during the ESP32's test modes are labelled `test` already.
 
 3. Measure:
 
    ```bash
-   python scripts/net_traffic.py measure alerts.csv
+   python scripts/net_traffic.py measure
    ```
 
-   It prints a table per day (hours watched, flows, alerts, and how they were labelled) and the false alarms per day, by kind and by device.
+   It prints a table per day (hours watched, flows, alerts, and how they were labelled) and the false alarms per day, by kind and by device. Alerts of days without watched time (before the monitor kept it) are left out; `--all` lists them.
+
+**In a spreadsheet instead:** `python scripts/net_traffic.py export alerts.csv` writes every alert with its label so far. Fill the `label` column with `test`, `false` or `real`, then run `python scripts/net_traffic.py measure alerts.csv`. The sheet may go through Excel, which re-writes dates in the PC's own format and may save in the Windows code page: `measure` matches each row to the alert log by its `id`, so it still counts it on the right day.
 
 **CPU, memory and temperature:**
 
@@ -250,6 +255,7 @@ python scripts/pi_usage.py --minutes 30
 - **What it samples:** every 5 s, the monitor, the app and Llama, and the whole Pi. It prints a table of averages and peaks and writes every sample to `logs/pi_usage-….csv`.
 - **CPU figures** are a share of all four cores: 25% is one core fully busy.
 - **What to do during the 30 minutes** so the table covers the real work: one ESP32 test, and one message check that Llama explains.
+- **If the run was cut off** before its table (the SSH window closed, the laptop slept): `python scripts/pi_usage.py --from last` prints the table from the samples saved so far.
 
 ## Use it on a capture file or the test data
 
