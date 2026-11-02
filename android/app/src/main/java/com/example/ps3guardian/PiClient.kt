@@ -5,7 +5,7 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
 
-/** The three calls the app makes to the Pi (app/server.py). Blocking: use a background thread. */
+/** The calls the app makes to the Pi (app/server.py). Blocking: use a background thread. */
 class PiClient(private val baseUrl: String, private val token: String) {
 
     /** The Pi refused the request itself (bad or too long a message), not the connection or the token. */
@@ -30,6 +30,9 @@ class PiClient(private val baseUrl: String, private val token: String) {
     }
 
     fun explain(jobId: String): JSONObject = request("GET", "/explain/$jobId", null)
+
+    /** The newest network alerts from the Pi's lab Wi-Fi, newest first: the list the Pi's page shows. */
+    fun alerts(limit: Int): JSONObject = request("GET", "/alerts?limit=$limit", null)
 
     private fun request(method: String, path: String, body: JSONObject?): JSONObject {
         val conn = URI(baseUrl + path).toURL().openConnection() as HttpURLConnection

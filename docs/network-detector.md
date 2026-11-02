@@ -10,7 +10,7 @@ The Pi watches every connection of every device on its own Wi-Fi and raises an a
 - hides data in DNS,
 - or suddenly behaves unlike its normal self.
 
-Alerts appear on the Pi's page under **Network alerts**, with the same kind of advice as SMS alerts. It reads connection summaries (flows), never the content of the traffic.
+Alerts appear on the Pi's page under **Network alerts**, with the same kind of advice as SMS alerts, and as notifications in the phone app ([android-companion.md](android-companion.md), Part H). It reads connection summaries (flows), never the content of the traffic.
 
 Results on CIC-IDS2017: [eval/results_net.md](../eval/results_net.md). To see it catch a device live, use the ESP32 lab device and its harmless test modes: [esp32-lab-device.md](esp32-lab-device.md).
 

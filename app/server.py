@@ -16,7 +16,8 @@ never streamed to the user unchecked.
 
 POST /check takes a message (the links in it are checked too) or a single link;
 POST /url takes a link. GET /alerts lists the network monitor's alerts
-(detectors/net/monitor.py writes them to logs/net_alerts.jsonl) with their advice.
+(detectors/net/monitor.py writes them to logs/net_alerts.jsonl) with their advice; the page
+and the phone app (android/, NetAlerts.kt) show them.
 With an LLM backend, Llama explains the newest network alerts in the background
 (NetExplanations), one at a time and only while no message waits for Llama; /alerts
 shows each explanation once it is checked. NET_EXPLAIN=0 switches this off.
@@ -411,7 +412,8 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
     @app.get("/alerts")
     def alerts(limit: int = 50):
         """Network alerts, newest first, each with the playbook's advice and, under "explain",
-        Llama's explanation: null (none planned), queued, pending, or done/fallback with the advice."""
+        Llama's explanation: null (none planned), queued, pending, or done/fallback with the advice.
+        "id" stays the same for an alert, so the phone app notifies once per alert."""
         items = read_alerts(alerts_path, max(1, min(limit, 200)))
         if explainer:
             explainer.refresh(items)
@@ -419,7 +421,7 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
         out = []
         for item, explained in zip(items, views):
             finding = Finding(**item["finding"])
-            out.append({"time": item.get("time"), "finding": _public_finding(finding),
+            out.append({"id": alert_key(item)[:16], "time": item.get("time"), "finding": _public_finding(finding),
                         "advice": advisor.quick(finding).to_dict(), "explain": explained})
         return {"alerts": out}
 

@@ -7,6 +7,8 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -14,8 +16,14 @@ import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.NotificationManagerCompat
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-/** One screen: Pi address, token and phone name, permissions, chats, two tests, and the last results. */
+/**
+ * One screen: Pi address, token and phone name, permissions, chats, two tests, the network
+ * alerts from the Pi's lab Wi-Fi, and the last results.
+ */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var url: EditText
@@ -23,7 +31,24 @@ class MainActivity : AppCompatActivity() {
     private lateinit var device: EditText
     private lateinit var status: TextView
     private lateinit var chatStatus: TextView
+    private lateinit var netStatus: TextView
+    private lateinit var netAlerts: TextView
     private lateinit var recent: TextView
+    private val handler = Handler(Looper.getMainLooper())
+
+    // While the screen is open, ask the Pi for network alerts every 10 s.
+    private val netLoop = object : Runnable {
+        override fun run() {
+            if (Settings.netOn(this@MainActivity)) {
+                val app = applicationContext
+                Thread {
+                    NetAlerts.check(app)
+                    runOnUiThread { showNet() }
+                }.start()
+            }
+            handler.postDelayed(this, 10_000L)
+        }
+    }
 
     private val askPermissions =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
@@ -44,6 +69,8 @@ class MainActivity : AppCompatActivity() {
         device = findViewById(R.id.device)
         status = findViewById(R.id.status)
         chatStatus = findViewById(R.id.chat_status)
+        netStatus = findViewById(R.id.net_status)
+        netAlerts = findViewById(R.id.net_alerts)
         recent = findViewById(R.id.recent)
         url.setText(Settings.piUrl(this))
         token.setText(Settings.token(this))
@@ -66,22 +93,35 @@ class MainActivity : AppCompatActivity() {
         bindSwitch(R.id.chat_whatsapp, Settings.chatKey(ChatApps.WHATSAPP))
         bindSwitch(R.id.chat_contacts, Settings.CHAT_CONTACTS)
         findViewById<Button>(R.id.notification_access).setOnClickListener { openNotificationAccess() }
+
+        val netBox = findViewById<CheckBox>(R.id.net_on)
+        netBox.isChecked = Settings.netOn(this)
+        netBox.setOnCheckedChangeListener { _, on ->
+            Settings.setSwitch(this, Settings.NET_ON, on)
+            if (on) NetWorker.start(this) else NetWorker.stop(this)
+            showNet()
+        }
+        NetWorker.start(this)
     }
 
     // While the screen is open, show new results as soon as they are saved.
     private val refresh = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == Settings.KEY_RECENT || key == Settings.KEY_PENDING) runOnUiThread { showRecent() }
+        if (key == Settings.KEY_NET_LIST) runOnUiThread { showNet() }
     }
 
     override fun onResume() {
         super.onResume()
         Settings.prefs(this).registerOnSharedPreferenceChangeListener(refresh)
         showRecent()
+        showNet()
         showChatStatus()                     // notification access may have just been allowed
         FlushWorker.flushSoon(this)          // send messages that waited for the Pi, if it can be reached now
+        handler.post(netLoop)
     }
 
     override fun onPause() {
+        handler.removeCallbacks(netLoop)
         Settings.prefs(this).unregisterOnSharedPreferenceChangeListener(refresh)
         super.onPause()
     }
@@ -155,6 +195,27 @@ class MainActivity : AppCompatActivity() {
                 showRecent()
             }
         }.start()
+    }
+
+    private fun clock(ms: Long): String = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(ms))
+
+    private fun showNet() {
+        if (!Settings.netOn(this)) {
+            netStatus.text = "Off: this phone does not ask the Pi for network alerts."
+            netAlerts.text = ""
+            return
+        }
+        val checked = Settings.netCheckedAt(this)
+        val failed = Settings.netFailedAt(this)
+        netStatus.text = when {
+            checked == 0L && failed == 0L -> "Not checked yet."
+            failed > checked -> "Cannot reach the Pi" +
+                (if (checked > 0L) " (last reached at ${clock(checked)})" else "") +
+                ". Network alerts come while this phone is on the Pi's Wi-Fi, PS3-Guardian-Lab."
+            else -> "Checked at ${clock(checked)}. New alerts come as notifications."
+        }
+        val lines = Settings.netList(this)
+        netAlerts.text = if (lines.isEmpty()) "No network alerts." else lines.joinToString("\n\n")
     }
 
     private fun showRecent() {

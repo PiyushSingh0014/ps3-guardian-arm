@@ -25,6 +25,8 @@ Chat messages (RCS "chat features" in Messages, WhatsApp) are not SMS: Android p
 
 Since update 9, the Pi also checks every link in a message: official sites, brand names on other people's sites, and the public list of phishing sites. The app needs no change for this. See [url-detector.md](url-detector.md).
 
+Since update 20, the app also shows the Pi's **network alerts**: what its network monitor finds on the lab Wi-Fi, for every device there, as notifications (Part H).
+
 ## Part A: the Pi
 
 ### First time only: start automatically
@@ -83,12 +85,12 @@ Don't start `scripts/run_pi.sh` by hand any more: a second copy cannot use port 
 
 4. **Build → Make Project** (Ctrl+F9; called Assemble Project in some versions). It should end with BUILD SUCCESSFUL. If it doesn't, send the first error line.
 
-**Updating the app later:** get the new version of the repo (pull, or download the ZIP again), or copy the changed `.kt` files from `android/app/src/main/java/com/example/ps3guardian/` over your copies, and press **Run ▶**. The app keeps its settings and its list.
+**Updating the app later:** get the new version of the repo (pull, or download the ZIP again), or copy its `android/app/src/main` folder over your project's `app/src/main`, and press **Run ▶**. The app keeps its settings and its list.
 
 <details>
 <summary>How the project was made (only needed to make it again from scratch)</summary>
 
-New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.example.ps3guardian` (Android Studio's suggestion), Kotlin, minimum SDK API 26, Kotlin DSL. Then in `app/build.gradle.kts`: `targetSdk = 36` and `implementation("androidx.work:work-runtime-ktx:2.12.0")`; then the app's files copied into `app/src/main/` (manifest, the 8 `.kt` files, `res/layout/activity_main.xml`, `res/xml/network_security_config.xml`). If you choose another package name, change the first line (`package ...`) of the 8 `.kt` files to match (Edit → Find → Replace in Files).
+New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.example.ps3guardian` (Android Studio's suggestion), Kotlin, minimum SDK API 26, Kotlin DSL. Then in `app/build.gradle.kts`: `targetSdk = 36` and `implementation("androidx.work:work-runtime-ktx:2.12.0")`; then the app's files copied into `app/src/main/` (manifest, the `.kt` files, `res/layout/activity_main.xml`, `res/xml/network_security_config.xml`). If you choose another package name, change the first line (`package ...`) of every `.kt` file to match (Edit → Find → Replace in Files).
 
 </details>
 
@@ -186,6 +188,21 @@ More phones give more, and more varied, messages: other banks, operators and app
 
 When labelling (Part E), each person labels their own phone's rows: they know best whether a message really came from their bank.
 
+## Part H: network alerts from the Pi's Wi-Fi
+
+When the phone is on the Pi's Wi-Fi `PS3-Guardian-Lab`, the app also shows what the Pi's network monitor finds there ([network-detector.md](network-detector.md)). Every phone with the app sees the alerts for every device on that Wi-Fi, the same list as the Pi's page.
+
+- **Notifications.** A new alert, dangerous or suspicious, becomes a notification in the channel "Network alerts". If Llama's explanation is not ready yet, the notification shows the playbook's checked text first. When the Pi has Llama's text, the same notification shows it instead, without sounding again.
+- **How quickly.** The app asks the Pi about once a minute, and every 10 s while its screen is open. While the phone sleeps, Android delays these checks, by 15 minutes or more. Away from the lab Wi-Fi it tries every 15 minutes.
+- **Not flooded.** Alerts older than an hour are only listed, never notified, and at most 3 new notifications come at once.
+- **Off switch:** untick **Show network alerts and notify me**. It is on after installing.
+- **Data.** The checks go to the Pi over the lab Wi-Fi only. Nothing leaves the lab.
+
+1. **Install** the new version from the Android Studio system: Part B, "Updating the app later", then Part C step 3. On a teammate's phone this is optional.
+2. **Check:** with the phone on `PS3-Guardian-Lab` and the Pi address `http://10.42.0.1:8000`, open the app. Under **Network alerts (the Pi's Wi-Fi)** the line says "Checked at …" and the list shows the Pi's alerts. Alerts that are already there are not notified.
+3. **Test with the ESP32:** start a test from the Pi's page, for example "Looks up made-up names (DGA)". About 30 s later the alert is on the Pi's page; within a minute it is a notification on the phone, and Llama's text follows in the same notification.
+4. **Battery:** App info → Battery → **Unrestricted** (Part D, step 4) keeps the once-a-minute checks regular.
+
 ## If something goes wrong
 
 | What you see | Fix |
@@ -196,6 +213,8 @@ When labelling (Part E), each person labels their own phone's rows: they know be
 | "WAITING for the Pi" | Normal while the phone cannot reach the Pi; the message is sent later by itself. Many of them: check the Pi as for "Cannot reach the Pi". |
 | No alert, but the list shows the message | It was judged safe (no alert for safe messages), or notifications are off for the app |
 | Nothing at all when an SMS arrives | SMS permission (Part D, step 3) and battery Unrestricted (step 4). Chats are checked only as set up in Part F. |
+| Network alerts: "Cannot reach the Pi" | The phone must be on `PS3-Guardian-Lab`, with the Pi address `http://10.42.0.1:8000`. |
+| No notification for a network alert | Is **Show network alerts and notify me** ticked, and are notifications on for "Network alerts" (App info → Notifications)? Only alerts newer than an hour, seen for the first time, are notified. |
 | A chat is not checked | Is its app ticked, and does the line under "Allow notification access" say chats are being checked? Is the sender shown as a phone number (not in your contacts)? Are notifications on for that chat? The check runs about 5 seconds after the notification. |
 | `Unresolved reference 'R'` and "Package directive does not match the file location" | The `.kt` files were copied into a project with another package name: change their first line to that package (see "How the project was made" in Part B), then build again. |
 | Emulator: "not enough disk space" | You don't need the emulator: install on your phone (Part C). |

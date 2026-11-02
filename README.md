@@ -19,6 +19,7 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | Network detector: scans, floods, password guessing, beacons, DGA names, DNS tunnels, phishing look-ups, per-device normal; the Pi as the Wi-Fi hotspot for lab devices | done (update 10); live on the Pi's own lab Wi-Fi since 1 November 2026 (updates 12–16) | [eval/results_net.md](eval/results_net.md), [docs/network-detector.md](docs/network-detector.md) |
 | ESP32 lab device: sensor readings on the Pi page, four harmless test modes | done: all four tests caught live (updates 14–16) | [docs/esp32-lab-device.md](docs/esp32-lab-device.md), [eval/results_net.md](eval/results_net.md) |
 | Llama explanations for network alerts: a prompt of their own, written in the background | done on the Pi 4 (updates 17–18): 11 of 11 answers accepted; 20–30 s each, 68 s for the first after a message, repeats instant | [eval/results_net.md](eval/results_net.md), [docs/network-detector.md](docs/network-detector.md#llama-explanations) |
+| Network alerts in the phone app: a notification per new alert, Llama's text when ready | built (update 20); install from Android Studio next | [docs/android-companion.md](docs/android-companion.md), Part H |
 | Fusion of message, link and network alerts | planned | |
 
 ## Hardware and software
@@ -35,7 +36,7 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | `detectors/net/` | Network detector: flows from NFStream (live or pcap) or CIC-IDS2017 CSVs, behaviour rules, DNS checks, DGA model (`dga_model.npz`), per-device baseline, the monitor service |
 | `advisor/` | Turns a `Finding` into advice: playbooks, Llama prompt, output validator; `llm_engine.py` + `llm_service.py` keep Llama loaded on the Pi |
 | `app/` | FastAPI app: `POST /check` (a message or a link) and a phone-friendly page; `POST /url` for one link; `POST /sms` for the Android companion, with a traffic log; `GET /alerts` for network alerts; `/iot` for lab devices and their test modes |
-| `android/` | Android companion: a complete Android Studio project (Kotlin). Forwards incoming SMS with their sender IDs to the Pi, and keeps them while the Pi is out of reach |
+| `android/` | Android companion: a complete Android Studio project (Kotlin). Forwards incoming SMS with their sender IDs to the Pi, and keeps them while the Pi is out of reach; shows the Pi's network alerts as notifications |
 | `esp32/` | Lab device: Arduino sketch for the ESP32 on the IoT Pro Kit. Sends its sensor readings to the Pi; harmless test modes imitate infected IoT devices for the network detector ([docs/esp32-lab-device.md](docs/esp32-lab-device.md)) |
 | `tests/` | pytest suite (fake model and fake `llama_main`, so no torch is needed) |
 | `deploy/` | Track B: export, Pi 4 build, benchmark script, test prompts |
