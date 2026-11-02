@@ -26,6 +26,7 @@ from detectors.net.flows import read_cic_csv, read_flows             # noqa: E40
 from detectors.net.scamlinks import WATCH                             # noqa: E402
 
 ALERTS = os.path.join(ROOT, "logs", "net_alerts.jsonl")
+DAYS = os.path.join(ROOT, "data", "net", "days.json")    # watched time, flows, alerts per day
 SAVE_EVERY_S = 600
 STATUS_EVERY_S = 900                         # live only: "[net] 19:30 1234 flows so far ..."
 FIRST_STATUS_S = 60                          # the first one a minute after starting
@@ -52,6 +53,27 @@ def write_alert(path, finding):
         out.write(json.dumps(line, ensure_ascii=False) + "\n")
 
 
+def add_day(path, minutes, flows, alerts, day=None):
+    """Add one stretch of watching to data/net/days.json: minutes, flows and alerts per day.
+    scripts/net_traffic.py turns it into false alarms per day."""
+    day = day or time.strftime("%Y-%m-%d")
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        data = data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        data = {}
+    d = data.setdefault(day, {})
+    d["minutes"] = round(d.get("minutes", 0) + minutes, 1)
+    d["flows"] = d.get("flows", 0) + flows
+    d["alerts"] = d.get("alerts", 0) + alerts
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=1)
+    os.replace(tmp, path)
+
+
 _MAIN = os.getpid()
 
 
@@ -61,9 +83,10 @@ def _interrupt(*_):
     raise KeyboardInterrupt                  # systemctl stop: end the capture cleanly, like Ctrl+C
 
 
-def run(flows, engine, out=None, show=True, iface=None):
+def run(flows, engine, out=None, show=True, iface=None, days=None):
     """Feed flows to the engine; write and print alerts. With `iface` (live), also print a
-    status line now and then, and learn the Pi's address there if it had none at start."""
+    status line now and then, and learn the Pi's address there if it had none at start.
+    With `days`, add the watched time, flows and alerts to that file at every status line."""
     global _MAIN
     _MAIN = os.getpid()
     try:
@@ -71,7 +94,15 @@ def run(flows, engine, out=None, show=True, iface=None):
     except ValueError:                       # not the main thread (tests)
         pass
     n_alerts, last_save = 0, time.time() - SAVE_EVERY_S + 60     # the first save after a minute
-    since, next_status, flows_then = time.time(), time.time() + FIRST_STATUS_S, 0
+    since, next_status, flows_then, alerts_then = time.time(), time.time() + FIRST_STATUS_S, 0, 0
+
+    def record(now):
+        if days:
+            try:
+                add_day(days, (now - since) / 60, engine.flows - flows_then, n_alerts - alerts_then)
+            except OSError as e:
+                print(f"[net] could not write {days}: {e}", flush=True)
+
     try:
         for rec in flows:
             for f in engine.feed(rec):
@@ -92,11 +123,14 @@ def run(flows, engine, out=None, show=True, iface=None):
                 minutes = max(1, round((now - since) / 60))
                 print(f"[net] {time.strftime('%H:%M')} {engine.flows} flows so far ({engine.flows - flows_then} "
                       f"in the last {minutes} min), {n_alerts} alerts", flush=True)
-                since, next_status, flows_then = now, now + STATUS_EVERY_S, engine.flows
+                record(now)
+                since, next_status, flows_then, alerts_then = now, now + STATUS_EVERY_S, engine.flows, n_alerts
     except KeyboardInterrupt:
         pass
     finally:
         engine.save()
+        if iface:
+            record(time.time())
     return n_alerts
 
 
@@ -116,7 +150,7 @@ def main():
         engine = NetEngine(gateway=gateway, learn_ms=int(a.learn_hours * 3600_000), state_path=default_state_path(),
                            watch_path=os.environ.get("NET_WATCH", WATCH))     # links from flagged messages
         print(f"[net] watching {a.iface} (this Pi is {gateway or 'unknown'}); alerts -> {a.out or ALERTS}", flush=True)
-        n = run(read_flows(a.iface), engine, a.out or ALERTS, not a.quiet, iface=a.iface)
+        n = run(read_flows(a.iface), engine, a.out or ALERTS, not a.quiet, iface=a.iface, days=DAYS)
     elif a.pcap:
         engine = NetEngine(learn_ms=int(a.learn_hours * 3600_000), leases=None)
         n = run(read_flows(a.pcap), engine, a.out, not a.quiet)

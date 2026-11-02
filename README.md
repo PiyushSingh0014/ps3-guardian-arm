@@ -18,9 +18,10 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | Phishing link checker: official domains, brand rules, public phishing list, link model; links inside SMS and chats | done (update 9) | [eval/results_url.md](eval/results_url.md), [docs/url-detector.md](docs/url-detector.md) |
 | Network detector: scans, floods, password guessing, beacons, DGA names, DNS tunnels, phishing look-ups, per-device normal; the Pi as the Wi-Fi hotspot for lab devices | done (update 10); live on the Pi's own lab Wi-Fi since 1 November 2026 (updates 12–16) | [eval/results_net.md](eval/results_net.md), [docs/network-detector.md](docs/network-detector.md) |
 | ESP32 lab device: sensor readings on the Pi page, four harmless test modes | done: all four tests caught live (updates 14–16) | [docs/esp32-lab-device.md](docs/esp32-lab-device.md), [eval/results_net.md](eval/results_net.md) |
-| Llama explanations for network alerts: a prompt of their own, written in the background | done on the Pi 4 (updates 17–18): 11 of 11 answers accepted; 20–30 s each, 68 s for the first after a message, repeats instant | [eval/results_net.md](eval/results_net.md), [docs/network-detector.md](docs/network-detector.md#llama-explanations) |
+| Llama explanations for network alerts: a prompt of their own, written in the background | done on the Pi 4 (updates 17–23): all answers accepted (13 of 13); 21–31 s each, 86 s for the first after a message, repeats instant | [eval/results_net.md](eval/results_net.md), [docs/network-detector.md](docs/network-detector.md#llama-explanations) |
 | Network alerts in the phone app: a notification per new alert, Llama's text when ready | built (update 20); install from Android Studio next | [docs/android-companion.md](docs/android-companion.md), Part H |
-| Per-device risk view; messages meet network traffic: "Link from a scam message opened" | built (update 21) | [docs/network-detector.md](docs/network-detector.md) |
+| Per-device risk view; messages meet network traffic: "Link from a scam message opened" | done: tested live on 3 November (updates 21–23) | [docs/network-detector.md](docs/network-detector.md) |
+| Measuring on the Pi: false alarms per day, CPU, memory, temperature | tools built (update 24); measurement next | [docs/network-detector.md](docs/network-detector.md#measure-it-on-real-traffic) |
 
 ## Hardware and software
 
@@ -40,7 +41,7 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | `esp32/` | Lab device: Arduino sketch for the ESP32 on the IoT Pro Kit. Sends its sensor readings to the Pi; harmless test modes imitate infected IoT devices for the network detector ([docs/esp32-lab-device.md](docs/esp32-lab-device.md)) |
 | `tests/` | pytest suite (fake model and fake `llama_main`, so no torch is needed) |
 | `deploy/` | Track B: export, Pi 4 build, benchmark script, test prompts |
-| `scripts/` | `run_pi.sh`: starts the Llama service and the app on the Pi; `install_service.sh`: starts them at every boot (systemd); `sms_traffic.py`: exports and measures the companion's traffic log; `get_url_data.py`: downloads the link checker's lists; `install_netmon.sh`: the network monitor service; `setup_gateway.sh`: the Pi as a Wi-Fi hotspot, with automatic undo |
+| `scripts/` | `run_pi.sh`: starts the Llama service and the app on the Pi; `install_service.sh`: starts them at every boot (systemd); `sms_traffic.py`: exports and measures the companion's traffic log; `get_url_data.py`: downloads the link checker's lists; `install_netmon.sh`: the network monitor service; `setup_gateway.sh`: the Pi as a Wi-Fi hotspot, with automatic undo; `net_traffic.py`: false alarms per day; `pi_usage.py`: CPU, memory and temperature |
 | `eval/` | Results for the report |
 | `docs/` | Notes per step |
 

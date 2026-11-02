@@ -120,31 +120,28 @@ The Pi is the hotspot `PS3-Guardian-Lab`. On it: a laptop, a Galaxy S25 and the 
   CIC-IDS2017's Monday has the same kind: 18 of its 47 false alarms are such "scans", all on port 443.
 - **The fix (update 18).** On live traffic, a network-scan try is now a new connection that got no answer or was refused. The same "new connections only" rule now applies to password guessing, so pauses in an SSH session are not logins. The CIC-IDS2017 numbers above are unchanged (checked: the same 162 false alarms and the same detections).
 
-## Llama's explanations of network alerts (Pi 4, 2 November 2026)
+## Llama's explanations of network alerts (Pi 4, 2–3 November 2026)
 
-`python -m advisor.warm_cache --net` on the Pi explained one sample of each of the 10 alert kinds, worded as the monitor writes them, plus the 2 alerts then in the monitor's file. That made 11 different prompts: the ESP32's beacon alert has the same prompt as the beacon sample, because addresses and names are replaced before Llama sees them.
+`python -m advisor.warm_cache --net --fresh` on the Pi explains one sample of each alert kind, worded as the monitor writes them, plus every alert in the monitor's file. Each answer is written again, without the answer cache. Alerts that differ only in their addresses share a prompt, because addresses and names are replaced before Llama sees them. The latest run is in [advisor_net_review.md](advisor_net_review.md).
 
-It ran twice. The first run used the old network-scan fact. After update 18, a fresh run wrote every answer again, without the answer cache: [advisor_net_review.md](advisor_net_review.md).
-
-| | Result |
-| --- | --- |
-| Answers accepted by the checker | 11 of 11, in both runs |
-| First explanation after a message (692-token prompt; Llama reads the network examples, about 590 tokens, from scratch) | 67.6 s, the first word after 52.2 s |
-| The next ones (576–640 tokens reused) | 20.6–28.0 s, the first word after 5.6–9.8 s |
-| The same 11 again, from the answer cache (first run) | 0.1 s for all 11 |
-| Writing speed | 3.06–3.11 tokens/s |
+| | 2 November: 3 worked examples, 11 prompts | 3 November: 4 worked examples, 13 prompts |
+| --- | --- | --- |
+| Answers accepted by the checker | 11 of 11 | 13 of 13 |
+| First explanation after a message (Llama reads the network examples from scratch) | 67.6 s, the first word after 52.2 s | 86.2 s, the first word after 67.4 s |
+| The next ones (examples reused: 576 and 768 tokens) | 20.6–28.0 s | 21.0–31.0 s |
+| The same alerts again (answer cache) | 0.1 s for all 11 | (not repeated) |
+| Writing speed | 3.06–3.11 tokens/s | 2.91–2.94 tokens/s |
 
 - **All answers stick to what the monitor saw,** for example: "A device on your Wi-Fi opened a fake website that uses SBI's name to steal a password, card details or OTP. Real Indian bank websites end in .bank.in, and this address is not SBI's official website."
-- **The network-scan fact mattered.** In the first run, Llama blamed the laptop's port-443 "scan" on Mirai-type botnets: the playbook's checked fact named only Mirai and Telnet. With the general fact, the answer ends: "Normal devices connect to a few servers, and those answer, so this is a warning sign to check, not proof."
-- **Weakest answer:** the Telnet scan (row 2) reads clumsily ("trying to connect to weak passwords or known flaws", "infect devices from infected cameras and routers"), though its facts are right.
-- **Five answers are one sentence.** Llama ended them itself after about 35–45 tokens, well below the 72-token limit (estimated from each answer's writing time and speed). They say what happened but leave out the checked fact. The page shows the monitor's checked red flags under every answer anyway.
-- **On the page,** the laptop's port-443 alert got its explanation in the background, in 85 s: it waited behind the benchmark, which was running at the same time.
-- **Later (3 November):** the first live "Link from a scam message opened" alert got a wrong answer: the message was "flagged as a scam by the device itself" (the Pi flagged it). Update 23 rewords that alert without "the Pi" and adds a fourth worked example for it. The table above was measured with three examples.
+- **The network-scan fact mattered.** With the first fact, which named only Mirai and Telnet, Llama blamed the laptop's port-443 "scan" on Mirai-type botnets. With the general fact (update 18) it says "which is how a worm or botnet infects more devices. Normal devices connect to a few servers, and those servers answer, so this is a warning sign to check."
+- **The scam-link alert needed its own example.** The first live "Link from a scam message opened" was explained as a message "flagged as a scam by the device itself". With a fourth worked example and clearer words (update 23): "A device on your Wi-Fi opened the link from a scam message that came from a mobile number at 21:02, a fake page made to steal a password, card details or OTP." It cost 19 s on the first explanation after a message, and less than 0.2 tokens/s of writing speed.
+- **Some answers are one sentence.** Llama ended them itself after about 35–45 tokens, well below the 72-token limit (estimated from each answer's writing time and speed). They say what happened but leave out the checked fact. The page shows the monitor's checked red flags under every answer anyway.
+- **On the page,** the laptop's port-443 alert got its explanation in the background in 85 s: it waited behind the benchmark, which was running at the same time.
 
 ## Not measured yet
 
-- **A longer real-traffic count.** False alarms per day on the lab Wi-Fi after the beacon fix, and the **per-device normal** for small home devices.
-- **Speed on the Pi.** It will be measured with the monitor running there.
+- **A longer real-traffic count:** false alarms per day on the lab Wi-Fi after the beacon and scan fixes, and the **per-device normal** for small home devices. Tool: `scripts/net_traffic.py` ([docs/network-detector.md](../docs/network-detector.md#measure-it-on-real-traffic)).
+- **CPU, memory and temperature on the Pi** with the monitor, the app and Llama running. Tool: `scripts/pi_usage.py`.
 
 ## Reproduce
 

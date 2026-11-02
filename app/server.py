@@ -56,6 +56,7 @@ from detectors.net.scamlinks import WATCH, ScamLinks, sites_from, where_from
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NET_ALERTS = os.path.join(ROOT, "logs", "net_alerts.jsonl")
 NET_STATE = os.path.join(ROOT, "data", "net", "devices.json")     # what the monitor learned per device
+LAB_TESTS = os.path.join(ROOT, "logs", "lab_tests.jsonl")          # test modes started from the page
 LEARN_S = 2 * 3600                                                 # the monitor's learning time per device
 JOB_TTL_S = 900
 MAX_JOBS = 200
@@ -363,7 +364,7 @@ def risk_summary(day, week, books):
 
 def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net_alerts=None,
                lab=None, net_state=None, net_explain=None, net_explain_every_s=NET_EXPLAIN_EVERY_S,
-               net_watch=None, leases=None):
+               net_watch=None, leases=None, lab_tests=None):
     """net_explain: Llama explanations of network alerts (default: on, unless NET_EXPLAIN=0);
     net_explain_every_s=None leaves out the background thread (tests drive it through /alerts).
     net_watch: where flagged messages' websites go for the network monitor (scamlinks.py);
@@ -479,6 +480,7 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
         return {"alerts": out}
 
     lab = lab if lab is not None else LabDevices()
+    lab_tests_path = lab_tests or os.environ.get("LAB_TESTS", LAB_TESTS)
     learned = LearnedState(net_state or os.environ.get("NET_STATE", NET_STATE))
 
     def learning_until(ip):
@@ -570,11 +572,27 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
                 raise HTTPException(status_code=409, detail=f"the network monitor is learning this device's "
                                                             f"normal until {until}; start the beacon test after that")
         try:
-            return lab.set_mode(req.device, req.mode)
+            out = lab.set_mode(req.device, req.mode)
         except KeyError:
             raise HTTPException(status_code=404, detail="no lab device with that name has reported")
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
+        record_test(req.device, req.mode, out["seconds_left"])
+        return out
+
+    def record_test(device, mode, seconds):
+        """Log each test started (or stopped) from the page, so scripts/net_traffic.py can tell
+        the alerts it caused from false alarms."""
+        ip = next((d["ip"] for d in lab.listing() if d["device"] == device), "")
+        now = time.time()
+        line = {"time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now)), "time_ms": int(now * 1000),
+                "device": device, "ip": ip, "mode": mode, "seconds": seconds}
+        try:
+            os.makedirs(os.path.dirname(lab_tests_path) or ".", exist_ok=True)
+            with open(lab_tests_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(line) + "\n")
+        except OSError as e:
+            print(f"[app] could not write {lab_tests_path}: {e}", flush=True)
 
     @app.get("/health")
     def health():

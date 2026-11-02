@@ -80,6 +80,10 @@ def test_a_test_mode_reaches_the_device_and_stops_by_itself(setup):
     assert post(c).json() == {"mode": "normal", "seconds_left": 0}
     c.post("/iot/mode", json={"device": "esp32-lab", "mode": "beacon"})
     assert c.post("/iot/mode", json={"device": "esp32-lab", "mode": "normal"}).json()["mode"] == "normal"
+    import os
+    log = [json.loads(x) for x in open(os.environ["LAB_TESTS"], encoding="utf-8")]     # for false alarms per day
+    assert [(x["mode"], x["seconds"], x["ip"]) for x in log] == [("dga", 300, "testclient"), ("beacon", 900, "testclient"),
+                                                                ("normal", 0, "testclient")]
 
 
 def test_page_view_with_readings_alerts_and_learning(setup):
