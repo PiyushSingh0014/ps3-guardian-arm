@@ -14,7 +14,7 @@ import json
 import os
 from dataclasses import dataclass, field
 
-from .flows import FlowRec, is_private
+from .flows import FlowRec, is_device
 from .rules import Hit
 
 BUCKET_MS = 5 * 60_000
@@ -76,7 +76,7 @@ class Baselines:
         return d is not None and peer in d.peers
 
     def update(self, r: FlowRec, peer=None):
-        if not is_private(r.src) or r.src == self.gateway:
+        if not is_device(r.src) or r.src == self.gateway:
             return []
         d = self.devices.get(r.src)
         if d is None:

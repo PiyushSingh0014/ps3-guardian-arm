@@ -85,6 +85,17 @@ def is_private(ip: str) -> bool:
     return a.is_private or a.is_link_local or a.is_loopback or a.is_multicast
 
 
+def is_device(ip: str) -> bool:
+    """An address a device on the Wi-Fi uses for its own traffic: private, and not 0.0.0.0 (a
+    device still asking the hotspot for an address), link-local, loopback, multicast or broadcast."""
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return a.is_private and not (a.is_unspecified or a.is_link_local or a.is_loopback or a.is_multicast
+                                 or a.is_reserved)
+
+
 def from_nfstream(f) -> FlowRec:
     """An NFStream NFlow (accounting_mode=3: payload bytes, like CICFlowMeter) -> FlowRec."""
     return FlowRec(

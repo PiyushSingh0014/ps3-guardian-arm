@@ -31,7 +31,6 @@ lab devices POST /iot; both need the pairing token in the X-Guardian-Token heade
 measuring (app/sms_log.py).
 """
 import hashlib
-import ipaddress
 import json
 import os
 import secrets
@@ -51,6 +50,7 @@ from advisor.findings import Finding
 from advisor.playbooks import get_playbook
 from app.lab_devices import MODES, LabDevices, clean_readings
 from detectors.net.engine import LEASES as NET_LEASES, read_lease_names
+from detectors.net.flows import is_device
 from detectors.net.scamlinks import WATCH, ScamLinks, sites_from, where_from
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -340,13 +340,6 @@ class NetExplanations:
         threading.Thread(target=loop, name="net-explain", daemon=True).start()
 
 
-def _is_private(ip):
-    try:
-        return ipaddress.ip_address(ip).is_private
-    except ValueError:
-        return False
-
-
 def _when(t, now):
     """'23:36' today, '01 Nov 13:29' before."""
     if not t:
@@ -534,10 +527,13 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
                 alerts.setdefault(ip, []).append((t, a))
         for found in alerts.values():       # the monitor writes alerts as flows end: not always in time order
             found.sort(key=lambda ta: -ta[0])
+        # Devices the monitor saw active this week (it records that since update 21), with alerts
+        # this week, or reporting to the Pi (the ESP32). Not 0.0.0.0 (a device still asking for an
+        # address) and the like.
         ips = set(alerts) | set(labs) | {ip for ip, (first, last) in seen.items()
-                                         if now - max(first, last) <= DEVICE_WEEK_S}
+                                         if last and now - last <= DEVICE_WEEK_S}
         out = []
-        for ip in (ip for ip in ips if _is_private(ip)):
+        for ip in (ip for ip in ips if is_device(ip)):
             week = alerts.get(ip, [])
             day = [(t, a) for t, a in week if now - t <= 24 * 3600]
             verdicts = {a["finding"]["verdict"] for _, a in day}
