@@ -43,6 +43,7 @@ LABELS = ("test", "false", "real")
 WORDS = {"t": "test", "test": "test", "f": "false", "false": "false", "false alarm": "false",
          "r": "real", "real": "real"}
 AFTER_TEST_MS = 10 * 60_000       # alerts this soon after a test still belong to it
+QUIET_FLOWS_PER_HOUR = 300        # fewer: the Wi-Fi was hardly used (a laptop in use makes thousands)
 MONTHS = {m: i for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct",
                                       "nov", "dec"), 1)}
 LEGEND = """For each alert, type a letter and press Enter:
@@ -353,20 +354,33 @@ def measure(sheet=None, days_path=DAYS, alerts_path=ALERTS, tests_path=TESTS, la
     if odd:
         say(f"Labels not understood, counted as not labelled: {dict(odd.most_common())}")
 
-    say("\n| Day | Hours watched | Flows | Alerts | Test | False | Real | Not labelled |")
-    say("|---|---|---|---|---|---|---|---|")
+    say("\n| Day | Hours watched | Hours with traffic | Flows | Alerts | Test | False | Real | Not labelled |")
+    say("|---|---|---|---|---|---|---|---|---|")
     for day in sorted({r["day"] for r in shown} | set(watched)):
         t = [r for r in shown if r["day"] == day]
         c = Counter(r["label"] for r in t)
         v = watched.get(day)
-        hours_flows = f"{v['minutes'] / 60:.1f} | {v.get('flows', 0):,}" if v else "? | ?"
-        say(f"| {day or 'unknown'} | {hours_flows} | {len(t)} | {c['test']} | {c['false']} | {c['real']} | "
+        active = f"{v['active_minutes'] / 60:.1f}" if v and isinstance(v.get("active_minutes"), (int, float)) else "?"
+        cells = f"{v['minutes'] / 60:.1f} | {active} | {v.get('flows', 0):,}" if v else "? | ? | ?"
+        say(f"| {day or 'unknown'} | {cells} | {len(t)} | {c['test']} | {c['false']} | {c['real']} | "
             f"{len(t) - sum(c[k] for k in LABELS)} |")
 
     false = [r for r in shown if r["label"] == "false" and r["day"] in watched]
     if hours:
         say(f"\nFalse alarms on the watched days: {len(false)} in {hours:.1f} hours = "
             f"{len(false) / hours * 24:.1f} per day")
+        timed = {d: v for d, v in watched.items() if isinstance(v.get("active_minutes"), (int, float))}
+        active = sum(v["active_minutes"] for v in timed.values()) / 60
+        if active:
+            n = sum(1 for r in false if r["day"] in timed)
+            say(f"Hours with traffic: {active:.1f} of {sum(v['minutes'] for v in timed.values()) / 60:.1f} watched "
+                f"on {n_of(len(timed), 'day')}: {n_of(n, 'false alarm')} = {n / active * 24:.1f} per 24 hours of use")
+        quiet = {d: v.get("flows", 0) / (v["minutes"] / 60) for d, v in watched.items()
+                 if v["minutes"] >= 60 and v.get("flows", 0) / (v["minutes"] / 60) < QUIET_FLOWS_PER_HOUR}
+        if quiet:
+            say("Hardly used, so not normal use yet: " + ", ".join(f"{d} ({f:.0f} flows an hour)"
+                                                                  for d, f in sorted(quiet.items()))
+                + ". A laptop in use makes thousands an hour.")
     else:
         say(f"\nNo watched time recorded yet ({show(days_path)}): leave the monitor running on the lab "
             "Wi-Fi for a day first.")

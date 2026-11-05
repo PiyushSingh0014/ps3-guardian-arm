@@ -144,7 +144,8 @@ bash scripts/install_netmon.sh
 - It creates the systemd service `ps3-netmon`, which runs as your user with only the two capture capabilities (CAP_NET_RAW, CAP_NET_ADMIN).
 - It starts the service now and at every boot.
 - It installs `ps3-leases`, so alerts can show device names. NetworkManager's list of devices on the hotspot is readable only by root. Whenever that list changes, `ps3-leases` copies each device's address and the name it gave itself (nothing else) to `/run/ps3-guardian/leases`, readable by your user.
-- The log is `logs/netmon.log`. It has every alert and, every 15 minutes, a status line such as `[net] 19:30 1234 flows so far (56 in the last 15 min), 1 alerts`.
+- The log is `logs/netmon.log`. It has every alert and, every 15 minutes, a status line such as `[net] 19:30 1234 flows so far (56 in the last 15 min), 1 alerts`. The status line comes on time even when nothing is on the Wi-Fi (`0 in the last 15 min`), so `tail -n 3 logs/netmon.log` shows at once whether the monitor sees your devices.
+- **If the capture gets stuck** (the Wi-Fi carries packets but no flow comes out for 10 minutes), the log says `the Wi-Fi carried … packets … but the capture saw no flow: restarting the capture`, the monitor stops and systemd starts it again 10 s later.
 
 Running the script again is safe: it rewrites the services and restarts the monitor.
 
@@ -222,7 +223,17 @@ Two tools for the report. Run them on the Pi, from `~/ps3-guardian` with `source
 
 **False alarms per day.** The monitor keeps the hours it watched and the flows it saw per day (`data/net/days.json`). The app logs every test started from its page (`logs/lab_tests.jsonl`).
 
-1. Leave the lab Wi-Fi in normal use for a day or more: the laptop and phones on `PS3-Guardian-Lab`, used as usual.
+- **Watched time** is written down every 5 minutes on a clock of its own, quiet or not, and each day gets its own time (split at midnight).
+- It counts only while the Wi-Fi is up and the capture works. Of that, the **hours with traffic** are the 5-minute stretches in which at least one flow came.
+- Before update 26 the time was written down only when a flow arrived, so a quiet stretch went to the next day all at once: on 5 Nov 2026 the file had 60 hours for that one day, after two days with nobody on the Wi-Fi. To start counting afresh, stop the monitor, move the file aside and start it again:
+
+  ```bash
+  sudo systemctl stop ps3-netmon
+  mv data/net/days.json data/net/days-before-update26.json
+  sudo systemctl start ps3-netmon
+  ```
+
+1. Leave the lab Wi-Fi in normal use for a day or more: the laptop and phones on `PS3-Guardian-Lab`, used as usual. An hour in, check that the monitor sees them: `tail -n 3 logs/netmon.log` should show hundreds or thousands of flows `in the last 15 min` while the laptop is in use.
 2. Say what each alert was, in the terminal:
 
    ```bash
@@ -242,7 +253,9 @@ Two tools for the report. Run them on the Pi, from `~/ps3-guardian` with `source
    python scripts/net_traffic.py measure
    ```
 
-   It prints a table per day (hours watched, flows, alerts, and how they were labelled) and the false alarms per day, by kind and by device. Alerts of days without watched time (before the monitor kept it) are left out; `--all` lists them.
+   It prints a table per day (hours watched, hours with traffic, flows, alerts, and how they were labelled), the false alarms per watched day and per 24 hours with traffic, and the false alarms by kind and by device.
+   - Alerts of days without watched time (before the monitor kept it) are left out; `--all` lists them.
+   - A day with fewer than 300 flows an hour is named as **hardly used**: a laptop in use makes thousands an hour, so such a day does not show normal use.
 
 **In a spreadsheet instead:** `python scripts/net_traffic.py export alerts.csv` writes every alert with its label so far. Fill the `label` column with `test`, `false` or `real`, then run `python scripts/net_traffic.py measure alerts.csv`. The sheet may go through Excel, which re-writes dates in the PC's own format and may save in the Windows code page: `measure` matches each row to the alert log by its `id`, so it still counts it on the right day.
 
