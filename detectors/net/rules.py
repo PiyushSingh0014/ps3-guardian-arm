@@ -123,7 +123,10 @@ class PortScan:
 class HostSweep:
     """One address trying the same port on many machines that never answer: a worm or bot
     spreading. Machines that answered once in the window do not count, so a browser that
-    opens many connections to working websites is not a sweep.
+    opens many connections to working websites is not a sweep. Nor is it one while at least as
+    many machines answered on that port in the window as did not: a worm's tries go mostly
+    unanswered, while a laptop opening 30 websites in 10 minutes (lab Wi-Fi, 5 November 2026)
+    had 15 unanswered tries on port 443 among hundreds that worked.
 
     On live traffic a try is a new connection that got no answer or was refused. A machine
     that sent anything else answered, even if the device then closed the connection unused
@@ -157,6 +160,8 @@ class HostSweep:
         if len(d) < self.at or self.hosts.count(key, r.start_ms) < self.at:
             return []
         n = len(d)
+        if self.answered.count(key, r.start_ms) >= n:
+            return []                                # most machines answered: a busy browser
         telnet = r.dport in (23, 2323)
         score = 0.95 if (n >= self.high or telnet) else 0.75
         what = RISKY_PORTS.get(r.dport) or AUTH_PORTS.get(r.dport) or f"port {r.dport}"

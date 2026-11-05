@@ -101,7 +101,7 @@ def test_labelling_in_the_terminal_saves_each_answer_and_carries_on_later(tmp_pa
     out = capsys.readouterr().out
     assert "Alerts: 3: test 2, false 1, real 0, not labelled 0" in out
     assert "| 2026-11-03 | 12.0 | ? | 50,000 | 3 | 2 | 1 | 0 | 0 |" in out and "2026-10-31" not in out
-    assert "Not counted: 1 alert on 1 day with no watched time" in out
+    assert "Not counted: 1 alert from before this count began or on days with no watched time" in out
     net_traffic.measure(None, days, alerts, tests, labels, everything=True)
     assert "| 2026-10-31 | ? | ? | ? | 1 | 0 | 0 | 0 | 1 |" in capsys.readouterr().out
 
@@ -245,3 +245,28 @@ def test_measure_shows_hours_with_traffic_and_days_hardly_used(tmp_path, capsys)
     assert "| 2026-11-06 | 24.0 | 10.0 | 90,000 | 1 | 0 | 1 | 0 | 0 |" in out
     assert "Hours with traffic: 10.0 of 24.0 watched on 1 day: 1 false alarm = 2.4 per 24 hours of use" in out
     assert "Hardly used, so not normal use yet: 2026-11-05 (23 flows an hour)" in out and "2026-11-06 (" not in out
+
+
+def test_a_new_count_starts_when_the_file_starts(tmp_path, capsys):
+    # Moving data/net/days.json aside starts a new count; the monitor stamps the new file, so
+    # alerts from earlier that day (another test hour, older rules) are not counted in it.
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from detectors.net import monitor
+    alerts, tests, labels, days = files(tmp_path)
+    with open(alerts, "w", encoding="utf-8") as f:
+        f.write("\n".join(json.dumps({**alert("10.42.0.214", k, T, name="laptop"), "time": f"2026-11-05 {hm}:00"})
+                          for k, hm in (("network_scan", "15:25"), ("device_anomaly", "15:30"),
+                                        ("phishing_lookup", "17:05"))) + "\n")
+    monitor.add_day(days, 5, 900, 0, day="2026-11-05", active=5, started="2026-11-05 16:40:00")
+    monitor.add_day(days, 5, 800, 1, day="2026-11-05", active=5, started="2026-11-05 16:45:00")
+    with open(days, encoding="utf-8") as f:
+        assert json.load(f)["_started"] == "2026-11-05 16:40:00"          # only a new file gets it
+    asked = []
+    net_traffic.label(alerts, tests, labels, days, ask=lambda p: asked.append(p) or "f", say=lambda x: None)
+    assert len(asked) == 1                                               # only the alert after 16:40
+    net_traffic.measure(None, days, alerts, tests, labels)
+    out = capsys.readouterr().out
+    assert "counting since 2026-11-05 16:40:00" in out and "Alerts: 1: test 0, false 1" in out
+    assert "Not counted: 2 alerts from before this count began" in out
+    net_traffic.measure(None, days, alerts, tests, labels, everything=True)
+    assert "Alerts: 3:" in capsys.readouterr().out

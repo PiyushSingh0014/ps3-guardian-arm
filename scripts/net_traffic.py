@@ -132,6 +132,25 @@ def watched_days(path):
             if isinstance(v, dict) and isinstance(v.get("minutes"), (int, float)) and v["minutes"] > 0}
 
 
+def counting_since(path):
+    """When this count began ("_started" in data/net/days.json, written by the monitor when it
+    starts a new file), or None."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            v = json.load(f).get("_started")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return v if isinstance(v, str) and re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", v) else None
+
+
+def after(row, since):
+    """Is the alert from when the count began? Times Excel re-wrote are judged by their day."""
+    if not since:
+        return True
+    t = row.get("time") or ""
+    return t >= since if re.match(r"\d{4}-\d\d-\d\d \d", t) else (row.get("day") or "") >= since[:10]
+
+
 def load_alerts(alerts_path, tests_path, labels_path):
     """Every alert in the monitor's log, in its order, with its label: yours (from 'label'),
     else 'test' when an ESP32 test mode was running on that device."""
@@ -192,10 +211,11 @@ def label(alerts_path=ALERTS, tests_path=TESTS, labels_path=LABELS_FILE, days_pa
             say(f"The monitor has no watched days yet ({show(days_path)}). Leave it running on the lab "
                 "Wi-Fi for a day first, or add --all to go through every alert.")
             return
-        alerts = [a for a in alerts if a["day"] in watched]
+        since = counting_since(days_path)
+        alerts = [a for a in alerts if a["day"] in watched and after(a, since)]
         days = sorted(watched)
         scope = (f"the days the monitor watched ({days[0]} to {days[-1]})" if len(days) > 1
-                 else f"the day the monitor watched ({days[0]})")
+                 else f"the day the monitor watched ({days[0]})") + (f", since {since}" if since else "")
     stored = load_labels(labels_path)
     todo = [a for a in alerts if again or not a["label"]]
     say(f"{n_of(len(alerts), 'alert')} on {scope}.")
@@ -338,15 +358,17 @@ def measure(sheet=None, days_path=DAYS, alerts_path=ALERTS, tests_path=TESTS, la
         rows, odd, matched = rows_from_sheet(sheet, log, set(watched) | {a["day"] for a in log})
     else:
         rows = log
-    shown = rows if everything else [r for r in rows if r["day"] in watched]
-    hidden = [] if everything else [r for r in rows if r["day"] not in watched]
+    since = None if everything else counting_since(days_path)
+    shown = rows if everything else [r for r in rows if r["day"] in watched and after(r, since)]
+    hidden = [] if everything else [r for r in rows if not (r["day"] in watched and after(r, since))]
 
     hours = sum(v["minutes"] for v in watched.values()) / 60
     flows = sum(v.get("flows", 0) for v in watched.values())
     count = Counter(r["label"] for r in shown)
     say(f"Alerts: {len(shown)}: test {count['test']}, false {count['false']}, real {count['real']}, "
         f"not labelled {len(shown) - sum(count[k] for k in LABELS)}")
-    say(f"Watched: {n_of(len(watched), 'day')} with records, {hours:.1f} hours, {flows:,} flows")
+    say(f"Watched: {n_of(len(watched), 'day')} with records, {hours:.1f} hours, {flows:,} flows"
+        + (f", counting since {since}" if since else ""))
     if sheet:
         by_time = len(rows) - matched
         say(f"From {os.path.basename(sheet)}: {n_of(matched, 'row')} matched to the alert log by id"
@@ -389,9 +411,8 @@ def measure(sheet=None, days_path=DAYS, alerts_path=ALERTS, tests_path=TESTS, la
         say(f"False alarms by kind: {dict(Counter(r['kind'] for r in all_false).most_common())}")
         say(f"False alarms by device: {dict(Counter(r['device_name'] or r['device'] for r in all_false).most_common())}")
     if hidden:
-        say(f"\nNot counted: {n_of(len(hidden), 'alert')} on {n_of(len({r['day'] for r in hidden}), 'day')} "
-            f"with no watched time in {show(days_path)} (older days, or the monitor was off). "
-            "Add --all to list them.")
+        say(f"\nNot counted: {n_of(len(hidden), 'alert')} from before this count began or on days with no "
+            f"watched time in {show(days_path)}. Add --all to list them.")
 
 
 def main(argv=None):

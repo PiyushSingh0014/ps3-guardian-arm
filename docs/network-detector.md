@@ -45,7 +45,7 @@ The same problem is reported at most once per 10 minutes, unless it gets worse (
 | Alert | Fires when (within the window) | Verdict |
 | --- | --- | --- |
 | Port scan | one address tries ≥ 20 closed ports on another (60 s) | suspicious; dangerous at 100 |
-| Network scan | one address tries the same port on ≥ 15 machines that do not answer or refuse (60 s) | suspicious; dangerous at 50, or for Telnet (Mirai) |
+| Network scan | one address tries the same port on ≥ 15 machines that do not answer or refuse, and those are most of the machines it tried there (60 s) | suspicious; dangerous at 50, or for Telnet (Mirai) |
 | Flood | ≥ 300 connections (or 200 half-open ones) to one target port (10 s); or ≥ 50 slow, nearly empty connections (60 s) | dangerous |
 | Password guessing | ≥ 15 short connections to a login port: SSH, FTP, Telnet, RDP, mail, databases, SMB, VNC (60 s) | dangerous at 40 |
 | Malware port | a home device connects out on Telnet, IRC, Tor, SMB or 4444 | suspicious |
@@ -54,10 +54,12 @@ The same problem is reported at most once per 10 minutes, unless it gets worse (
 | DGA names | ≥ 5 machine-made-looking names from one device (10 min) | dangerous |
 | DNS tunnel | ≥ 25 long (≥ 18 characters), never-repeating sub-names under one site (10 min) | dangerous |
 | Beacon | ≥ 10 new connections at a fixed rhythm (≥ 30 s apart) to a server outside the device's normal and the top 10,000 sites; keep-alives inside one open connection do not count | suspicious |
-| Unusual device | a 5-minute period over 3× the device's own 99th percentile in connections, data sent, servers, ports or DNS look-ups, plus ≥ 5 new servers | suspicious |
+| Unusual device | a small home device (≤ 50 servers while learning): a 5-minute period over 3× its own 99th percentile in connections, data sent, servers, ports or DNS look-ups, plus ≥ 5 new servers | suspicious |
 
 - **Thresholds.** These are prior assumptions from how the attacks work, not values fitted to a test set. One round of fixes used only Monday's normal traffic of CIC-IDS2017.
 - **Learning.** A device's first 2 hours are learning only: no unusual-device or beacon alerts then.
+- **Unusual device is for small home devices.** A device that used more than 50 servers while learning is a laptop or phone: how much it does follows its user. In a busy hour on the lab Wi-Fi a laptop opening 30 websites in 10 minutes set it off twice, so it is no longer reported for such devices. The other checks still watch them.
+- **A busy browser is no network scan.** Browsers open many connections at once, and some get no answer. On the lab Wi-Fi 15 such tries on port 443 came among hundreds of connections that worked. A scan now needs most of the machines tried on that port to stay silent, as a worm's tries do.
 - **Only new connections are tries** for network scans, password guessing and beacons on live traffic. The flow meter cuts a long connection into pieces after 10 s of silence, and those pieces are not new tries. For a network scan, a machine that answered at all does not count, even if the device then closed the connection unused, as browsers do. Both kinds raised false alarms on the lab Wi-Fi ([eval/results_net.md](../eval/results_net.md)). CIC-IDS2017's rows cannot tell these apart, so they keep the older test.
 
 ## Messages meet network traffic
@@ -225,6 +227,7 @@ Two tools for the report. Run them on the Pi, from `~/ps3-guardian` with `source
 
 - **Watched time** is written down every 5 minutes on a clock of its own, quiet or not, and each day gets its own time (split at midnight).
 - It counts only while the Wi-Fi is up and the capture works. Of that, the **hours with traffic** are the 5-minute stretches in which at least one flow came.
+- **A new count** starts when the file is new: the monitor writes the time into it (`_started`), and `label` and `measure` leave out alerts from before then.
 - Before update 26 the time was written down only when a flow arrived, so a quiet stretch went to the next day all at once: on 5 Nov 2026 the file had 60 hours for that one day, after two days with nobody on the Wi-Fi. To start counting afresh, stop the monitor, move the file aside and start it again:
 
   ```bash
@@ -234,6 +237,8 @@ Two tools for the report. Run them on the Pi, from `~/ps3-guardian` with `source
   ```
 
 1. Leave the lab Wi-Fi in normal use for a day or more: the laptop and phones on `PS3-Guardian-Lab`, used as usual. An hour in, check that the monitor sees them: `tail -n 3 logs/netmon.log` should show hundreds or thousands of flows `in the last 15 min` while the laptop is in use.
+
+   **No time for a day?** A busy hour packs much of a day's variety into an hour: 30 common websites opened one after another, YouTube, Windows Update, the apps you use, a video call. It gives false alarms per hour of use and per 10,000 connections, not per day. The results are in [eval/results_net.md](../eval/results_net.md).
 2. Say what each alert was, in the terminal:
 
    ```bash
