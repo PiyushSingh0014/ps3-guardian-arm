@@ -218,6 +218,8 @@ def test_monitor_prints_status_and_learns_the_pi_address(monkeypatch, capsys, tm
     monkeypatch.setattr(monitor, "FIRST_STATUS_S", 0)
     monkeypatch.setattr(monitor, "STATUS_EVERY_S", 0)
     monkeypatch.setattr(monitor, "iface_address", lambda iface: PI)
+    monkeypatch.setattr(monitor, "iface_up", lambda iface: True)
+    monkeypatch.setattr(monitor, "iface_packets", lambda iface: None)
     e, days = engine(), tmp_path / "days.json"
     assert e.gateway is None                                 # the Wi-Fi had no address at start
     monitor.run(iter([flow(T0, "52.1.1.1", 443, syn=1, pin=5, bin_=900)]), e, None, show=True, iface="wlan0",

@@ -50,7 +50,7 @@ def test_alerts_from_the_esp32_test_modes_are_labelled_test(tmp_path, capsys):
     net_traffic.measure(str(sheet), str(days), str(alerts), str(tests), str(labels))
     out = capsys.readouterr().out
     assert "Alerts: 3: test 2, false 1, real 0, not labelled 0" in out
-    assert "12.0 hours" in out and "| 2026-11-03 | 12.0 | 50,000 | 3 | 2 | 1 | 0 | 0 |" in out
+    assert "12.0 hours" in out and "| 2026-11-03 | 12.0 | ? | 50,000 | 3 | 2 | 1 | 0 | 0 |" in out
     assert "1 in 12.0 hours = 2.0 per day" in out and "{'malware_beacon': 1}" in out
     assert "3 rows matched to the alert log by id" in out
 
@@ -100,10 +100,10 @@ def test_labelling_in_the_terminal_saves_each_answer_and_carries_on_later(tmp_pa
     net_traffic.measure(None, days, alerts, tests, labels)
     out = capsys.readouterr().out
     assert "Alerts: 3: test 2, false 1, real 0, not labelled 0" in out
-    assert "| 2026-11-03 | 12.0 | 50,000 | 3 | 2 | 1 | 0 | 0 |" in out and "2026-10-31" not in out
+    assert "| 2026-11-03 | 12.0 | ? | 50,000 | 3 | 2 | 1 | 0 | 0 |" in out and "2026-10-31" not in out
     assert "Not counted: 1 alert on 1 day with no watched time" in out
     net_traffic.measure(None, days, alerts, tests, labels, everything=True)
-    assert "| 2026-10-31 | ? | ? | 1 | 0 | 0 | 0 | 1 |" in capsys.readouterr().out
+    assert "| 2026-10-31 | ? | ? | ? | 1 | 0 | 0 | 0 | 1 |" in capsys.readouterr().out
 
 
 def test_labelling_waits_for_watched_time_unless_asked_for_all(tmp_path):
@@ -152,7 +152,7 @@ def test_measure_reads_a_sheet_that_went_through_excel(tmp_path, capsys):
     capsys.readouterr()
     net_traffic.measure(sheet, days, alerts, tests, labels)
     out = capsys.readouterr().out
-    assert "| 2026-11-03 | 12.0 | 50,000 | 3 | 0 | 2 | 0 | 1 |" in out
+    assert "| 2026-11-03 | 12.0 | ? | 50,000 | 3 | 0 | 2 | 0 | 1 |" in out
     assert "2 in 12.0 hours = 4.0 per day" in out
     assert "2 rows matched to the alert log by id, 1 placed by their time" in out and "{'flase': 1}" in out
 
@@ -227,3 +227,21 @@ def test_usage_per_group_is_a_share_of_all_cores(tmp_path, monkeypatch):
     assert row["llama_mb"] == round((900_000 + 1_000_000) / 1024) and row["temp_c"] == 58.9
     text = pi_usage.summary([row])
     assert "| llama | 30.0% | 30.0% |" in text and "0x80000" in text and "58.9 to 58.9" in text
+
+
+def test_measure_shows_hours_with_traffic_and_days_hardly_used(tmp_path, capsys):
+    alerts, tests, labels, days = files(tmp_path)
+    with open(alerts, "w", encoding="utf-8") as f:
+        f.write(json.dumps({**alert("10.42.0.214", "network_scan", T, name="laptop"), "time": "2026-11-06 10:00:00"})
+                + "\n")
+    with open(days, "w", encoding="utf-8") as f:     # 5 Nov: before update 26, 60 quiet hours on one day
+        json.dump({"2026-11-05": {"minutes": 3606, "flows": 1371, "alerts": 0},
+                   "2026-11-06": {"minutes": 1440, "active_minutes": 600, "flows": 90_000, "alerts": 1}}, f)
+    with open(labels, "w", encoding="utf-8") as f:
+        json.dump({net_traffic.load_alerts(alerts, tests, labels)[0]["id"]: "false"}, f)
+    net_traffic.measure(None, days, alerts, tests, labels)
+    out = capsys.readouterr().out
+    assert "| 2026-11-05 | 60.1 | ? | 1,371 | 0 | 0 | 0 | 0 | 0 |" in out
+    assert "| 2026-11-06 | 24.0 | 10.0 | 90,000 | 1 | 0 | 1 | 0 | 0 |" in out
+    assert "Hours with traffic: 10.0 of 24.0 watched on 1 day: 1 false alarm = 2.4 per 24 hours of use" in out
+    assert "Hardly used, so not normal use yet: 2026-11-05 (23 flows an hour)" in out and "2026-11-06 (" not in out
