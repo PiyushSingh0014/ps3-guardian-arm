@@ -69,7 +69,9 @@ R = {
     "popular": "the website is one of the 10,000 most visited websites (Chrome UX Report)",
     "redirect": "the link sends you on to another website, hidden inside the link",
     "translate": "the link shows another website through Google Translate",
+    "amp": "the link shows another website through Google's AMP cache",
 }
+_AMP_PATH_RE = re.compile(r"^/(?:c|v|i|r)/(?:s/)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)(/[^?#]*)?")
 _EMBEDDED_RE = re.compile(r"(?:https?|hxxps?)(?::|%3a)(?:/|%2f){2}[^&\s\"'<>]+", re.I)
 
 
@@ -80,6 +82,15 @@ def translated_site(link):
     label = link.host[: -len(".translate.goog")].split(".")[-1]
     site = label.replace("--", "\0").replace("-", ".").replace("\0", "-")
     return parse_link("https://" + site + (link.path or "/"))
+
+
+def amp_cached_site(link):
+    """"x.cdn.ampproject.org/c/s/example.com/page" shows example.com/page from Google's AMP
+    cache: that site."""
+    if link.host != "cdn.ampproject.org" and not link.host.endswith(".cdn.ampproject.org"):
+        return None
+    m = _AMP_PATH_RE.match(link.path or "")
+    return parse_link("https://" + m.group(1) + (m.group(2) or "/")) if m else None
 
 
 def embedded_link(link):
@@ -174,6 +185,10 @@ class UrlDetector:
         proxied = translated_site(link)
         if proxied is not None:                 # Google's proxy is fine; the site it shows decides
             return self._outer(link, self._check(proxied), R["translate"])
+        cached = amp_cached_site(link)
+        if cached is not None:                  # the same for Google's AMP cache, unless that page is listed
+            v = self._check(link)
+            return v if v.listed else self._outer(link, self._check(cached), R["amp"])
         v = self._check(link)
         inner = embedded_link(link)
         if inner is None or inner.registered == link.registered or v.decisive:

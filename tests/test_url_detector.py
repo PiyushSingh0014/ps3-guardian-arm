@@ -111,6 +111,29 @@ def test_blocklist(tmp_path):
     assert d.info()["blocklist"]["hosts"] == 3
 
 
+def test_background_services_on_old_lists_are_not_phishing(tmp_path):
+    # Phishing lists carry Gravatar and Google's AMP cache (abused paths); the Pi's file, built
+    # before they were left out, still has them. Pages load both in the background.
+    import sqlite3
+    db = str(tmp_path / "intel.sqlite")
+    intel.build({"test": ["gravatar.com", "cdn.ampproject.org", "evil-com.cdn.ampproject.org"]}, out=db)
+    con = sqlite3.connect(db)
+    con.executemany("INSERT OR IGNORE INTO bad VALUES (?, 'old')", [("gravatar.com",), ("cdn.ampproject.org",)])
+    con.commit()
+    con.close()
+    d = UrlDetector(model_path=None, intel_path=db, top_sites=None)
+    for url in ("https://www.gravatar.com/avatar/1", "https://secure.gravatar.com", "https://cdn.ampproject.org/v0.js"):
+        assert d.check_link(parse_link(url)).listed is None, url
+    assert d.check_link(parse_link("https://evil-com.cdn.ampproject.org/c/s/evil.com/")).listed == "test"
+
+
+def test_pages_through_the_amp_cache_are_judged_by_their_site(rules):
+    f = rules.check("https://sbi-kyc-update-xyz.cdn.ampproject.org/c/s/sbi-kyc-update.xyz/login")
+    assert f.verdict == "dangerous" and "AMP cache" in " ".join(f.reasons)
+    ok = rules.check("https://www-thehindu-com.cdn.ampproject.org/c/s/www.thehindu.com/news/article1.ece")
+    assert ok.verdict != "dangerous"
+
+
 def test_top_sites_lower_the_score():
     plain = UrlDetector(model_path=None, intel_path=None, top_sites=None)
     known = UrlDetector(model_path=None, intel_path=None, top_sites={"shopfast.com"})

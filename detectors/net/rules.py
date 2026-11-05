@@ -126,7 +126,7 @@ class HostSweep:
     opens many connections to working websites is not a sweep. Nor is it one while at least as
     many machines answered on that port in the window as did not: a worm's tries go mostly
     unanswered, while a laptop opening 30 websites in 10 minutes (lab Wi-Fi, 5 November 2026)
-    had 15 unanswered tries on port 443 among hundreds that worked.
+    had 15 unanswered tries on port 443 while it made some 2,900 connections in 5 minutes.
 
     On live traffic a try is a new connection that got no answer or was refused. A machine
     that sent anything else answered, even if the device then closed the connection unused

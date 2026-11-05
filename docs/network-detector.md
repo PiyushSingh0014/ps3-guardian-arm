@@ -50,7 +50,7 @@ The same problem is reported at most once per 10 minutes, unless it gets worse (
 | Password guessing | ≥ 15 short connections to a login port: SSH, FTP, Telnet, RDP, mail, databases, SMB, VNC (60 s) | dangerous at 40 |
 | Malware port | a home device connects out on Telnet, IRC, Tor, SMB or 4444 | suspicious |
 | Link from a scam message opened | a device looks up a website that came in a message the Pi flagged as a scam in the last 24 hours (below) | dangerous |
-| Phishing look-up | a device looks up a site on the phishing list, or a brand's name on someone else's site | dangerous |
+| Phishing look-up | a device looks up a site on the phishing list, or a brand's name on someone else's site; not services that pages load in the background, such as Gravatar or Google's AMP cache | dangerous |
 | DGA names | ≥ 5 machine-made-looking names from one device (10 min) | dangerous |
 | DNS tunnel | ≥ 25 long (≥ 18 characters), never-repeating sub-names under one site (10 min) | dangerous |
 | Beacon | ≥ 10 new connections at a fixed rhythm (≥ 30 s apart) to a server outside the device's normal and the top 10,000 sites; keep-alives inside one open connection do not count | suspicious |
@@ -59,7 +59,7 @@ The same problem is reported at most once per 10 minutes, unless it gets worse (
 - **Thresholds.** These are prior assumptions from how the attacks work, not values fitted to a test set. One round of fixes used only Monday's normal traffic of CIC-IDS2017.
 - **Learning.** A device's first 2 hours are learning only: no unusual-device or beacon alerts then.
 - **Unusual device is for small home devices.** A device that used more than 50 servers while learning is a laptop or phone: how much it does follows its user. In a busy hour on the lab Wi-Fi a laptop opening 30 websites in 10 minutes set it off twice, so it is no longer reported for such devices. The other checks still watch them.
-- **A busy browser is no network scan.** Browsers open many connections at once, and some get no answer. On the lab Wi-Fi 15 such tries on port 443 came among hundreds of connections that worked. A scan now needs most of the machines tried on that port to stay silent, as a worm's tries do.
+- **A busy browser is no network scan.** Browsers open many connections at once, and some get no answer. On the lab Wi-Fi a laptop had 15 such tries on port 443 while it made some 2,900 connections in 5 minutes. A scan now needs most of the machines tried on that port to stay silent, as a worm's tries do.
 - **Only new connections are tries** for network scans, password guessing and beacons on live traffic. The flow meter cuts a long connection into pieces after 10 s of silence, and those pieces are not new tries. For a network scan, a machine that answered at all does not count, even if the device then closed the connection unused, as browsers do. Both kinds raised false alarms on the lab Wi-Fi ([eval/results_net.md](../eval/results_net.md)). CIC-IDS2017's rows cannot tell these apart, so they keep the older test.
 
 ## Messages meet network traffic

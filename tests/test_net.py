@@ -89,7 +89,7 @@ def test_new_tries_without_answer_are_still_a_scan():
 
 def test_a_busy_browser_is_not_a_network_scan():
     # Lab Wi-Fi, 5 November 2026: a laptop opening 30 websites in 10 minutes had 15 tries on port
-    # 443 that got no answer, among hundreds of connections that worked.
+    # 443 that got no answer while it made some 2,900 connections in 5 minutes.
     worked = [flow(T0 + i * 150, f"23.{i % 250}.{i // 250}.9", 443, pin=8, pout=8, bout=900, bin_=9000)
               for i in range(300)]
     unanswered = [flow(T0 + 1000 + i * 2000, f"34.{i}.1.1", 443) for i in range(20)]
@@ -141,6 +141,23 @@ def test_phishing_lookup_names_stay_out_of_the_reasons(tmp_path):
     assert found[0].entities["peer"] == "evil-login[.]com" and found[0].entities["name"] == "pay[.]evil-login[.]com"
     text = " ".join(r for f in found for r in f.reasons)
     assert "evil-login" not in text and "sbi-kyc" not in text and "SBI" in text
+
+
+def test_background_services_looked_up_while_browsing_are_no_phishing(tmp_path):
+    # The busy hour on the lab Wi-Fi (5 November 2026): news sites load the AMP script from
+    # cdn.ampproject.org and pages load avatars from Gravatar; both are on the public list.
+    import sqlite3
+    db = str(tmp_path / "intel.sqlite")
+    intel.build({"test": ["evil-login.com"]}, out=db)
+    con = sqlite3.connect(db)                  # as in the Pi's file, built before the fix
+    con.executemany("INSERT INTO bad VALUES (?, 'old')", [("gravatar.com",), ("cdn.ampproject.org",)])
+    con.commit()
+    con.close()
+    e = engine(url_detector=UrlDetector(model_path=None, intel_path=db, top_sites=None))
+    names = ["cdn.ampproject.org", "www.gravatar.com", "secure.gravatar.com", "pay.evil-login.com"]
+    found = run(e, [flow(T0 + i * 1000, PI, 53, proto=UDP, pin=1, bout=40, bin_=80, name=n, app="DNS")
+                    for i, n in enumerate(names)])
+    assert [f.entities["name"] for f in found] == ["pay[.]evil-login[.]com"]
 
 
 class FakeDga:

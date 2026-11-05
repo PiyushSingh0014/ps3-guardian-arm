@@ -128,6 +128,27 @@ The Pi is the hotspot `PS3-Guardian-Lab`. On it: a laptop, a Galaxy S25 and the 
   CIC-IDS2017's Monday has the same kind: 18 of its 47 false alarms are such "scans", all on port 443.
 - **The fix (update 18).** On live traffic, a network-scan try is now a new connection that got no answer or was refused. The same "new connections only" rule now applies to password guessing, so pauses in an SSH session are not logins. The CIC-IDS2017 numbers did not change then (checked: the same 162 false alarms and the same detections).
 
+## The Pi's lab Wi-Fi: a busy hour (5 November 2026)
+
+- **Why an hour, not a day.** The first try at a whole day (3–5 November) had nobody on the lab Wi-Fi after its first hour: 3,272 flows in 60.9 hours. It also showed that the monitor wrote its watched time down only when traffic came (fixed in update 26). So the laptop was put through one busy hour instead, which packs much of a day's variety into an hour.
+- **What was done,** with the laptop on `PS3-Guardian-Lab` and the S25 as the Pi's internet:
+  - PowerShell opened 30 common websites, one every 20 seconds: Indian and global news, shopping, travel, food delivery, cricket, coding and learning sites, maps;
+  - YouTube for about 10 minutes, Windows Update, and the apps in daily use.
+- **Counted:** 36 minutes (0.6 hours), 4,415 flows, traffic in every 5-minute stretch.
+
+| Time | Alert | Why it was false | Fix (update 27) |
+| --- | --- | --- | --- |
+| 15:25 | Unusual device: 2,895 connections in 5 minutes (its usual most 686), 228 new servers | the laptop was simply used more than before | "Unusual device" only for small home devices: at most 50 servers while learning. The laptop had 175, the ESP32 4 |
+| 15:30 | Unusual device: 7,251 connections and 853 servers in 5 minutes | the same | the same |
+| 15:25 | Network scan: 15 machines on port 443 within a minute, mostly without answer | 15 unanswered tries while the laptop made some 2,900 connections in 5 minutes | a sweep needs most of the machines tried on that port to stay silent |
+| 15:25 | Phishing look-up: `cdn.ampproject.org` | Google's AMP cache: news sites load its script | services that pages load in the background are never listed whole |
+| 15:27 | Phishing look-up: `www.gravatar.com` (the list has `gravatar.com`) | Gravatar's profile pictures, shown on many sites | the same |
+
+- **All 5 alerts were false alarms,** all from the laptop: 5 in 36 minutes of busy use, about 11 per 10,000 flows. Nothing was set off on purpose, and no device was infected.
+- **The two look-ups are on the public list** because pages on those services were abused (Gravatar profiles, pages cached by Google's AMP cache). Of 117 common background services checked against the current list (fonts, analytics, ads, video, CDNs), only these two were flagged.
+- **Each fix has a test made from its alert,** which fails on the old rules, and all of them were run on CIC-IDS2017 again (above): false alarms 162 → 144, every attack still caught.
+- **Lighter use before:** about an hour of ordinary laptop use on 3 November (some 3,000 flows) brought no false alarm.
+
 ## Llama's explanations of network alerts (Pi 4, 2–3 November 2026)
 
 `python -m advisor.warm_cache --net --fresh` on the Pi explains one sample of each alert kind, worded as the monitor writes them, plus every alert in the monitor's file. Each answer is written again, without the answer cache. Alerts that differ only in their addresses share a prompt, because addresses and names are replaced before Llama sees them. The latest run is in [advisor_net_review.md](advisor_net_review.md).
@@ -164,6 +185,7 @@ The Pi is the hotspot `PS3-Guardian-Lab`. On it: a laptop, a Galaxy S25 and the 
 
 ## Not measured yet
 
+- **A second busy hour with update 27,** to show the fixes on the Pi itself.
 - **False alarms per day** on the lab Wi-Fi over a whole day of normal use, and the **per-device normal** for small home devices over days. Tool: `scripts/net_traffic.py` ([docs/network-detector.md](../docs/network-detector.md#measure-it-on-real-traffic)).
 - **The monitor's real memory:** the sum of each process's share (PSS) needs root, because the monitor holds capture capabilities.
 
