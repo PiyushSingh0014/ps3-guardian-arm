@@ -149,6 +149,18 @@ The Pi is the hotspot `PS3-Guardian-Lab`. On it: a laptop, a Galaxy S25 and the 
 - **Each fix has a test made from its alert,** which fails on the old rules, and all of them were run on CIC-IDS2017 again (above): false alarms 162 → 144, every attack still caught.
 - **Lighter use before:** about an hour of ordinary laptop use on 3 November (some 3,000 flows) brought no false alarm.
 
+**The same afternoon, after the fixes.** The count of each period is the monitor's own (`data/net/days.json`):
+
+| 5 November | Rules | Watched | With traffic | Flows | False alarms |
+| --- | --- | --- | --- | --- | --- |
+| first busy hour (36 minutes, alerts 15:25–15:30) | update 26 | 0.6 h | 0.6 h | 4,415 | 5 (above, all fixed) |
+| 16:01–17:10, the laptop in ordinary use | update 26 | 1.2 h | 1.2 h | 8,733 | 0 |
+| 17:11–18:47, second busy hour (same activities) | update 27 | 1.6 h | 1.1 h | 20,960 | 0 |
+
+- **With update 27: no alert at all** in 1.1 hours with traffic and 20,960 flows. That includes the heaviest 15 minutes seen on the lab Wi-Fi so far: 14,716 flows from 17:11 to 17:26, when the 30 websites, YouTube and Windows Update ran together.
+- **The quiet half hour** (1.6 hours watched, 1.1 with traffic) is the laptop dropping off the lab Wi-Fi for a while; such stretches count as watched but not as time with traffic.
+- **These are hours, not days.** They show that the alerts of a busy hour are gone and that nothing new came with much more traffic; a false-alarm rate per day still needs a whole day of normal use (below).
+
 ## Llama's explanations of network alerts (Pi 4, 2–3 November 2026)
 
 `python -m advisor.warm_cache --net --fresh` on the Pi explains one sample of each alert kind, worded as the monitor writes them, plus every alert in the monitor's file. Each answer is written again, without the answer cache. Alerts that differ only in their addresses share a prompt, because addresses and names are replaced before Llama sees them. The latest run is in [advisor_net_review.md](advisor_net_review.md).
@@ -185,7 +197,6 @@ The Pi is the hotspot `PS3-Guardian-Lab`. On it: a laptop, a Galaxy S25 and the 
 
 ## Not measured yet
 
-- **A second busy hour with update 27,** to show the fixes on the Pi itself.
 - **False alarms per day** on the lab Wi-Fi over a whole day of normal use, and the **per-device normal** for small home devices over days. Tool: `scripts/net_traffic.py` ([docs/network-detector.md](../docs/network-detector.md#measure-it-on-real-traffic)).
 - **The monitor's real memory:** the sum of each process's share (PSS) needs root, because the monitor holds capture capabilities.
 
