@@ -42,20 +42,22 @@ Measured 2026-10-26 with `detectors/net/eval_net.py` on CIC-IDS2017, and with `d
 
 ### False alarms
 
+With update 27 (the busy hour on the lab Wi-Fi, below):
+
 | Day | Hours | Alerts | False alarms | of which beacons | others |
 | --- | --- | --- | --- | --- | --- |
-| Monday (normal traffic only) | 8.1 | 47 | 47 | 25 | 22 |
-| Tuesday | 8.1 | 67 | 46 | 41 | 5 |
-| Wednesday | 8.5 | 25 | 17 | 13 | 4 |
+| Monday (normal traffic only) | 8.1 | 38 | 38 | 25 | 13 |
+| Tuesday | 8.1 | 63 | 43 | 41 | 2 |
+| Wednesday | 8.5 | 22 | 14 | 13 | 1 |
 | Thursday morning | 4.0 | 8 | 8 | 7 | 1 |
-| Thursday afternoon | 4.1 | 90 | 18 | 9 | 9 |
+| Thursday afternoon | 4.1 | 85 | 17 | 9 | 8 |
 | Friday morning | 4.0 | 33 | 7 | 7 | 0 |
-| Friday afternoon, port scan | 2.5 | 45 | 9 | 4 | 5 |
+| Friday afternoon, port scan | 2.5 | 43 | 7 | 4 | 3 |
 | Friday afternoon, DDoS | 1.5 | 22 | 10 | 10 | 0 |
-| **Total** | **40.7** | **337** | **162** | **116** | **46** |
+| **Total** | **40.7** | **314** | **144** | **116** | **28** |
 
-- **Not counting beacons:** 46 false alarms in 40.7 hours for about a dozen machines, roughly one per hour for the whole network.
-  - Most are browsers that opened many connections that never answered (18 on Monday).
+- **Not counting beacons:** 28 false alarms in 40.7 hours for about a dozen machines, fewer than one an hour for the whole network.
+  - Most are browsers that opened many connections that never answered (10 "network scans" on Monday).
   - A few, on Thursday afternoon, look like real but unlabelled attack traffic, for example a scan from the attackers' gateway 172.16.0.1. They are still counted as false.
 - **Beacon alerts are the weak point here, partly because of the data.** The CSV times are rounded to whole minutes, so any connection repeated about once a minute looks perfectly regular after rounding. On the Pi the monitor sees exact times and the server names (TLS), and it skips popular websites. This test cannot show how much that helps; the real-traffic week will.
 - **41 alerts named the attackers' own machine outside the labelled times.** They are the infected PCs still calling the bot's controller on Friday afternoon, after the labelled Bot hour; CIC's labels call that traffic normal (Engelen et al. list such label gaps). They are counted neither as detections nor as false alarms.
@@ -65,7 +67,8 @@ Measured 2026-10-26 with `detectors/net/eval_net.py` on CIC-IDS2017, and with `d
 | | False alarms, Monday | False alarms, five days | Attacks detected |
 | --- | --- | --- | --- |
 | First run | 464 | 1,412 | 10 of 10 (any alert kind, looser matching) |
-| Second run (reported) | 47 | 162 | 10 of 10 (the expected alert kind) |
+| Second run | 47 | 162 | 10 of 10 (the expected alert kind) |
+| Update 27 (reported) | 38 | 144 | 10 of 10, with the same first-alert times |
 
 The changes:
 
@@ -75,6 +78,11 @@ The changes:
 - **A big download alone is not an anomaly.**
 - **Beacons need 10 check-ins at least 30 seconds apart.**
 - **Empty packets are empty, even with CICFlowMeter's padding.**
+
+Update 27 came from the lab Wi-Fi, not from this data, and the five days only checked it afterwards:
+
+- **A sweep needs most of the machines tried on that port to stay silent.** Monday's port-443 "scans" fell from 18 to 10.
+- **"Unusual device" is only for small home devices** (at most 50 servers while learning). The company PCs used far more, so its 6 false alarms are gone. None of the attacks needed it: FTP-Patator was also caught as password guessing, Infiltration as a port scan.
 
 ## DGA model: does a domain name look machine-made?
 
@@ -118,7 +126,28 @@ The Pi is the hotspot `PS3-Guardian-Lab`. On it: a laptop, a Galaxy S25 and the 
   - connections that a server answered but the laptop closed unused (browsers open spare connections).
 
   CIC-IDS2017's Monday has the same kind: 18 of its 47 false alarms are such "scans", all on port 443.
-- **The fix (update 18).** On live traffic, a network-scan try is now a new connection that got no answer or was refused. The same "new connections only" rule now applies to password guessing, so pauses in an SSH session are not logins. The CIC-IDS2017 numbers above are unchanged (checked: the same 162 false alarms and the same detections).
+- **The fix (update 18).** On live traffic, a network-scan try is now a new connection that got no answer or was refused. The same "new connections only" rule now applies to password guessing, so pauses in an SSH session are not logins. The CIC-IDS2017 numbers did not change then (checked: the same 162 false alarms and the same detections).
+
+## The Pi's lab Wi-Fi: a busy hour (5 November 2026)
+
+- **Why an hour, not a day.** The first try at a whole day (3–5 November) had nobody on the lab Wi-Fi after its first hour: 3,272 flows in 60.9 hours. It also showed that the monitor wrote its watched time down only when traffic came (fixed in update 26). So the laptop was put through one busy hour instead, which packs much of a day's variety into an hour.
+- **What was done,** with the laptop on `PS3-Guardian-Lab` and the S25 as the Pi's internet:
+  - PowerShell opened 30 common websites, one every 20 seconds: Indian and global news, shopping, travel, food delivery, cricket, coding and learning sites, maps;
+  - YouTube for about 10 minutes, Windows Update, and the apps in daily use.
+- **Counted:** 36 minutes (0.6 hours), 4,415 flows, traffic in every 5-minute stretch.
+
+| Time | Alert | Why it was false | Fix (update 27) |
+| --- | --- | --- | --- |
+| 15:25 | Unusual device: 2,895 connections in 5 minutes (its usual most 686), 228 new servers | the laptop was simply used more than before | "Unusual device" only for small home devices: at most 50 servers while learning. The laptop had 175, the ESP32 4 |
+| 15:30 | Unusual device: 7,251 connections and 853 servers in 5 minutes | the same | the same |
+| 15:25 | Network scan: 15 machines on port 443 within a minute, mostly without answer | 15 unanswered tries while the laptop made some 2,900 connections in 5 minutes | a sweep needs most of the machines tried on that port to stay silent |
+| 15:25 | Phishing look-up: `cdn.ampproject.org` | Google's AMP cache: news sites load its script | services that pages load in the background are never listed whole |
+| 15:27 | Phishing look-up: `www.gravatar.com` (the list has `gravatar.com`) | Gravatar's profile pictures, shown on many sites | the same |
+
+- **All 5 alerts were false alarms,** all from the laptop: 5 in 36 minutes of busy use, about 11 per 10,000 flows. Nothing was set off on purpose, and no device was infected.
+- **The two look-ups are on the public list** because pages on those services were abused (Gravatar profiles, pages cached by Google's AMP cache). Of 117 common background services checked against the current list (fonts, analytics, ads, video, CDNs), only these two were flagged.
+- **Each fix has a test made from its alert,** which fails on the old rules, and all of them were run on CIC-IDS2017 again (above): false alarms 162 → 144, every attack still caught.
+- **Lighter use before:** about an hour of ordinary laptop use on 3 November (some 3,000 flows) brought no false alarm.
 
 ## Llama's explanations of network alerts (Pi 4, 2–3 November 2026)
 
@@ -138,10 +167,27 @@ The Pi is the hotspot `PS3-Guardian-Lab`. On it: a laptop, a Galaxy S25 and the 
 - **Some answers are one sentence.** Llama ended them itself after about 35–45 tokens, well below the 72-token limit (estimated from each answer's writing time and speed). They say what happened but leave out the checked fact. The page shows the monitor's checked red flags under every answer anyway.
 - **On the page,** the laptop's port-443 alert got its explanation in the background in 85 s: it waited behind the benchmark, which was running at the same time.
 
+## CPU, memory and temperature on the Pi (3 November 2026)
+
+`python scripts/pi_usage.py` sampled every 5 s for 23 minutes (278 samples), right after the services restarted. The lab Wi-Fi had light traffic: the laptop only. One message was checked on the page and explained by Llama (29.8 s, 3.23 tokens/s). CPU is a share of all four cores: 25% is one core fully busy.
+
+| | CPU, average | CPU, peak | Memory, average | Memory, peak |
+| --- | --- | --- | --- | --- |
+| Network monitor | 0.1% | 0.5% | 550 MB (see below) | 550 MB |
+| App | 0.1% | 19.6% (starting up) | 193 MB | 198 MB |
+| Llama service | 4.1% | 96.2% | 1,248 MB | 1,249 MB |
+| Whole Pi | 4.9% | 96.6% | at least 1,848 MB stayed free | |
+
+- **Idle, the whole Pi used about 1% CPU.** `systemctl status` agreed: the monitor had used 13 s of CPU in about half an hour.
+- **Llama is the only heavy part.** It kept all four cores at about 95% for some 50 s around the one check, and only then.
+- **The monitor's 550 MB is counted high.** NFStream's capture runs as several processes that share memory, and the tool adds up each one's resident size. Raspberry Pi OS keeps per-service memory counting off, so `systemctl status` shows none.
+- **Temperature:** 40–42 °C idle, 62 °C while Llama wrote, 73.5 °C just after Llama loaded at the restart. `vcgencmd get_throttled` was `0x80000`: the soft temperature limit was reached at least once since the Pi started, and no under-voltage. A heatsink or a small fan is advisable for long Llama use.
+
 ## Not measured yet
 
-- **A longer real-traffic count:** false alarms per day on the lab Wi-Fi after the beacon and scan fixes, and the **per-device normal** for small home devices. Tool: `scripts/net_traffic.py` ([docs/network-detector.md](../docs/network-detector.md#measure-it-on-real-traffic)).
-- **CPU, memory and temperature on the Pi** with the monitor, the app and Llama running. Tool: `scripts/pi_usage.py`.
+- **A second busy hour with update 27,** to show the fixes on the Pi itself.
+- **False alarms per day** on the lab Wi-Fi over a whole day of normal use, and the **per-device normal** for small home devices over days. Tool: `scripts/net_traffic.py` ([docs/network-detector.md](../docs/network-detector.md#measure-it-on-real-traffic)).
+- **The monitor's real memory:** the sum of each process's share (PSS) needs root, because the monitor holds capture capabilities.
 
 ## Reproduce
 

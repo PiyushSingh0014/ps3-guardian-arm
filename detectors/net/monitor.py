@@ -85,10 +85,11 @@ def next_midnight(t):
     return time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday + 1, 0, 0, 0, 0, 0, -1))
 
 
-def add_day(path, minutes, flows, alerts, day=None, active=None):
+def add_day(path, minutes, flows, alerts, day=None, active=None, started=None):
     """Add one stretch of watching to data/net/days.json: minutes, flows and alerts per day, and
     `active` minutes, the part of it with traffic. scripts/net_traffic.py turns it into false
-    alarms per day."""
+    alarms per day. A new file also gets `started` ("_started": when this count began), so
+    alerts from before it are not counted."""
     day = day or time.strftime("%Y-%m-%d")
     try:
         with open(path, encoding="utf-8") as f:
@@ -96,6 +97,8 @@ def add_day(path, minutes, flows, alerts, day=None, active=None):
         data = data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         data = {}
+    if started and "_started" not in data and not any(isinstance(v, dict) for v in data.values()):
+        data["_started"] = started
     d = data.setdefault(day, {})
     d["minutes"] = round(d.get("minutes", 0) + minutes, 2)
     if active is not None:
@@ -151,7 +154,8 @@ class WatchedTime:
             if self.days and up and not silent and not self.stuck and minutes > 0:
                 try:
                     add_day(self.days, minutes, flows, alerts, active=minutes if flows else 0,
-                            day=time.strftime("%Y-%m-%d", time.localtime(self.since)))
+                            day=time.strftime("%Y-%m-%d", time.localtime(self.since)),
+                            started=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.since)))
                 except OSError as e:
                     print(f"[net] could not write {self.days}: {e}", flush=True)
             self.since, self.flows_then, self.alerts_then, self.packets_then = (

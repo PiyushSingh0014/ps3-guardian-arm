@@ -123,8 +123,9 @@ class Blocklist:
         return {"loaded": True, "hosts": n, **meta}
 
     def lookup(self, link):
-        """The list a link is on, or None."""
-        if link is None:
+        """The list a link is on, or None. Hosts that are never listed whole are skipped here
+        too, so a file built before such a host was added gives no alert for it."""
+        if link is None or is_protected(link.host):
             return None
         keys = [link.host]
         if link.registered and link.registered != link.host and link.registered not in _NEVER_WHOLE:

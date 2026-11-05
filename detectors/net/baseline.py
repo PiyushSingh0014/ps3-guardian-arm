@@ -7,6 +7,11 @@ DNS lookups, plus the set of servers it normally uses. The first two hours of a 
 are learning only; after that a 5-minute period far above the device's own usual (3x its
 99th percentile, and above a floor) that also brings many new servers is reported.
 
+This is for small home devices. A device that used more than GENERAL_PEERS servers while
+learning is a laptop or phone: how much it does follows its user, so "unlike its normal self"
+is no sign of trouble there and is not reported (lab Wi-Fi, 5 November 2026: a laptop opening
+30 websites in 10 minutes). The other checks still watch it.
+
 Nothing about the content of the traffic is kept: only these counts and the addresses or
 names of the servers a device uses (data/net/devices.json on the Pi).
 """
@@ -24,6 +29,7 @@ FLOORS = {"flows": 60, "bytes_out": 2_000_000, "bytes_in": 20_000_000, "servers"
 WORDS = {"flows": "connections", "bytes_out": "data sent", "bytes_in": "data received",
          "servers": "different servers", "ports": "different ports", "dns": "DNS lookups"}
 MAX_PEERS, MAX_HISTORY = 5000, 2016           # a week of 5-minute periods
+GENERAL_PEERS = 50                             # more servers while learning: a laptop or phone
 
 
 def _p99(values):
@@ -107,7 +113,7 @@ class Baselines:
         c["servers"], c["ports"] = len(d.cur_servers), len(d.cur_ports)
         hits = []
         learned = d.start - d.first_ms >= self.learn_ms and len(d.history) >= 6
-        if learned and c["flows"]:
+        if learned and c["flows"] and len(d.peers) <= GENERAL_PEERS:
             over = []
             for m in TRIGGERS:
                 limit = max(3 * _p99(h[m] for h in d.history), FLOORS[m])

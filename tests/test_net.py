@@ -87,6 +87,19 @@ def test_new_tries_without_answer_are_still_a_scan():
     assert [f.category for f in run(engine(), rows)] == ["network_scan"]
 
 
+def test_a_busy_browser_is_not_a_network_scan():
+    # Lab Wi-Fi, 5 November 2026: a laptop opening 30 websites in 10 minutes had 15 tries on port
+    # 443 that got no answer while it made some 2,900 connections in 5 minutes.
+    worked = [flow(T0 + i * 150, f"23.{i % 250}.{i // 250}.9", 443, pin=8, pout=8, bout=900, bin_=9000)
+              for i in range(300)]
+    unanswered = [flow(T0 + 1000 + i * 2000, f"34.{i}.1.1", 443) for i in range(20)]
+    assert run(engine(), sorted(worked + unanswered, key=lambda r: r.start_ms)) == []
+    few = [flow(T0 + i * 3000, f"35.{i}.2.2", 443, pin=8, pout=8, bout=900, bin_=9000) for i in range(5)]
+    sweep = [flow(T0 + 500 + i * 2500, f"51.{i}.7.7", 443) for i in range(20)]
+    found = run(engine(), sorted(few + sweep, key=lambda r: r.start_ms))
+    assert [f.category for f in found] == ["network_scan"]     # a few answers do not hide a sweep
+
+
 def test_pauses_in_an_ssh_session_are_not_password_guessing():
     pieces = [flow(T0 + i * 2000, PI, 22, syn=0, pin=3, pout=3, bout=300, bin_=400, dur=500) for i in range(20)]
     assert run(engine(), pieces) == []
@@ -130,6 +143,23 @@ def test_phishing_lookup_names_stay_out_of_the_reasons(tmp_path):
     assert "evil-login" not in text and "sbi-kyc" not in text and "SBI" in text
 
 
+def test_background_services_looked_up_while_browsing_are_no_phishing(tmp_path):
+    # The busy hour on the lab Wi-Fi (5 November 2026): news sites load the AMP script from
+    # cdn.ampproject.org and pages load avatars from Gravatar; both are on the public list.
+    import sqlite3
+    db = str(tmp_path / "intel.sqlite")
+    intel.build({"test": ["evil-login.com"]}, out=db)
+    con = sqlite3.connect(db)                  # as in the Pi's file, built before the fix
+    con.executemany("INSERT INTO bad VALUES (?, 'old')", [("gravatar.com",), ("cdn.ampproject.org",)])
+    con.commit()
+    con.close()
+    e = engine(url_detector=UrlDetector(model_path=None, intel_path=db, top_sites=None))
+    names = ["cdn.ampproject.org", "www.gravatar.com", "secure.gravatar.com", "pay.evil-login.com"]
+    found = run(e, [flow(T0 + i * 1000, PI, 53, proto=UDP, pin=1, bout=40, bin_=80, name=n, app="DNS")
+                    for i, n in enumerate(names)])
+    assert [f.entities["name"] for f in found] == ["pay[.]evil-login[.]com"]
+
+
 class FakeDga:
     def score(self, domain, suffix):
         return 0.99 if domain.startswith("qz") else 0.01
@@ -165,6 +195,22 @@ def test_device_anomaly_after_learning(tmp_path):
     b.save()
     again = Baselines(path=str(tmp_path / "devices.json"))
     assert again.knows(DEV, "52.1.1.1") and not again.learning(DEV, burst)
+
+
+def test_a_laptop_using_many_servers_is_not_unlike_its_normal_self():
+    # The check is for small home devices. A laptop that used 60 servers while learning does more
+    # whenever its user does: a burst of new servers is no sign of trouble there.
+    b = Baselines(learn_ms=3 * 3600_000)
+    t, hits = T0 - T0 % BUCKET_MS, []
+    for k in range(48):
+        for i in range(10):
+            hits += b.update(flow(t + k * BUCKET_MS + i * 1000, f"52.1.{(k * 10 + i) % 60}.1", 443,
+                                  pin=5, pout=5, bout=500, bin_=2000))
+    burst = t + 48 * BUCKET_MS
+    for i in range(400):
+        hits += b.update(flow(burst + i * 500, f"185.7.{i % 40}.1", 443, pin=5, pout=20, bout=20_000, bin_=500))
+    hits += b.update(flow(burst + BUCKET_MS + 1000, "52.1.1.1", 443, pin=5, pout=5))
+    assert hits == [] and len(b.devices[DEV].peers) == 60
 
 
 def test_cic_rows_and_the_monitor_file(tmp_path):

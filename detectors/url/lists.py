@@ -124,6 +124,10 @@ SHARED_CONTENT = {
     "s3.amazonaws.com", "objectstorage.ap-mumbai-1.oraclecloud.com", "storage.cloud.google.com",
     "app.box.com", "mediafire.com", "archive.org", "scribd.com", "issuu.com", "padlet.com",
     "l.instagram.com", "l.facebook.com", "lm.facebook.com", "l.wl.co", "plus.google.com", "appengine.google.com",
+    # Services that web pages load in the background, which phishing lists carry because a
+    # path was abused: profile pages on Gravatar, pages cached by Google's AMP cache
+    # (".../c/s/<site>/..."). A busy hour on the lab Wi-Fi (5 November 2026) looked both up.
+    "gravatar.com", "cdn.ampproject.org", "ampproject.org",
 }
 
 # --- Link shorteners --------------------------------------------------------

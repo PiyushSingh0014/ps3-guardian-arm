@@ -20,7 +20,7 @@ link ──► parse (links.py: registered domain, subdomain, path; punycode; "B
                one of the 10,000 most visited websites 0.1
 ```
 
-- **Hidden websites.** A website hidden inside a link (`google.com/url?q=https://...`) or shown through Google Translate (`www-sbi-co-in.translate.goog`) is checked too, and the worse verdict counts.
+- **Hidden websites.** A website hidden inside a link (`google.com/url?q=https://...`) or shown through Google Translate (`www-sbi-co-in.translate.goog`) or Google's AMP cache (`….cdn.ampproject.org/c/s/example.com/...`) is checked too, and the worse verdict counts.
 - **Verdicts.** Score ≥ 0.5 is suspicious and ≥ 0.8 is dangerous, the same thresholds as for SMS.
 - **Reasons.** Every verdict comes with reasons in plain English. They never contain the link itself, because they are passed to Llama.
 
@@ -42,6 +42,7 @@ link ──► parse (links.py: registered domain, subdomain, path; punycode; "B
 | `data/url/top_sites.txt` | registered domains of the 10,000 most visited websites | Chrome UX Report, monthly copy at [zakird/crux-top-lists](https://github.com/zakird/crux-top-lists) |
 
 - **Exceptions in the phishing list.** Official domains, services where anyone can publish (Google Docs, Weebly, ...) and the 10,000 most visited websites are never listed as a whole. The public lists contain mistakes such as an Amazon country site and Instagram's link redirector, and one bad page must not block every Google Doc.
+  - **Background services too.** Gravatar (profile pictures) and Google's AMP cache are on the public list because their pages were abused, yet web pages load them in the background. A busy hour on the lab Wi-Fi looked both up, so they are never listed whole either. The lookup skips such hosts even in a list file built before they were added.
 - **More lists.** You can add other lists you download yourself under their own terms, for example OpenPhish's community feed or abuse.ch URLhaus with an account: `--extra name=path`.
 - **Updates.** The app picks up a new `intel.sqlite` within 10 minutes, without a restart.
 

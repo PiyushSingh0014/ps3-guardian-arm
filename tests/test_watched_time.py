@@ -45,6 +45,7 @@ def test_a_quiet_night_is_written_down_on_its_own_days(tmp_path, capsys):
         assert w.tick() is False
         assert time.localtime(clock.t).tm_mday == 3 or clock.t >= local(4, 0, 0)
     d = days(tmp_path)
+    assert d["_started"] == "2026-11-03 23:50:00"                                  # when this count began
     assert d["2026-11-03"]["minutes"] == pytest.approx(10.0, abs=0.05)            # 23:50 to midnight
     assert (d["2026-11-03"]["active_minutes"], d["2026-11-03"]["flows"], d["2026-11-03"]["alerts"]) == (1.0, 40, 1)
     assert 120 <= d["2026-11-04"]["minutes"] <= 126 and d["2026-11-04"]["active_minutes"] == 0.0
