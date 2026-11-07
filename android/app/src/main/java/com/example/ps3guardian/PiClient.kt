@@ -4,6 +4,7 @@ import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
+import java.net.URLEncoder
 
 /** The calls the app makes to the Pi (app/server.py). Blocking: use a background thread. */
 class PiClient(private val baseUrl: String, private val token: String) {
@@ -31,24 +32,40 @@ class PiClient(private val baseUrl: String, private val token: String) {
 
     fun explain(jobId: String): JSONObject = request("GET", "/explain/$jobId", null)
 
+    /** A file shared to the app, as the raw body (POST /file). The Pi checks it in memory and keeps no copy. */
+    fun checkFile(name: String, data: ByteArray, language: String = "en"): JSONObject {
+        val path = "/file?channel=share&language=$language&name=" + URLEncoder.encode(name.take(200), "UTF-8")
+        return request("POST", path, null, raw = data, readMs = 60_000)
+    }
+
+    /** A message's text shared to the app: checked like on the Pi's page (POST /check), not logged. */
+    fun checkText(message: String, language: String): JSONObject =
+        request("POST", "/check", JSONObject().put("message", message).put("language", language))
+
     /** The newest network alerts from the Pi's lab Wi-Fi, newest first: the list the Pi's page shows. */
     fun alerts(limit: Int): JSONObject = request("GET", "/alerts?limit=$limit", null)
 
     /** The devices on the Pi's lab Wi-Fi with a risk level each, riskiest first. */
     fun devices(): JSONObject = request("GET", "/devices", null)
 
-    private fun request(method: String, path: String, body: JSONObject?): JSONObject {
+    private fun request(method: String, path: String, body: JSONObject?, raw: ByteArray? = null,
+                        readMs: Int = 6_000): JSONObject {
         val conn = URI(baseUrl + path).toURL().openConnection() as HttpURLConnection
         try {
             conn.requestMethod = method
             // Android gives an SMS receiver about 10 s; the Pi answers in well under 1 s.
             conn.connectTimeout = 3_000
-            conn.readTimeout = 6_000
+            conn.readTimeout = readMs
             if (token.isNotEmpty()) conn.setRequestProperty("X-Guardian-Token", token)
             if (body != null) {
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
                 conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            } else if (raw != null) {
+                conn.doOutput = true
+                conn.setFixedLengthStreamingMode(raw.size)
+                conn.setRequestProperty("Content-Type", "application/octet-stream")
+                conn.outputStream.use { it.write(raw) }
             }
             val code = conn.responseCode
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
@@ -63,6 +80,7 @@ class PiClient(private val baseUrl: String, private val token: String) {
 
     companion object {
         const val MAX_MESSAGE = 2000        // the Pi accepts up to 2000 characters
+        const val MAX_FILE = 25 * 1024 * 1024   // and files up to 25 MB
         // Bad request, too large, invalid fields. A wrong token (401) or a stopped app is
         // worth trying again later, so those stay ordinary IOExceptions.
         private val REFUSED = setOf(400, 413, 422)

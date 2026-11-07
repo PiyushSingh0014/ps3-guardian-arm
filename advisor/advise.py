@@ -54,6 +54,12 @@ SAFE_LINK_ADVICE = dict(headline="LIKELY SAFE: no red flags found",
                         why="It does not look like the fake websites we know.",
                         steps=["Even on a real website, type a password, PIN or OTP only into pages you opened "
                                "yourself from the official app or by typing the address."])
+SAFE_FILE_ADVICE = dict(headline="LIKELY SAFE: no danger signs found",
+                        what="We found no warning signs in this file.",
+                        why="It has none of the signs of harmful files we know.",
+                        steps=["Open it only if you expected it from this person.",
+                               "Never install an app that comes in a chat, even from a friend.",
+                               "If the file asks you to enable macros, editing or content, close it."])
 
 
 class Advisor:
@@ -72,6 +78,11 @@ class Advisor:
             if finding.source == "url":
                 advice = dict(SAFE_LINK_ADVICE)
                 if finding.reasons:                       # e.g. "the link is on SBI's official website"
+                    advice["why"] = finding.reasons[0][0].upper() + finding.reasons[0][1:] + "."
+                return Advice(source="none", **advice)
+            if finding.source == "file":
+                advice = dict(SAFE_FILE_ADVICE)
+                if finding.reasons:                       # e.g. "a real PDF: no hidden code ... were found"
                     advice["why"] = finding.reasons[0][0].upper() + finding.reasons[0][1:] + "."
                 return Advice(source="none", **advice)
             return Advice(source="none", **SAFE_ADVICE)

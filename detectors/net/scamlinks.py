@@ -53,6 +53,8 @@ def where_from(channel, sender_type):
         return "a chat message from an unknown number"
     if channel == "url":
         return "a link checked on the page"
+    if channel == "file":
+        return "a file checked on the Pi"
     return "a message checked on the page"
 
 

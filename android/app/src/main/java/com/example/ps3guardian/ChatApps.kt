@@ -44,6 +44,23 @@ object ChatApps {
         return if (text.isBlank()) null else Incoming(title, text)
     }
 
+    // The name of an app or program file in a chat ("Wedding_Invitation.apk"), as the Pi's
+    // detectors/files/names.py finds it: ".js" or ".com" also end ordinary words, so they do not count.
+    private val APP_FILE = Regex(
+        "(?<![\\w/.:@-])([^\\s/\\\\:*?\"<>|]{1,150}\\.(apk|apks|xapk|apkm|exe|scr|msi|bat))(?!\\w|\\.\\w)",
+        RegexOption.IGNORE_CASE
+    )
+
+    /** The app or program file a chat message names, or null. A name inside a web address does not count. */
+    fun appFileName(text: String): String? {
+        for (m in APP_FILE.findAll(text)) {
+            val before = text.substring(maxOf(0, m.range.first - 8), m.range.first).lowercase()
+            if ("http" in before || "www." in before) continue
+            return m.groupValues[1]
+        }
+        return null
+    }
+
     private val NUMBER = Regex("^\\+?[0-9]{8,15}$")
     private val SPACING = Regex("[\\s()\\-.\\u200E\\u200F\\u202A-\\u202E\\u2066-\\u2069]")
     private val INVISIBLE = Regex("[\\s\\u200E\\u200F\\u202A-\\u202E\\u2066-\\u2069]")

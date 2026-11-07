@@ -27,6 +27,8 @@ Since update 9, the Pi also checks every link in a message: official sites, bran
 
 Since update 20, the app also shows the Pi's **network alerts**: what its network monitor finds on the lab Wi-Fi, for every device there, as notifications (Part H).
 
+Since update 29, a **file** that came in a chat (a PDF, an Office file, an app, a zip) can be shared to the app and is checked on the Pi; an app file sent by a saved contact gives an alert by itself (Part I).
+
 ## Part A: the Pi
 
 ### First time only: start automatically
@@ -205,6 +207,20 @@ When the phone can reach the Pi, the app also shows what the Pi's network monito
 3. **Test with the ESP32:** start a test from the Pi's page, for example "Looks up made-up names (DGA)". About 30 s later the alert is on the Pi's page; within a minute it is a notification on the phone, and Llama's text follows in the same notification.
 4. **Battery:** App info → Battery → **Unrestricted** (Part D, step 4) keeps the once-a-minute checks regular.
 
+## Part I: files from chats (Share to PS3 Guardian)
+
+The Pi checks files that came in WhatsApp, Messages or an email: what the file really is, hidden code, an app dressed as a document, links to fake websites ([file-checker.md](file-checker.md)).
+
+- **Share to check.** In WhatsApp, long-press the file, then **Share** (the share icon, or **⋮** → **Share**) → **PS3 Guardian: check it**. The app sends the file to the Pi and shows the verdict and the steps, then Llama's explanation. Downloading a file in WhatsApp does not open it, and neither does sharing it. A message's text can be shared the same way.
+- **An app sent by a saved contact** gives an alert by itself if chats are switched on (Part F): when a chat notification names an app or program file, such as `Wedding_Invitation.apk`, only that name goes to the Pi, as `Attachment: Wedding_Invitation.apk`. A friend's account that was taken over can send such apps, so this is the one case where a saved contact's chat is checked.
+- **Data.** The file goes to the Pi over the lab Wi-Fi only, is checked in memory and is not kept. The Pi's log keeps the file's type, size and verdict, never its name. Files up to 25 MB.
+
+1. **Install** the new version from the Android Studio system: Part B, "Updating the app later", then Part C step 3.
+2. **Put the test files on the phone.** On the Pi, `cd ~/ps3-guardian && python3 scripts/make_file_samples.py ~/ps3-file-samples` makes 19 harmless test files. Copy them to the laptop (PowerShell: `scp -r arrehinus@10.42.0.1:~/ps3-file-samples $HOME\Downloads\`), then send a few to yourself in WhatsApp Web (**Message yourself** → attach → **Document**): `ps3-test-ticket.pdf`, `Wedding_Invitation.pdf`, `ps3-test-kyc-link.pdf`, `ps3-test-macro.docm`. On the phone, open that chat and tap the download arrow on each.
+3. **Share** `ps3-test-ticket.pdf` to **PS3 Guardian: check it**: "LIKELY SAFE: no danger signs found".
+4. **Share** `Wedding_Invitation.pdf`: "DANGEROUS: App or program sent as a file", because "the file says it is .pdf, but it is really an Android app (APK)". Llama's explanation follows, usually within a minute.
+5. **The warning for saved contacts** (optional, with chats switched on in Part F): a teammate saved in your contacts sends you `Wedding_Invitation.apk` in WhatsApp as a document. Tell them first that it is a harmless test file. About 5 seconds after the notification, the app shows an alert. On the Pi, `tail -n 1 ~/ps3-guardian/logs/sms_traffic.jsonl` shows `"category": "app_file"`. If nothing comes, look at the notification: if it does not show the file's name, the app cannot see it.
+
 ## If something goes wrong
 
 | What you see | Fix |
@@ -218,6 +234,11 @@ When the phone can reach the Pi, the app also shows what the Pi's network monito
 | Network alerts: "Cannot reach the Pi" | The phone must be on `PS3-Guardian-Lab`, with the Pi address `http://10.42.0.1:8000`. |
 | No notification for a network alert | Is **Show network alerts and notify me** ticked, and are notifications on for "Network alerts" (App info → Notifications)? Only alerts newer than an hour, seen for the first time, are notified. |
 | A chat is not checked | Is its app ticked, and does the line under "Allow notification access" say chats are being checked? Is the sender shown as a phone number (not in your contacts)? Are notifications on for that chat? The check runs about 5 seconds after the notification. |
+| No **PS3 Guardian: check it** when sharing | Install the update 29 version (Part I, step 1). In the share list, scroll or tap **More**. |
+| After sharing: "Could not read the file" | The file is not on the phone yet: in WhatsApp, tap the download arrow first, then share again. |
+| After sharing: "Could not reach the Pi" | As for the network alerts: the phone must be on `PS3-Guardian-Lab`, with the Pi address `http://10.42.0.1:8000`. |
+| After sharing: `HTTP 404` | The Pi runs an older version: apply update 29 and `sudo systemctl restart ps3-guardian`. |
+| After sharing: "Too big to check" | The Pi checks files up to 25 MB. |
 | `Unresolved reference 'R'` and "Package directive does not match the file location" | The `.kt` files were copied into a project with another package name: change their first line to that package (see "How the project was made" in Part B), then build again. |
 | Emulator: "not enough disk space" | You don't need the emulator: install on your phone (Part C). |
 | Other build error in Android Studio | Send the first error line |
