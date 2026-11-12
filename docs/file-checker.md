@@ -31,7 +31,7 @@ First, **what the file really is**, from its first bytes: the name does not coun
 | Any file | Its real type against the ending of its name: an app or program named `.pdf` or `.jpg`; a double ending (`Card.pdf.apk`); a hidden right-to-left character that turns the ending around (`invoice<RLO>fdp.apk` shows as `invoicekpa.pdf`) |
 | Android app (APK) | Dangerous whenever it comes in a chat. The permissions in its manifest are named when OTP and money thieves need them: read SMS, control the screen (accessibility), read notifications, read contacts, draw over other apps, install other apps |
 | Windows, Linux or Java program, or a script | Dangerous |
-| PDF | The signs [pdfid](https://blog.didierstevens.com/programs/pdf-tools/) counts: `/JavaScript` (with `/OpenAction` or `/AA` it runs on opening), `/Launch`, embedded files (an app or program inside is dangerous), `/RichMedia`, `/SubmitForm`, `/GoToE`, `/GoToR`. Also inside compressed parts and object streams, and behind `#xx`-escaped names such as `/J#61vaScript`. Its links |
+| PDF | The signs [pdfid](https://blog.didierstevens.com/programs/pdf-tools/) counts: JavaScript, and whether it runs by itself on opening (the OpenAction, the document's own scripts, a page's "opened" action), `/Launch`, `/RichMedia`, `/SubmitForm`, `/GoToE`, `/GoToR`. Read from the PDF's dictionaries, also inside object streams and behind `#xx`-escaped names such as `/J#61vaScript`. Scripts that only call Acrobat's own form helpers (`AFNumber_Format` and the like) do not count. Files inside the PDF are checked like files of their own. Its links |
 | Word, Excel, PowerPoint (`.docx`, `.xlsx`, `.pptx`, and macro versions) | Macros, a template or object loaded from the internet, DDE fields, a program inside an embedded object. Its links |
 | Old Office file (`.doc`, `.xls`) | Macros |
 | OpenDocument (`.odt`, `.ods`) | Macros. Its links |
@@ -41,10 +41,11 @@ First, **what the file really is**, from its first bytes: the name does not coun
 | Text file | Its links |
 | Photo, video or audio | Safe when that is really what it is |
 
-- **Links.** Up to 20 different websites per file go through the link checker ([url-detector.md](url-detector.md)). A dangerous link makes the file dangerous, a suspicious one suspicious. A dangerous website also goes on the Pi's watch list, so the network monitor can tell if a device on the lab Wi-Fi opens it.
+- **Only the PDF's dictionaries count** (update 30). Pictures, fonts and page text are stream data, and random bytes contain `/JS` or `/AA` about 0.06 times per MB each. Read as keys, they made everyday PDFs look as if they had JavaScript ([eval/results_files.md](../eval/results_files.md)).
+- **Links.** Up to 20 different websites per file go through the link checker ([url-detector.md](url-detector.md)). A dangerous link makes the file dangerous, a suspicious one suspicious. A dangerous website also goes on the Pi's watch list, so the network monitor can tell if a device on the lab Wi-Fi opens it. E-mail and phone links (`mailto:`, `tel:`) are not websites and are skipped.
 - **Verdict.** The strongest sign decides, with the thresholds of SMS and links: a score of 0.5 or more is suspicious, 0.8 or more dangerous. At most 4 reasons are shown.
-- **Only suspicious** for signs that ordinary files also have: JavaScript that does not run on opening (forms that add up totals), a form that sends what you type, an embedded file, a link to another file, a password-locked zip, RAR and 7-Zip.
-- **Protection for the Pi itself.** Files up to 25 MB; at most 50 MB unpacked per file (against zip bombs); at most 400 compressed PDF parts and 2,000 zip entries. The checker reads bytes only: it never opens the file in a reader, never runs it and never unpacks it to disk.
+- **Only suspicious** for signs that ordinary files also have: JavaScript that runs only when you type or click, a form that sends what you type, a file inside a PDF that the Pi cannot read or does not know, a link to another file, a password-locked zip, RAR and 7-Zip.
+- **Protection for the Pi itself.** Files up to 25 MB; at most 50 MB unpacked per file (against zip bombs); at most 400 object streams, 200 scripts and 20 files inside one PDF, and 2,000 zip entries. The checker reads bytes only: it never opens the file in a reader, never runs it and never unpacks it to disk.
 
 | Sign | Score |
 | --- | --- |
@@ -52,14 +53,15 @@ First, **what the file really is**, from its first bytes: the name does not coun
 | An APK | 0.97 |
 | An APK asking for SMS, screen control and similar permissions | 0.96 |
 | A double ending or a hidden right-to-left character; a PDF that can launch a program or hides an app; a template from the internet; a program inside an Office object; a file named as an app or program | 0.95 |
-| JavaScript that runs when the PDF opens; macros; an object from the internet; DDE; a web page with a password box; a dangerous link | 0.9 |
+| JavaScript that runs by itself when the PDF opens; macros; an object from the internet; DDE; a web page with a password box; a dangerous link | 0.9 |
 | A `.pdf`, document or photo that is really a web page or an archive | 0.85 |
 | An SVG picture with code | 0.8 |
 | A web page with code that sends you elsewhere | 0.75 |
-| JavaScript in a PDF that does not run on opening | 0.65 |
-| A password-locked zip; an embedded file; embedded media; a web page with a script or a form; a suspicious link | 0.6 |
+| Other JavaScript in a PDF, or a script that cannot be read | 0.65 |
+| A password-locked zip; a file inside a PDF that cannot be read or is of an unknown type; embedded media; a web page with a script or a form; a suspicious link | 0.6 |
 | A PDF form that sends what you type | 0.55 |
 | A PDF that opens another file; a RAR or 7-Zip archive; a damaged zip | 0.5 |
+| A file inside a zip or a PDF | its own score, reason starting "inside the zip:" or "inside the PDF:" |
 
 ## Use it
 
@@ -93,7 +95,7 @@ cd ~/ps3-guardian && source ~/ps3-venv/bin/activate
 python scripts/check_files.py ~/normal-files --quiet
 ```
 
-It checks every file in the folder on this machine and prints the flagged ones (without `--quiet`, all of them), then a table per file type. File names are shown only on your screen; nothing is logged.
+It checks every file in the folder on this machine and prints the flagged ones (without `--quiet`, all of them), then a table per file type and the time per file. Copies of the same file (`- Copy.pdf`) are counted once. `--details` adds what was found inside each listed file: for a PDF, its keys and the start of a script. File names are shown only on your screen; nothing is logged.
 
 ## Test files
 
@@ -103,12 +105,13 @@ python scripts/make_file_samples.py ~/ps3-file-samples
 python scripts/check_files.py ~/ps3-file-samples
 ```
 
-19 harmless files made for this project, which carry the signs of harmful files and nothing else: the "apps" have a made-up manifest and no code, so Android refuses to install them; the "JavaScript" only shows a message box; the "launch" names a program that does not exist; the "macro" is a placeholder without code; the links and the template point to made-up websites; the sign-in page sends nowhere. The list is in [eval/results_files.md](../eval/results_files.md).
+21 harmless files made for this project. 15 carry the signs of harmful files and nothing else: the "apps" have a made-up manifest and no code, so Android refuses to install them; the "JavaScript" only shows a message box; the "launch" names a program that does not exist; the "macro" is a placeholder without code; the links and the template point to made-up websites; the sign-in page sends nowhere. 6 are safe, two of them hard cases: a form whose fields use Acrobat's number helpers, and a scanned page whose picture bytes happen to contain `/JS (` and `/AA <<`. The list is in [eval/results_files.md](../eval/results_files.md).
 
 ## Limits
 
 - **"Safe" means no danger sign was found,** not that the file is safe. A PDF that attacks a bug in one reader, with none of these signs, would pass. So would a scam letter with only a phone number to call: the checker does not read the text for meaning.
-- **Not checked:** QR codes and text inside pictures or scanned pages, links written as plain text in a PDF or Office file (only real, clickable links are read), the inside of password-protected PDFs and zips (the answer says so), RAR and 7-Zip archives, and zips inside zips.
+- **Not checked:** QR codes and text inside pictures or scanned pages, links written as plain text in a PDF or Office file (only real, clickable links are read), RAR and 7-Zip archives, and zips inside zips.
+- **Encrypted PDFs and zips:** only their outside is read, and the answer says so. In an encrypted PDF the keys outside object streams still count, but its links and scripts are scrambled. Many bank statements are encrypted, so encryption alone is no warning.
 - **Not an antivirus.** It has no list of known harmful files and does not run anything.
 - **Sent as plain HTTP on the lab Wi-Fi,** like the messages from the app: someone who has the Wi-Fi password and records the traffic could read the file. Check private documents only on a Wi-Fi you trust.
 - **False alarms on everyday documents are not measured yet.** Tool: `scripts/check_files.py` (above).

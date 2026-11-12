@@ -5,14 +5,16 @@ What it looks at, none of which needs to understand the person's own content:
     named like a PDF or a photo is disguised;
   * apps (APK): sent in a chat they are dangerous, and the permissions in the app's manifest say
     what it could do (read SMS: steal OTPs);
-  * PDFs: the signs pdfid looks for (JavaScript, actions that run on opening, launch commands,
-    embedded files), also inside compressed parts and behind #xx-escaped names; and its links;
+  * PDFs: the signs pdfid looks for (JavaScript and whether it runs on opening, launch
+    commands, files inside, which are checked too), read from the dictionaries only, also in
+    object streams and behind #xx-escaped names; Acrobat's own form helpers are no code; links;
   * Office files: macros, remote templates and objects, DDE, hidden programs, and its links;
   * archives (zip): what is inside, one level deep;
   * web pages saved as files (HTML, SVG): sign-in forms, scripts, links.
 Links go through the link checker, like the links in an SMS. Reasons never contain the file's
 name or a link: both are chosen by the sender, and reasons are passed to Llama.
 """
+import base64
 import io
 import re
 import zipfile
@@ -27,9 +29,11 @@ from .names import APP_EXT, ARCHIVE_EXT, DOC_EXT, IMAGE_EXT, MEDIA_EXT, PROGRAM_
 MAX_BYTES = 25 * 1024 * 1024          # bigger files are refused by the app (HTTP 413)
 MAX_INFLATE = 50 * 1024 * 1024        # all decompressed data of one file: against zip bombs
 MAX_MEMBER = 25 * 1024 * 1024
-MAX_STREAMS = 400
+MAX_STREAMS = 400                     # object streams unpacked per PDF
 MAX_LINKS = 20
 MAX_REASONS = 4
+MAX_SCRIPTS = 200                     # JavaScript values read per PDF
+MAX_EMBEDDED = 20                     # files inside one PDF that are checked
 
 TYPE_WORDS = {"pdf": "a PDF", "apk": "an Android app (APK)", "office": "a Word, Excel or PowerPoint file",
               "odf": "an OpenDocument file", "ole": "an old-style Office file", "jar": "a Java program",
@@ -57,7 +61,33 @@ PERMISSIONS = {
 _PDF_KEYS = rb"/(JS|JavaScript|OpenAction|AA|Launch|EmbeddedFiles?|RichMedia|XFA|AcroForm|URI|SubmitForm|GoToE|GoToR|ObjStm|Encrypt)(?![A-Za-z0-9])"
 _PDF_KEY_RE = re.compile(_PDF_KEYS)
 _PDF_HEXNAME_RE = re.compile(rb"/[A-Za-z0-9]*#[0-9A-Fa-f]{2}[A-Za-z0-9#]*")
-_PDF_STREAM_RE = re.compile(rb"stream\r?\n")
+_PDF_STREAM_RE = re.compile(rb">>[ \t\r\n\f\x00]{0,20}stream(?:\r\n|\n|\r)")   # data follows its dictionary
+_PDF_OBJ_RE = re.compile(rb"(?<![0-9])(\d{1,10})[ \t\r\n\f\x00]+\d{1,5}[ \t\r\n\f\x00]+obj(?![A-Za-z0-9])")
+_PDF_OBJ_END_RE = re.compile(rb"(?<![0-9])(\d{1,10})[ \t\r\n\f\x00]+\d{1,5}[ \t\r\n\f\x00]+$")
+_PDF_LENGTH_RE = re.compile(rb"/Length\s*(\d{1,10})\b(?!\s+\d+\s+R)")
+_PDF_FILTER_RE = re.compile(rb"/Filter\s*(\[[^\]]{0,300}\]|/[A-Za-z0-9]+)")
+_PDF_OBJSTM_RE = re.compile(rb"/Type\s*/ObjStm(?![A-Za-z0-9])")
+_PDF_EMBEDDED_RE = re.compile(rb"/Type\s*/EmbeddedFile(?![A-Za-z0-9])")
+_PDF_REF_RE = re.compile(rb"\s*(\d{1,10})\s+\d{1,5}\s+R(?![A-Za-z0-9])")
+_PDF_DICT_RE = re.compile(rb"\s*<<")
+_PDF_JS_KEY_RE = re.compile(rb"/JS(?![A-Za-z0-9])\s*")
+_PDF_JS_ACTION_RE = re.compile(rb"/S\s*/JavaScript(?![A-Za-z0-9])")
+_PDF_DOC_JS_RE = re.compile(rb"/JavaScript\s*(?:\d+\s+\d+\s+R|<<)")      # the document's own scripts
+_PDF_OPEN_RE = re.compile(rb"/OpenAction(?![A-Za-z0-9])")
+_PDF_AA_RE = re.compile(rb"/AA(?![A-Za-z0-9])")
+_PDF_OPEN_KEY_RE = re.compile(rb"/(?:O|PO|PV)(?=\s*(?:\d|<<))")           # actions for "opened" or "shown"
+_PDF_NEXT_RE = re.compile(rb"/Next(?![A-Za-z0-9])")
+_PDF_EF_RE = re.compile(rb"/EF\s*<<(.{0,400}?)>>", re.S)
+_PDF_EF_REF_RE = re.compile(rb"/(?:F|UF|DOS|Mac|Unix)\s*(\d{1,10})\s+\d{1,5}\s+R")
+_PDF_ESCAPE_RE = re.compile(rb"\\(?:([nrtbf()\\])|([0-7]{1,3})|(\r\n|\n|\r))")
+# Acrobat's own form helpers (AFNumber_Format(2, 0, 0, 0, "", true); and the like) with nothing but
+# fixed values as arguments: they format numbers, dates and totals, and cannot run other code.
+_JS_VALUE = r"""(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|-?\d+(?:\.\d+)?|true|false|null)"""
+_JS_VALUES = r"(?:" + _JS_VALUE + r"\s*(?:,\s*" + _JS_VALUE + r"\s*)*)?"
+_JS_ARG = r"(?:" + _JS_VALUE + r"|new\s+Array\s*\(\s*" + _JS_VALUES + r"\)|\[\s*" + _JS_VALUES + r"\])"
+_AF_CALL = (r"AF(?:Number|Percent|Date|Time|Special|Simple|Range)_[A-Za-z]+\s*\(\s*(?:" + _JS_ARG
+            + r"\s*(?:,\s*" + _JS_ARG + r"\s*)*)?\)")
+_AF_ONLY_RE = re.compile(r"\s*(?:" + _AF_CALL + r"\s*;?\s*)+")
 _PDF_URI_RE = re.compile(rb"/URI\s*\(((?:\\.|[^\\)]){1,2000})\)")
 _PDF_URI_HEX_RE = re.compile(rb"/URI\s*<([0-9A-Fa-f\s]{2,4000})>")
 _PDF_NAME_RE = re.compile(rb"/(?:UF|F)\s*\(((?:\\.|[^\\)]){1,300})\)")
@@ -66,6 +96,8 @@ _REL_RE = re.compile(rb"<Relationship\b[^>]*>", re.I)
 _ATTR_RE = re.compile(rb'(\w+)\s*=\s*"([^"]*)"')
 _DDE_RE = re.compile(rb"(?i)(?:<w:instrText[^>]*>\s*|instr=\"\s*)DDE(?:AUTO)?\b")
 _PROGRAM_NAME_RE = re.compile(rb"(?i)[\w\- ]{1,80}\.(exe|scr|bat|cmd|js|jse|vbs|vbe|wsf|hta|ps1|jar|lnk|apk|msi)\x00")
+_NOT_WEB_RE = re.compile(r"(?i)(?:mailto|tel|sms|callto|fax|javascript|data|cid|geo|urn|news|file):")
+_SCHEME_RE = re.compile(r"(?i)^(?!https?://)[a-z][a-z0-9+.-]{1,20}://")
 _URL_RE = re.compile(r"(?i)\b(?:https?://|www\.)[^\s\"'<>()\]\[{}\\^`|]{3,500}")
 _HREF_RE = re.compile(r"(?i)(?:href|action|src|xlink:href)\s*=\s*[\"']?(https?://[^\s\"'<>]{3,500})")
 
@@ -82,6 +114,7 @@ class _State:
     links: list = field(default_factory=list)          # URLs found, in order
     inflated: int = 0                                   # bytes decompressed so far
     notes: list = field(default_factory=list)          # things the check could not do
+    evidence: list = field(default_factory=list)       # what was found, for check_files.py --details
 
 
 def real_type(data):
@@ -155,7 +188,8 @@ class FileChecker:
     def __init__(self, url_detector=None):
         self.url = url_detector
 
-    def check(self, data: bytes, name: str = "", language: str = "en") -> Finding:
+    def check(self, data: bytes, name: str = "", language: str = "en", evidence=None) -> Finding:
+        """evidence: a list to receive what was found inside (key counts, the start of a script)."""
         st = _State()
         kind = real_type(data)
         signs = self._signs(data, name, kind, st, depth=0)
@@ -169,6 +203,9 @@ class FileChecker:
             entities["links"] = verdicts["links"]
         if verdicts["brand"]:
             entities["claims_to_be"], entities["claims_kind"] = verdicts["brand"]
+        st.notes = list(dict.fromkeys(st.notes))
+        if evidence is not None:
+            evidence.extend(st.evidence)
         if verdict == "safe":
             reasons = [_safe_reason(kind)] + st.notes
             category = "none"
@@ -207,7 +244,7 @@ class FileChecker:
         if kind == "apk":
             signs += self._apk(data)
         elif kind == "pdf":
-            signs += self._pdf(data, st)
+            signs += self._pdf(data, st, depth)
         elif kind == "office":
             signs += self._office(data, st)
         elif kind == "odf":
@@ -246,62 +283,89 @@ class FileChecker:
         listed = words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1]
         return [Sign(0.96, f"the app asks to {listed}: what apps that steal OTPs and money need", "app_file")]
 
-    def _inflate(self, chunk, st):
-        room = MAX_INFLATE - st.inflated
-        if room <= 0:
-            return b""
-        try:
-            out = zlib.decompressobj().decompress(chunk, room)
-        except zlib.error:
-            return b""
-        st.inflated += len(out)
-        return out
-
-    def _pdf(self, data, st):
-        parts = [data]
-        n = 0
-        for m in _PDF_STREAM_RE.finditer(data):
-            if n >= MAX_STREAMS or st.inflated >= MAX_INFLATE:
-                break
-            start = m.end()
-            end = data.find(b"endstream", start)
-            if end < 0:
-                break
-            head = data[max(0, m.start() - 400):m.start()]
-            if b"Fl" in head and b"/DCTDecode" not in head and b"/JPXDecode" not in head:
-                out = self._inflate(data[start:end], st)
-                if out:
-                    parts.append(out)
-                    n += 1
-        counts = {}
-        for part in parts:
-            extra = b" ".join(_unhex_name(t) for t in _PDF_HEXNAME_RE.findall(part))
-            for chunk in (part, extra):
-                for k in _PDF_KEY_RE.findall(chunk):
-                    key = k.decode()
-                    key = "EmbeddedFile" if key.startswith("EmbeddedFile") else key
-                    counts[key] = counts.get(key, 0) + 1
-            for raw in _PDF_URI_RE.findall(part):
-                st.links.append(_pdf_string(raw))
-            for raw in _PDF_URI_HEX_RE.findall(part):
+    def _decode(self, head, raw, st, limit):
+        """A stream's data unpacked (Flate, ASCIIHex, ASCII85, alone or chained), or None for
+        other filters (pictures, encryption), data that does not unpack, or more than `limit`."""
+        m = _PDF_FILTER_RE.search(head)
+        out = raw
+        for f in re.findall(rb"/([A-Za-z0-9]+)", m.group(1)) if m else []:
+            if f in (b"FlateDecode", b"Fl"):
+                room = min(limit + 1, MAX_INFLATE - st.inflated)
+                if room <= 0:
+                    return None
                 try:
-                    st.links.append(bytes.fromhex(raw.decode().replace(" ", "").replace("\n", "")).decode("latin-1"))
+                    out = zlib.decompressobj().decompress(out, room)
+                except zlib.error:
+                    return None
+                st.inflated += len(out)
+            elif f in (b"ASCIIHexDecode", b"AHx"):
+                hexed = re.sub(rb"[^0-9A-Fa-f]", b"", out.split(b">", 1)[0])
+                out = bytes.fromhex((hexed + b"0" * (len(hexed) % 2)).decode())
+            elif f in (b"ASCII85Decode", b"A85"):
+                body = out.strip()
+                body = (body[2:] if body.startswith(b"<~") else body).split(b"~>", 1)[0]
+                try:
+                    out = base64.a85decode(re.sub(rb"\s", b"", body))
                 except ValueError:
-                    pass
+                    return None
+            else:
+                return None
+        return out if len(out) <= limit else None
+
+    def _pdf(self, data, st, depth=0):
+        # Keys, actions and links live in the PDF's dictionaries, never in stream data (pictures,
+        # fonts, page text), whose random bytes would look like "/JS" or "/AA" by chance. So the
+        # check reads the dictionaries, plus the objects packed in object streams.
+        structure, streams = _pdf_split(data)
+        packed, inside = {}, []
+        for head, start, end in streams.values():
+            if len(inside) >= MAX_STREAMS:
+                break
+            if not _PDF_OBJSTM_RE.search(_norm(head)):
+                continue
+            body = self._decode(head, data[start:end], st, MAX_MEMBER)
+            if body:
+                inside.append(body)
+                for num, text in _objstm_objects(_norm(head), body):
+                    packed.setdefault(num, text)
+        raw = b"\n".join([structure] + inside)
+        text = _norm(raw)
+        objects = _PdfObjects(structure, packed)
+        counts = {}
+        for k in _PDF_KEY_RE.findall(text):
+            key = k.decode()
+            key = "EmbeddedFile" if key.startswith("EmbeddedFile") else key
+            counts[key] = counts.get(key, 0) + 1
+        locked = bool(counts.get("Encrypt"))         # its strings are scrambled: links would be noise
+        for u in [] if locked else _PDF_URI_RE.findall(raw):
+            st.links.append(_pdf_string(u))
+        for u in [] if locked else _PDF_URI_HEX_RE.findall(raw):
+            try:
+                st.links.append(bytes.fromhex(re.sub(rb"\s", b"", u).decode()).decode("latin-1"))
+            except ValueError:
+                pass
         signs = []
-        code = counts.get("JS", 0) + counts.get("JavaScript", 0)
-        auto = counts.get("OpenAction", 0) + counts.get("AA", 0)
+        script, first = "none", ""
+        if counts.get("JS") or counts.get("JavaScript"):
+            script, first = self._pdf_scripts(text, objects, streams, data, st)
+        on_open = script == "code" and _pdf_runs_on_open(text, objects)
         if counts.get("Launch"):
             signs.append(Sign(0.95, "the PDF can start a program on your device", "harmful_document"))
-        if code and auto:
+        if on_open:
             signs.append(Sign(0.9, "the PDF runs hidden code (JavaScript) as soon as it is opened", "harmful_document"))
-        elif code:
+        elif script == "code":
             signs.append(Sign(0.65, "the PDF contains hidden code (JavaScript)", "harmful_document"))
+        elif script == "form":
+            st.notes.append("the PDF is a form whose only scripts are Acrobat's own helpers for numbers, dates "
+                            "and totals")
+        inner = []
         if counts.get("EmbeddedFile"):
-            names = [_pdf_string(r) for part in parts for r in _PDF_NAME_RE.findall(part)]
-            if any(extension(x) in APP_EXT | PROGRAM_EXT for x in names):
+            names = [_pdf_string(r) for r in _PDF_NAME_RE.findall(raw)]
+            app = any(extension(x) in APP_EXT | PROGRAM_EXT for x in names)
+            if app:
                 signs.append(Sign(0.95, "the PDF hides an app or a program inside it", "app_file"))
-            else:
+            inner = self._pdf_embedded(text, streams, data, st, depth, signs)
+            if not inner and not app:
                 signs.append(Sign(0.6, "the PDF carries another file inside it", "harmful_document"))
         if counts.get("RichMedia"):
             signs.append(Sign(0.6, "the PDF contains embedded media that can run code", "harmful_document"))
@@ -309,9 +373,89 @@ class FileChecker:
             signs.append(Sign(0.55, "the PDF has a form that sends what you type to a website", "phishing_document"))
         if counts.get("GoToE") or counts.get("GoToR"):
             signs.append(Sign(0.5, "the PDF opens another file when you click it", "harmful_document"))
-        if counts.get("Encrypt") and len(parts) == 1:
-            st.notes.append("the PDF is password-protected, so only its outside could be checked")
+        if locked:
+            st.notes.append("the PDF is encrypted, so only its outside could be checked")
+        line = "PDF keys: " + (", ".join(f"{k} {v}" for k, v in sorted(counts.items())) or "none")
+        if script != "none":
+            line += f"; scripts: {script}" + (", run on opening" if on_open else "")
+            if first:
+                line += ", first: " + " ".join(first.split())[:80]
+        if inner:
+            line += "; inside: " + ", ".join(TYPE_WORDS.get(k, k) for k in inner)
+        st.evidence.append(line)
         return signs
+
+    def _pdf_scripts(self, text, objects, streams, data, st):
+        """What the PDF's JavaScript is: 'form' when every script is one of Acrobat's own form
+        helpers (AFNumber_Format and the like, which only format numbers, dates and totals),
+        'code' when there is other code or a script that could not be read, 'none' when all are
+        empty. Also the start of the first other code, for check_files.py --details."""
+        codes, unread = [], False
+        for m in _PDF_JS_KEY_RE.finditer(text):
+            if len(codes) >= MAX_SCRIPTS:
+                break
+            value = self._pdf_value(text, m.end(), objects, streams, data, st)
+            if value is None:
+                unread = True
+            else:
+                codes.append(value)
+        if not codes:
+            unread = True                       # /JavaScript, but no script that could be read
+        texts = [t for t in (_js_text(c).strip() for c in codes) if t]
+        other = [t for t in texts if not _AF_ONLY_RE.fullmatch(t)]
+        if unread or other:
+            return "code", (other[0] if other else "")
+        return ("form" if texts else "none"), ""
+
+    def _pdf_value(self, text, i, objects, streams, data, st, hops=0):
+        """The string at text[i]: (literal), <hex>, or a reference to a string or a stream."""
+        c = text[i:i + 1]
+        if c == b"(":
+            return _pdf_literal(text, i)
+        if c == b"<" and text[i + 1:i + 2] != b"<":
+            j = text.find(b">", i)
+            hexed = re.sub(rb"[^0-9A-Fa-f]", b"", text[i + 1:j if j >= 0 else i + 1])
+            return bytes.fromhex((hexed + b"0" * (len(hexed) % 2)).decode())
+        r = _PDF_REF_RE.match(text, i)
+        if r is None or hops > 1:
+            return None
+        num = int(r.group(1))
+        if num in streams:
+            head, start, end = streams[num]
+            return self._decode(head, data[start:end], st, 2 * 1024 * 1024)
+        obj = objects.get(num)
+        k = len(obj) - len(obj.lstrip())
+        return self._pdf_value(obj, k, objects, streams, data, st, hops + 1) if obj.strip() else None
+
+    def _pdf_embedded(self, text, streams, data, st, depth, signs):
+        """The files inside a PDF, checked like files of their own (one level deep): an app,
+        a document with macros or a fake sign-in page is found inside, and a harmless file
+        (LibreOffice puts the document itself in a "hybrid PDF") is no warning. Returns the kinds."""
+        if depth > 0:
+            return []
+        nums = [int(x) for ef in _PDF_EF_RE.findall(text) for x in _PDF_EF_REF_RE.findall(ef)]
+        nums += [k for k, (head, _, _) in streams.items() if _PDF_EMBEDDED_RE.search(_norm(head))]
+        kinds, seen = [], set()
+        for num in nums:
+            if num in seen or num not in streams or len(seen) >= MAX_EMBEDDED:
+                continue
+            seen.add(num)
+            head, start, end = streams[num]
+            body = self._decode(head, data[start:end], st, MAX_MEMBER)
+            if body is None:
+                continue
+            kind = real_type(body) if body else "empty"
+            kinds.append(kind)
+            if not body:
+                continue
+            found = self._signs(body, "", kind, st, depth=1)
+            signs += [Sign(s.score, "inside the PDF: " + s.reason, s.category) for s in found]
+            if kind == "unknown":
+                signs.append(Sign(0.6, "the PDF carries another file inside it, of a type the Pi does not know",
+                                  "harmful_document"))
+            elif not found:
+                st.notes.append(f"the PDF carries {TYPE_WORDS.get(kind, 'a file')} inside it, which was checked too")
+        return kinds
 
     def _zip_read(self, z, info, st):
         if info.file_size > MAX_MEMBER or st.inflated + info.file_size > MAX_INFLATE or info.flag_bits & 0x1:
@@ -442,8 +586,9 @@ class FileChecker:
         seen, worst = set(), None
         for raw in st.links:
             u = (raw or "").strip().strip(".,;")
-            if not u or len(seen) >= MAX_LINKS:
-                continue
+            if not u or len(seen) >= MAX_LINKS or _NOT_WEB_RE.match(u):
+                continue                                  # an e-mail address or a phone number is no website
+            u = _SCHEME_RE.sub("http://", u, count=1)     # ftp://host and the like: judge the host
             link = parse_link(u if re.match(r"(?i)https?://", u) else "http://" + u)
             if link is None or link.registered in seen:
                 continue
@@ -470,16 +615,172 @@ def _unhex_name(token):
     return re.sub(rb"#([0-9A-Fa-f]{2})", lambda m: bytes([int(m.group(1), 16)]), token)
 
 
+def _pdf_unescape(raw):
+    """The bytes of a PDF literal string, its escapes undone (\\n, \\(, \\101, line breaks)."""
+    def one(m):
+        if m.group(1):
+            return {b"n": b"\n", b"r": b"\r", b"t": b"\t", b"b": b"\b", b"f": b"\f"}.get(m.group(1), m.group(1))
+        if m.group(2):
+            return bytes([int(m.group(2), 8) & 0xFF])
+        return b""
+    return _PDF_ESCAPE_RE.sub(one, raw)
+
+
 def _pdf_string(raw):
     """The text of a PDF (literal) string: escapes undone, as Latin-1."""
-    s = re.sub(rb"\\([nrtbf()\\])", lambda m: {b"n": b"\n", b"r": b"\r", b"t": b"\t", b"b": b"\b", b"f": b"\f"}.get(
-        m.group(1), m.group(1)), raw)
-    s = re.sub(rb"\\([0-7]{1,3})", lambda m: bytes([int(m.group(1), 8) & 0xFF]), s)
-    return s.decode("latin-1")
+    return _pdf_unescape(raw).decode("latin-1")
+
+
+def _pdf_literal(data, i, limit=500_000):
+    """The PDF string that starts with '(' at data[i]: brackets inside may nest, escapes undone."""
+    depth, j, end = 0, i, min(len(data), i + limit)
+    while j < end:
+        c = data[j]
+        if c == 0x5C:                               # a backslash escapes the next byte
+            j += 2
+            continue
+        if c == 0x28:
+            depth += 1
+        elif c == 0x29:
+            depth -= 1
+            if depth == 0:
+                break
+        j += 1
+    return _pdf_unescape(data[i + 1:j])
+
+
+def _js_text(code):
+    """A script's text: PDF strings are Latin-1, or UTF-16 after a byte-order mark."""
+    if code[:2] == b"\xfe\xff":
+        return code[2:].decode("utf-16-be", "ignore")
+    if code[:2] == b"\xff\xfe":
+        return code[2:].decode("utf-16-le", "ignore")
+    return code.decode("latin-1")
+
+
+def _norm(text):
+    """PDF names with #xx escapes written out: '/J#61vaScript' -> '/JavaScript'."""
+    return _PDF_HEXNAME_RE.sub(lambda m: _unhex_name(m.group(0)), text) if b"#" in text else text
+
+
+def _pdf_split(data):
+    """A PDF without its stream data, and where each stream's data is: {object number:
+    (dictionary, start, end)}. A stream starts right after its dictionary ('>> stream') and
+    ends after /Length bytes, or at 'endstream' when /Length does not fit."""
+    out, streams, pos = [], {}, 0
+    for m in _PDF_STREAM_RE.finditer(data):
+        if m.start() < pos:                          # inside the previous stream's data
+            continue
+        dict_end = m.start() + 2
+        at = data.rfind(b"obj", pos, dict_end)
+        num = None
+        if at >= 0:
+            k = _PDF_OBJ_END_RE.search(data[max(pos, at - 40):at])
+            num = int(k.group(1)) if k else None
+        head = data[at + 3 if at >= 0 else max(pos, dict_end - 4000):dict_end]
+        start, end = m.end(), -1
+        n = _PDF_LENGTH_RE.search(head)
+        if n:
+            e = start + int(n.group(1))
+            if data[e:e + 40].lstrip(b" \t\r\n\f\x00").startswith(b"endstream"):
+                end = e
+        if end < 0:
+            end = data.find(b"endstream", start)
+            end = len(data) if end < 0 else end
+        out.append(data[pos:dict_end])
+        if num is not None:
+            streams[num] = (head, start, end)
+        pos = end
+    out.append(data[pos:])
+    return b"".join(out), streams
+
+
+class _PdfObjects:
+    """A PDF object by its number: from the file (the last one wins, as with later edits) or
+    from an object stream. Its text, with #xx names written out; empty if not found."""
+
+    def __init__(self, structure, packed):
+        self.structure, self.packed, self.index, self.cache = structure, packed, None, {}
+
+    def get(self, num):
+        if num in self.cache:
+            return self.cache[num]
+        if self.index is None:
+            self.index = {int(m.group(1)): m.end() for m in _PDF_OBJ_RE.finditer(self.structure)}
+        at = self.index.get(num)
+        if at is not None:
+            end = self.structure.find(b"endobj", at, at + 200_000)
+            text = self.structure[at:end if end >= 0 else at + 200_000]
+        else:
+            text = self.packed.get(num, b"")
+        self.cache[num] = text = _norm(text)
+        return text
+
+
+def _objstm_objects(head, body):
+    """The objects packed in an object stream: [(number, text)]."""
+    first, count = re.search(rb"/First\s+(\d{1,10})", head), re.search(rb"/N\s+(\d{1,7})", head)
+    if not first or not count:
+        return []
+    first = int(first.group(1))
+    nums = [int(x) for x in re.findall(rb"\d+", body[:first])[:2 * int(count.group(1))]]
+    out = []
+    for i in range(0, len(nums) - 1, 2):
+        start = first + nums[i + 1]
+        end = first + nums[i + 3] if i + 3 < len(nums) else len(body)
+        if start < end <= len(body):
+            out.append((nums[i], body[start:end]))
+    return out
+
+
+def _pdf_dict_at(text, i, objects):
+    """The dictionary at text[i]: written there (up to its first '>>') or the object it names."""
+    r = _PDF_REF_RE.match(text, i)
+    if r:
+        return objects.get(int(r.group(1)))
+    d = _PDF_DICT_RE.match(text, i)
+    if d:
+        end = text.find(b">>", d.end(), d.end() + 20_000)
+        return text[d.end():end if end >= 0 else d.end() + 20_000]
+    return b""
+
+
+def _pdf_is_script(text, i, objects):
+    """Is the action at text[i] JavaScript, or followed by JavaScript (its /Next)?"""
+    action = _pdf_dict_at(text, i, objects)
+    for _ in range(3):
+        if _PDF_JS_ACTION_RE.search(action):
+            return True
+        n = _PDF_NEXT_RE.search(action)
+        if not n:
+            return False
+        rest = action[n.end():n.end() + 400].lstrip()
+        if rest.startswith(b"["):
+            refs = re.findall(rb"(\d{1,10})\s+\d{1,5}\s+R", rest.split(b"]", 1)[0])[:10]
+            return any(_PDF_JS_ACTION_RE.search(objects.get(int(x))) for x in refs)
+        action = _pdf_dict_at(action, n.end(), objects)
+    return False
+
+
+def _pdf_runs_on_open(text, objects):
+    """Does a script run by itself when the PDF opens: the document's own scripts (its
+    /JavaScript name tree), the OpenAction, or a page or field action for 'opened' or 'shown'
+    (/O, /PO, /PV)? Actions for typing in a field or for printing do not count."""
+    if _PDF_DOC_JS_RE.search(text):
+        return True
+    if any(_pdf_is_script(text, m.end(), objects) for m in _PDF_OPEN_RE.finditer(text)):
+        return True
+    for n, m in enumerate(_PDF_AA_RE.finditer(text)):
+        if n >= 2000:
+            break
+        actions = _pdf_dict_at(text, m.end(), objects)
+        if any(_pdf_is_script(actions, k.end(), objects) for k in _PDF_OPEN_KEY_RE.finditer(actions)):
+            return True
+    return False
 
 
 def _safe_reason(kind):
-    return {"pdf": "a real PDF: no hidden code, launch actions, embedded files or dangerous links were found",
+    return {"pdf": "a real PDF: no hidden code, launch actions, hidden apps or dangerous links were found",
             "office": "a real Office file: no macros, remote templates, hidden programs or dangerous links were found",
             "odf": "a real OpenDocument file: no macros or dangerous links were found",
             "ole": "an old-style Office file without macros",
