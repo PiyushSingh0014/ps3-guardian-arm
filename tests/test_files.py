@@ -64,7 +64,98 @@ def test_pdf_tricks_and_limits(checker):
     assert f.verdict == "suspicious" and "hidden code" in f.reasons[0]   # code, but nothing runs it on opening
     locked = samples.pdf().replace(b"/Root 1 0 R", b"/Root 1 0 R /Encrypt << /Filter /Standard >>")
     f = checker.check(locked, "statement.pdf")
-    assert f.verdict == "safe" and "password-protected" in " ".join(f.reasons)
+    assert f.verdict == "safe" and "encrypted" in " ".join(f.reasons)
+
+
+def _stream(data, extra=b""):
+    packed = zlib.compress(data)
+    return b"<< /Filter /FlateDecode /Length %d" % len(packed) + extra + b" >>\nstream\n" + packed + b"\nendstream"
+
+
+def test_picture_and_font_bytes_are_not_pdf_keys(checker):
+    """Random bytes in pictures and fonts contain "/JS" or "/AA" about 0.06 times per MB each.
+    Found on everyday PDFs (an e-book, a datasheet, a paper): only dictionaries count now."""
+    assert checker.check(samples.pdf_scan(), "scan.pdf").verdict == "safe"
+    font = _stream(b"/JavaScript /JS (x) /AA << /O 9 0 R >> /OpenAction /Launch /EmbeddedFiles" * 50, b" /Length1 4000")
+    f = checker.check(samples.pdf(extra_objs=[font]), "book.pdf")
+    assert f.verdict == "safe", f.reasons
+
+
+def test_form_helpers_are_not_hidden_code_but_other_scripts_are(checker):
+    f = checker.check(samples.pdf_form(), "form.pdf")
+    assert f.verdict == "safe" and "form whose only scripts are Acrobat's own helpers" in f.reasons[1]
+    typed = samples.pdf_form().replace(b'AFNumber_Keystroke\\(2, 0, 0, 0, "", true\\);', b"app.alert\\(1\\);")
+    f = checker.check(typed, "form.pdf")                     # runs when you type in the field, not on opening
+    assert f.verdict == "suspicious" and f.reasons[0] == "the PDF contains hidden code (JavaScript)"
+    on_open = "the PDF runs hidden code (JavaScript) as soon as it is opened"
+    page = samples.pdf(annots=b" /AA << /O 6 0 R >>", extra_objs=[b"<< /S /JavaScript /JS (app.alert\\(1\\)) >>"])
+    assert checker.check(page, "a.pdf").reasons[0] == on_open             # the page's "opened" action
+    doc = samples.pdf(extra_catalog=b" /Names << /JavaScript << /Names [(init) 6 0 R] >> >>",
+                      extra_objs=[b"<< /S /JavaScript /JS 7 0 R >>", _stream(b"this.exportDataObject({cName: 'a'});")])
+    assert checker.check(doc, "a.pdf").reasons[0] == on_open              # the document's own scripts, in a stream
+    chained = samples.pdf(extra_catalog=b" /OpenAction 6 0 R",
+                          extra_objs=[b"<< /S /GoTo /D [3 0 R /Fit] /Next 7 0 R >>",
+                                      b"<< /S /JavaScript /JS (app.alert\\(1\\)) >>"])
+    assert checker.check(chained, "a.pdf").reasons[0] == on_open          # a page jump, then code
+    helpers = samples.pdf(extra_catalog=b" /OpenAction 6 0 R",
+                          extra_objs=[b"<< /S /JavaScript /JS 7 0 R >>",
+                                      _stream(b'AFSimple_Calculate("SUM", new Array ("a", "b"));')])
+    assert checker.check(helpers, "a.pdf").verdict == "safe"
+    sneaky = samples.pdf(extra_catalog=b" /OpenAction 6 0 R",
+                         extra_objs=[b'<< /S /JavaScript /JS (AFNumber_Format\\(eval\\("x"\\)\\);) >>'])
+    assert checker.check(sneaky, "a.pdf").verdict == "dangerous"         # a helper's name is not enough
+
+
+def test_files_inside_a_pdf_are_checked_too(checker):
+    def embed(data, name=b"card.jpg"):
+        return samples.pdf(extra_catalog=b" /Names << /EmbeddedFiles << /Names [(a) 6 0 R] >> >>",
+                           extra_objs=[b"<< /Type /Filespec /F (" + name + b") /UF (" + name + b") /EF << /F 7 0 R >> >>",
+                                       _stream(data, b" /Type /EmbeddedFile")])
+    f = checker.check(embed(samples.fake_apk()), "invitation.pdf")
+    assert f.verdict == "dangerous" and f.reasons[0] == "inside the PDF: the file is an Android app (APK), not a document or a photo"
+    f = checker.check(embed(samples.docx(macro=True), b"letter.docx"), "letter.pdf")
+    assert f.verdict == "dangerous" and f.reasons[0].startswith("inside the PDF: the document contains macros")
+    f = checker.check(embed(b"<office:document>a hybrid PDF keeps its document</office:document>", b"a.odt"), "a.pdf")
+    assert f.verdict == "safe" and f.reasons[1] == "the PDF carries a text file inside it, which was checked too"
+    f = checker.check(embed(bytes(range(256)) * 40, b"data.dat"), "report.pdf")
+    assert f.verdict == "suspicious" and "of a type the Pi does not know" in f.reasons[0]
+
+
+def test_hidden_objects_behind_other_filters(checker):
+    inner = b"7 0 << /S /JavaScript /JS (app.alert\\(1\\)) >>"
+    hexed = zlib.compress(inner).hex().encode() + b">"
+    chained = (b"<< /Type /ObjStm /N 1 /First 4 /Filter [/ASCIIHexDecode /FlateDecode] /Length %d >>\nstream\n"
+               % len(hexed) + hexed + b"\nendstream")
+    plain = b"<< /Type /ObjStm /N 1 /First 4 /Length %d >>\nstream\n" % len(inner) + inner + b"\nendstream"
+    for objstm in (chained, plain):
+        f = checker.check(samples.pdf(extra_catalog=b" /OpenAction 7 0 R", extra_objs=[objstm]), "a.pdf")
+        assert f.verdict == "dangerous", f.reasons
+
+
+def test_broken_pdfs_do_not_stop_the_check(checker):
+    good = samples.samples()["ps3-test-hidden-code.pdf"][0]
+    for cut in range(10, len(good), 23):
+        checker.check(good[:cut], "a.pdf")
+    for data in (b"%PDF-1.7\n1 0 obj << /Length 999999 >>\nstream\nabc",
+                 b"%PDF-1.7\n" + b">> stream\n" * 2000,
+                 b"%PDF-1.7\n1 0 obj << /Type /ObjStm /N 99999999 /First 99999999 /Filter /FlateDecode >>\nstream\nxx\nendstream",
+                 b"%PDF-1.7\n1 0 obj << /OpenAction 1 0 R /JS 1 0 R /AA 1 0 R /Next 1 0 R >> endobj"):
+        assert checker.check(data, "a.pdf").source == "file"
+
+
+def test_check_files_counts_copies_once(tmp_path, capsys):
+    import check_files
+    (tmp_path / "a.pdf").write_bytes(samples.pdf())
+    (tmp_path / "a - Copy.pdf").write_bytes(samples.pdf())
+    (tmp_path / "form.pdf").write_bytes(samples.pdf_form())
+    (tmp_path / "x.pdf").write_bytes(samples.pdf_autorun_js())
+    (tmp_path / "card.apk").write_bytes(samples.fake_apk())          # the same bytes, another ending: not a copy
+    (tmp_path / "card.pdf").write_bytes(samples.fake_apk())
+    assert check_files.main([str(tmp_path), "--quiet", "--details"]) == 0
+    out = capsys.readouterr().out
+    assert "5 different files" in out and "1 copy of another file left out" in out
+    assert "card.apk:" in out and "card.pdf: the file says it is .pdf" in out
+    assert "scripts: code, run on opening, first: app.alert(" in out and "form.pdf" not in out
 
 
 def test_archives_and_disguises(checker):
@@ -142,3 +233,12 @@ def test_post_file_checks_in_memory_and_logs_no_name(app_client, monkeypatch):
 def test_page_has_the_file_picker(app_client):
     page = app_client.get("/").text
     assert 'id="file"' in page and "fetch('/file?name='" in page
+
+
+def test_email_and_phone_links_are_no_websites(checker):
+    """mailto:name@college.edu once looked like a link hiding its website after an @ sign."""
+    mail = samples.pdf_with_link(b"mailto:hod.ece@college.example.edu")
+    assert checker.check(mail, "paper.pdf").verdict == "safe"
+    assert checker.check(samples.docx(hyperlink=b"tel:+911234567890"), "letter.docx").verdict == "safe"
+    ftp = samples.pdf_with_link(b"ftp://sbi-kyc-update-ps3lab.xyz/form")
+    assert checker.check(ftp, "kyc.pdf").verdict == "dangerous"

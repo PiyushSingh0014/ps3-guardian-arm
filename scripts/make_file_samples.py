@@ -7,10 +7,13 @@ None of them can do anything. The "apps" are zip files with a made-up manifest a
 which Android refuses to install. The "JavaScript" only shows a message box, the "launch"
 names a program that does not exist, the "macro" is a placeholder without code, the links
 and the template point to made-up websites, and the sign-in page sends nowhere. They carry
-exactly the signs a harmful file would, which is what the checker looks for.
+exactly the signs a harmful file would, which is what the checker looks for. Two safe ones
+are hard cases: a form with Acrobat's own number helpers, and a scanned page whose picture
+bytes happen to look like PDF keys.
 """
 import io
 import os
+import random
 import struct
 import sys
 import zipfile
@@ -20,11 +23,12 @@ PHISHING_LINK = b"http://sbi-kyc-update-ps3lab.xyz/login"
 SAFE_LINK = b"https://www.irctc.co.in/nget/train-search"
 
 
-def pdf(extra_catalog=b"", annots=b"", extra_objs=(), text=b"PS3 Guardian test file: an ordinary ticket"):
-    content = b"BT /F1 16 Tf 72 720 Td (" + text + b") Tj ET"
+def pdf(extra_catalog=b"", annots=b"", extra_objs=(), text=b"PS3 Guardian test file: an ordinary ticket",
+        resources=b"", draw=b""):
+    content = b"BT /F1 16 Tf 72 720 Td (" + text + b") Tj ET" + draw
     objs = [b"<< /Type /Catalog /Pages 2 0 R" + extra_catalog + b" >>",
             b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> "
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >>" + resources + b" >> "
             b"/Contents 4 0 R" + annots + b" >>",
             b"<< /Length %d >>\nstream\n" % len(content) + content + b"\nendstream",
             b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"] + list(extra_objs)
@@ -69,6 +73,30 @@ def pdf_embedded_app():
                extra_objs=[b"<< /Type /Filespec /F (Wedding_Invitation.apk) /UF (Wedding_Invitation.apk) "
                            b"/EF << /F 7 0 R >> >>",
                            b"<< /Type /EmbeddedFile /Length 4 >>\nstream\ntest\nendstream"])
+
+
+def pdf_form():
+    """A fillable form: an amount field whose only scripts are Acrobat's own number helpers, as
+    in bank and government forms. It must not count as hidden code."""
+    field = (b"<< /Type /Annot /Subtype /Widget /FT /Tx /T (amount) /Rect [72 640 300 670] /P 3 0 R /F 4 "
+             b"/DA (/F1 12 Tf 0 g) /MK << /BC [0 0 0] >> /AA << /F 7 0 R /K 8 0 R >> >>")
+    return pdf(extra_catalog=b" /AcroForm << /Fields [6 0 R] /DA (/F1 12 Tf 0 g) /DR << /Font << /F1 5 0 R >> >> >>",
+               annots=b" /Annots [6 0 R]", text=b"PS3 Guardian test file: a form. Amount in rupees:",
+               extra_objs=[field,
+                           b'<< /S /JavaScript /JS (AFNumber_Format\\(2, 0, 0, 0, "", true\\);) >>',
+                           b'<< /S /JavaScript /JS (AFNumber_Keystroke\\(2, 0, 0, 0, "", true\\);) >>'])
+
+
+def pdf_scan():
+    """A scanned page: a noisy picture whose bytes happen to contain "/JS (" and "/AA <<", as
+    random bytes in pictures and fonts do (about 0.06 times per MB). They are not keys."""
+    rnd = random.Random(7)
+    pixels = bytearray(rnd.getrandbits(8) for _ in range(96 * 96 * 3))
+    pixels[1000:1005], pixels[20000:20006] = b"/JS (", b"/AA <<"
+    image = (b"<< /Type /XObject /Subtype /Image /Width 96 /Height 96 /ColorSpace /DeviceRGB /BitsPerComponent 8 "
+             b"/Length %d >>\nstream\n" % len(pixels) + bytes(pixels) + b"\nendstream")
+    return pdf(text=b"PS3 Guardian test file: a scanned page", resources=b" /XObject << /Im1 6 0 R >>",
+               draw=b" q 300 0 0 300 72 360 cm /Im1 Do Q", extra_objs=[image])
 
 
 _W = b'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
@@ -166,6 +194,8 @@ def samples():
         "ps3-test-train-link.pdf": (pdf_with_link(SAFE_LINK), "safe"),
         "ps3-test-letter.docx": (docx(), "safe"),
         "ps3-test-photo.png": (png(), "safe"),
+        "ps3-test-form.pdf": (pdf_form(), "safe"),
+        "ps3-test-scan.pdf": (pdf_scan(), "safe"),
         "ps3-test-kyc-link.pdf": (pdf_with_link(), "dangerous"),
         "ps3-test-kyc-letter.docx": (docx(text=b"Update your KYC today", hyperlink=PHISHING_LINK), "dangerous"),
         "ps3-test-autorun.pdf": (pdf_autorun_js(), "dangerous"),
