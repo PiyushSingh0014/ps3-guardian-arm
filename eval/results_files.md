@@ -48,12 +48,29 @@ The team's own files on the Pi, `python scripts/check_files.py ~/normal-files --
 | Old-style Office file | 1 | 1 | 0 | 0 |
 
 - **The 4 dangerous files are right.** They are the team's own smishing datasets (CSV), lists of real scam messages with their links. They are not everyday files and are no false alarms.
-- **The 6 suspicious PDFs** are an e-book, two IEEE papers, a sensor datasheet (twice, as a copy) and a lab report:
-  - 4 for "hidden code (JavaScript)". The likely cause was found in the code: update 29 also read the PDF's stream data, its pictures, fonts and page text. Random bytes contain `/JS` about 0.06 times per MB and `/AA` 0.08 times (measured on 64 MB of random bytes), so a PDF with 10 MB of pictures has about a 45% chance of a "/JS" that is no key. Update 30 reads only the dictionaries.
+- **The 6 suspicious PDFs** are an e-book, two IEEE papers, a KiCad schematic (twice, as a copy) and a lab report:
+  - 4 for "hidden code (JavaScript)". Update 29 also read the PDF's stream data, its pictures, fonts and page text. Random bytes contain `/JS` about 0.06 times per MB and `/AA` 0.08 times (measured on 64 MB of random bytes), so a PDF with 10 MB of pictures has about a 45% chance of a "/JS" that is no key. Update 30 reads only the dictionaries. The rerun showed that this explained one of them; the other two do have scripts (below).
   - 2 for "carries another file inside it". That key is too long to appear by chance, so these PDFs do have a file inside. Update 30 checks such files like files of their own.
 - **Copies:** some files were in the folder twice (`- Copy`). Since update 30, `check_files.py` counts copies once.
 
-The same folder again with update 30: not run yet (below).
+**The same folder with update 30** (13 November): 56 different files (4 copies left out, 1 too big), 0.8 s, 15 ms per file.
+
+| File type | Files | Safe | Suspicious | Dangerous |
+| --- | --- | --- | --- | --- |
+| PDF | 35 | 33 | 1 | 1 |
+| Word, Excel or PowerPoint | 9 | 9 | 0 | 0 |
+| Photo or picture | 7 | 7 | 0 | 0 |
+| Text | 4 | 2 | 0 | 2 |
+| Old-style Office file | 1 | 1 | 0 | 0 |
+
+- **The 2 dangerous text files** are smishing datasets again: right.
+- **Gone:** the IEEE paper's "JavaScript", most likely a chance match in its stream data. The two PDFs with a file inside are safe: the files inside were checked and are harmless.
+- **The 2 PDFs still flagged have real scripts, and both are harmless.** `--details` showed them:
+  - the e-book, suspicious: 521 scripts like `this.zoom=100;this.pageNum=162`, its table of contents as page jumps;
+  - a KiCad schematic, dangerous: KiCad writes a document script that defines a menu function, and on every part a call like `ShM([["Reference designator = RV1"], ["Value = R_Potentiometer"], ...])`, which shows the part's details when clicked. Because the document script runs when the PDF opens, update 30 called it "runs hidden code as soon as it is opened".
+- **Without the datasets, 54 everyday files: 52 safe, 2 flagged (3.7%), both for harmless scripts.** Update 31 recognises page jumps and KiCad's menus (KiCad 8 to 10), and a document script that only defines functions no longer counts as running on opening. With KiCad's own script text, KiCad 9 and 10 schematics come out safe, a changed menu function is suspicious, and a phishing address in a part's menu is dangerous.
+
+The same folder with update 31: not run yet (below).
 
 ## Ordinary PDFs from other programs (update 29 against update 30)
 
@@ -76,5 +93,5 @@ The harmful test PDFs were rewritten by qpdf, as another PDF writer would store 
 
 ## Not measured yet
 
-- **The everyday files again, with update 30:** `python scripts/check_files.py ~/normal-files --quiet --details` on the Pi.
+- **The everyday files again, with update 31:** `python scripts/check_files.py ~/normal-files --quiet --details` on the Pi.
 - **Real chats:** whether WhatsApp's notification shows a document's name, which the warning for app files from saved contacts needs.

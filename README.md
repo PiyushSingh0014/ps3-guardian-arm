@@ -22,7 +22,7 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | Network alerts in the phone app: a notification per new alert, Llama's text when ready | built (update 20); install from Android Studio next | [docs/android-companion.md](docs/android-companion.md), Part H |
 | Per-device risk view; messages meet network traffic: "Link from a scam message opened" | done: tested live on 3 November (updates 21–23) | [docs/network-detector.md](docs/network-detector.md) |
 | Measuring on the Pi: false alarms on the lab Wi-Fi, CPU, memory, temperature | measured for hours (updates 24–28): after the fixes, no false alarm in 20,960 flows of busy use; a whole day still to do | [eval/results_net.md](eval/results_net.md), [docs/network-detector.md](docs/network-detector.md#measure-it-on-real-traffic) |
-| File checker: files from chats (PDFs, Office files, apps, zips) on the Pi's page, by Share to PS3 Guardian, and app files named in chats | built (updates 29–30): 21 of 21 test files right; no false alarm on 521 ordinary PDFs; the team's everyday files on the Pi: rerun next | [eval/results_files.md](eval/results_files.md), [docs/file-checker.md](docs/file-checker.md) |
+| File checker: files from chats (PDFs, Office files, apps, zips) on the Pi's page, by Share to PS3 Guardian, and app files named in chats | built (updates 29–31): 21 of 21 test files right; no false alarm on 521 ordinary PDFs; the team's 54 everyday files: 52 safe with update 30, the 2 left (an e-book's page jumps, a KiCad schematic) recognised in update 31, rerun next | [eval/results_files.md](eval/results_files.md), [docs/file-checker.md](docs/file-checker.md) |
 
 ## Hardware and software
 

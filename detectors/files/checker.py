@@ -15,6 +15,7 @@ Links go through the link checker, like the links in an SMS. Reasons never conta
 name or a link: both are chosen by the sender, and reasons are passed to Llama.
 """
 import base64
+import hashlib
 import io
 import re
 import zipfile
@@ -32,7 +33,7 @@ MAX_MEMBER = 25 * 1024 * 1024
 MAX_STREAMS = 400                     # object streams unpacked per PDF
 MAX_LINKS = 20
 MAX_REASONS = 4
-MAX_SCRIPTS = 200                     # JavaScript values read per PDF
+MAX_SCRIPTS = 2000                    # JavaScript values read per PDF; more count as unread code
 MAX_EMBEDDED = 20                     # files inside one PDF that are checked
 
 TYPE_WORDS = {"pdf": "a PDF", "apk": "an Android app (APK)", "office": "a Word, Excel or PowerPoint file",
@@ -88,6 +89,24 @@ _JS_ARG = r"(?:" + _JS_VALUE + r"|new\s+Array\s*\(\s*" + _JS_VALUES + r"\)|\[\s*
 _AF_CALL = (r"AF(?:Number|Percent|Date|Time|Special|Simple|Range)_[A-Za-z]+\s*\(\s*(?:" + _JS_ARG
             + r"\s*(?:,\s*" + _JS_ARG + r"\s*)*)?\)")
 _AF_ONLY_RE = re.compile(r"\s*(?:" + _AF_CALL + r"\s*;?\s*)+")
+# Page jumps, as e-books use them for their contents: this.zoom=100;this.pageNum=162
+_VIEW_ONLY_RE = re.compile(r"\s*(?:(?:this\.)?(?:zoom|pageNum|zoomType|layout)\s*=\s*(?:-?\d+(?:\.\d+)?|"
+                           r"zoomtype\.[A-Za-z]+|" + _JS_VALUE + r")\s*;?\s*)+")
+# KiCad's schematic PDFs (KiCad 8 and later): one document script that only defines the menu
+# function ShM, and on every part a call ShM([["Value = 10k"], ["https://...", "https://..."]])
+# with text only. The function is recognised by a fingerprint of its text without spaces, one
+# per KiCad version (common/plotters/PDF_plotter.cpp); KiCad's text itself is not copied here.
+_KICAD_MENU_FUNCTION = {
+    "faeb9895def5e55e50f3478bbaf092f69e967717ef88f5ed4651aa8025f34222",   # KiCad 8 and 9
+    "bda531befc972d853368f2784f9ef02cb497fa30aa53dad9e960a778979b454c",   # KiCad 10
+}
+_JS_TEXT = r'"(?:[^"\\]|\\.)*"'
+_KICAD_MENU_RE = re.compile(r"\s*ShM\(\[\s*(?:\[\s*" + _JS_TEXT + r"\s*(?:,\s*" + _JS_TEXT + r"\s*)?\]\s*,?\s*)*\]\);?\s*")
+_SCRIPT_WORDS = {"form": "Acrobat's own helpers for numbers, dates and totals", "view": "page jumps",
+                 "kicad": "KiCad's menus for part details and links"}
+_JS_URL_RE = re.compile(r"https?://[^\s\"'\\<>]{3,500}")
+_JS_NOISE_RE = re.compile(r'"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'|//[^\n]*|/\*.*?\*/', re.S)
+_JS_FUNCTION_RE = re.compile(r"[\s;]*function\s+[A-Za-z_$][\w$]*\s*\([^)]*\)\s*\{")
 _PDF_URI_RE = re.compile(rb"/URI\s*\(((?:\\.|[^\\)]){1,2000})\)")
 _PDF_URI_HEX_RE = re.compile(rb"/URI\s*<([0-9A-Fa-f\s]{2,4000})>")
 _PDF_NAME_RE = re.compile(rb"/(?:UF|F)\s*\(((?:\\.|[^\\)]){1,300})\)")
@@ -345,19 +364,18 @@ class FileChecker:
             except ValueError:
                 pass
         signs = []
-        script, first = "none", ""
+        script, first, kinds = "none", "", []
         if counts.get("JS") or counts.get("JavaScript"):
-            script, first = self._pdf_scripts(text, objects, streams, data, st)
-        on_open = script == "code" and _pdf_runs_on_open(text, objects)
+            script, first, kinds = self._pdf_scripts(text, objects, streams, data, st)
+        on_open = script == "code" and self._pdf_runs_on_open(text, objects, streams, data, st)
         if counts.get("Launch"):
             signs.append(Sign(0.95, "the PDF can start a program on your device", "harmful_document"))
         if on_open:
             signs.append(Sign(0.9, "the PDF runs hidden code (JavaScript) as soon as it is opened", "harmful_document"))
         elif script == "code":
             signs.append(Sign(0.65, "the PDF contains hidden code (JavaScript)", "harmful_document"))
-        elif script == "form":
-            st.notes.append("the PDF is a form whose only scripts are Acrobat's own helpers for numbers, dates "
-                            "and totals")
+        elif script == "harmless":
+            st.notes.append("the PDF's only scripts are " + " and ".join(_SCRIPT_WORDS[k] for k in kinds))
         inner = []
         if counts.get("EmbeddedFile"):
             names = [_pdf_string(r) for r in _PDF_NAME_RE.findall(raw)]
@@ -386,26 +404,71 @@ class FileChecker:
         return signs
 
     def _pdf_scripts(self, text, objects, streams, data, st):
-        """What the PDF's JavaScript is: 'form' when every script is one of Acrobat's own form
-        helpers (AFNumber_Format and the like, which only format numbers, dates and totals),
-        'code' when there is other code or a script that could not be read, 'none' when all are
-        empty. Also the start of the first other code, for check_files.py --details."""
-        codes, unread = [], False
-        for m in _PDF_JS_KEY_RE.finditer(text):
-            if len(codes) >= MAX_SCRIPTS:
+        """What the PDF's JavaScript is: 'harmless' when every script is one of the kinds that
+        cannot do harm (Acrobat's own form helpers, page jumps, KiCad's menus), 'code' when there
+        is other code or a script that could not be read, 'none' when all are empty. Also the
+        start of the first other code (for check_files.py --details) and the harmless kinds.
+        Web addresses in scripts go to the link checker, like the PDF's links."""
+        texts, unread = set(), False
+        for n, m in enumerate(_PDF_JS_KEY_RE.finditer(text)):
+            if n >= MAX_SCRIPTS:
+                unread = True
                 break
             value = self._pdf_value(text, m.end(), objects, streams, data, st)
             if value is None:
                 unread = True
             else:
-                codes.append(value)
-        if not codes:
+                texts.add(_js_text(value).strip())
+        texts.discard("")
+        if not texts and not unread and not _PDF_JS_KEY_RE.search(text):
             unread = True                       # /JavaScript, but no script that could be read
-        texts = [t for t in (_js_text(c).strip() for c in codes) if t]
-        other = [t for t in texts if not _AF_ONLY_RE.fullmatch(t)]
+        for t in sorted(texts):
+            st.links += _JS_URL_RE.findall(t)[:MAX_LINKS]
+        kinds, other = _script_kinds(texts)
+        for t in other:
+            if "function ShM(" in t:                 # KiCad's menus, but not a version known here
+                st.evidence.append("KiCad-like menu function, fingerprint "
+                                   + hashlib.sha256(re.sub(r"\s+", "", t).encode("utf-8", "replace")).hexdigest())
+                break
         if unread or other:
-            return "code", (other[0] if other else "")
-        return ("form" if texts else "none"), ""
+            first = next((t for t in sorted(other) if not _KICAD_MENU_RE.fullmatch(t)), min(other) if other else "")
+            return "code", first, []
+        return ("harmless" if kinds else "none"), "", kinds
+
+    def _pdf_runs_on_open(self, text, objects, streams, data, st):
+        """Does a script run by itself when the PDF opens: the OpenAction, a page or field action
+        for 'opened' or 'shown' (/O, /PO, /PV), or a document script (the /JavaScript name tree)
+        that does more than define functions? Actions for typing, clicking or printing do not count."""
+        if any(_pdf_is_script(text, m.end(), objects) for m in _PDF_OPEN_RE.finditer(text)):
+            return True
+        for n, m in enumerate(_PDF_AA_RE.finditer(text)):
+            if n >= 2000:
+                break
+            actions = _pdf_dict_at(text, m.end(), objects)
+            if any(_pdf_is_script(actions, k.end(), objects) for k in _PDF_OPEN_KEY_RE.finditer(actions)):
+                return True
+        for m in _PDF_DOC_JS_RE.finditer(text):
+            tree = _pdf_balanced_at(text, m.start() + len(b"/JavaScript"), objects)
+            for code in self._pdf_tree_scripts(tree, objects, streams, data, st, 0):
+                t = _js_text(code).strip() if code is not None else "?"
+                if t and not _script_kinds({t})[0] and not _declares_only(t):
+                    return True
+        return False
+
+    def _pdf_tree_scripts(self, node, objects, streams, data, st, depth, seen=None):
+        """The scripts in a /JavaScript name tree node: written in it, or in the objects it names
+        (/Names and /Kids). None for a script that could not be read."""
+        seen = set() if seen is None else seen
+        out = [self._pdf_value(node, m.end(), objects, streams, data, st) for m in _PDF_JS_KEY_RE.finditer(node)]
+        for r in re.finditer(rb"(\d{1,10})\s+\d{1,5}\s+R(?![A-Za-z0-9])", node):
+            num = int(r.group(1))
+            if num in seen or len(seen) >= 500 or depth > 4:
+                continue
+            seen.add(num)
+            obj = objects.get(num)
+            if _PDF_JS_KEY_RE.search(obj) or b"/Names" in obj or b"/Kids" in obj:
+                out += self._pdf_tree_scripts(obj, objects, streams, data, st, depth + 1, seen)
+        return out
 
     def _pdf_value(self, text, i, objects, streams, data, st, hops=0):
         """The string at text[i]: (literal), <hex>, or a reference to a string or a stream."""
@@ -631,8 +694,15 @@ def _pdf_string(raw):
     return _pdf_unescape(raw).decode("latin-1")
 
 
-def _pdf_literal(data, i, limit=500_000):
-    """The PDF string that starts with '(' at data[i]: brackets inside may nest, escapes undone."""
+_PDF_PLAIN_STRING_RE = re.compile(rb"\(((?:[^()\\]|\\.){0,500000})\)", re.S)
+
+
+def _pdf_literal_raw(data, i, limit=500_000):
+    """The bytes between the brackets of the PDF string at data[i] ('('), escapes kept; brackets
+    inside may nest."""
+    m = _PDF_PLAIN_STRING_RE.match(data, i)
+    if m:                                        # the usual case: no unescaped brackets inside
+        return m.group(1)
     depth, j, end = 0, i, min(len(data), i + limit)
     while j < end:
         c = data[j]
@@ -646,7 +716,12 @@ def _pdf_literal(data, i, limit=500_000):
             if depth == 0:
                 break
         j += 1
-    return _pdf_unescape(data[i + 1:j])
+    return data[i + 1:j]
+
+
+def _pdf_literal(data, i, limit=500_000):
+    """The PDF string that starts with '(' at data[i]: brackets inside may nest, escapes undone."""
+    return _pdf_unescape(_pdf_literal_raw(data, i, limit))
 
 
 def _js_text(code):
@@ -762,21 +837,76 @@ def _pdf_is_script(text, i, objects):
     return False
 
 
-def _pdf_runs_on_open(text, objects):
-    """Does a script run by itself when the PDF opens: the document's own scripts (its
-    /JavaScript name tree), the OpenAction, or a page or field action for 'opened' or 'shown'
-    (/O, /PO, /PV)? Actions for typing in a field or for printing do not count."""
-    if _PDF_DOC_JS_RE.search(text):
-        return True
-    if any(_pdf_is_script(text, m.end(), objects) for m in _PDF_OPEN_RE.finditer(text)):
-        return True
-    for n, m in enumerate(_PDF_AA_RE.finditer(text)):
-        if n >= 2000:
-            break
-        actions = _pdf_dict_at(text, m.end(), objects)
-        if any(_pdf_is_script(actions, k.end(), objects) for k in _PDF_OPEN_KEY_RE.finditer(actions)):
-            return True
-    return False
+def _script_kinds(texts):
+    """Sort scripts: (the harmless kinds found, the scripts that are none of them). KiCad's menu
+    calls count only next to KiCad's own menu function."""
+    kinds, other, menus = [], [], []
+    for t in texts:
+        if _AF_ONLY_RE.fullmatch(t):
+            kind = "form"
+        elif _VIEW_ONLY_RE.fullmatch(t):
+            kind = "view"
+        elif _KICAD_MENU_RE.fullmatch(t):
+            menus.append(t)
+            continue
+        elif hashlib.sha256(re.sub(r"\s+", "", t).encode("utf-8", "replace")).hexdigest() in _KICAD_MENU_FUNCTION:
+            kind = "kicad"
+        else:
+            other.append(t)
+            continue
+        if kind not in kinds:
+            kinds.append(kind)
+    if menus and "kicad" not in kinds:
+        other += menus
+    return kinds, other
+
+
+def _declares_only(js):
+    """Does a script only define functions, so that running it when the PDF opens does nothing?"""
+    s = _JS_NOISE_RE.sub(" ", js)
+    i, n = 0, len(s)
+    while True:
+        m = _JS_FUNCTION_RE.match(s, i)
+        if not m:
+            return not s[i:].strip(" \t\r\n;")
+        depth, j = 1, m.end()
+        while j < n and depth:
+            c = s[j]
+            depth += 1 if c == "{" else -1 if c == "}" else 0
+            j += 1
+        if depth:
+            return False
+        i = j
+
+
+def _pdf_balanced_at(text, i, objects, limit=200_000):
+    """The whole dictionary at text[i] (nested ones and strings skipped over), or the object it names."""
+    r = _PDF_REF_RE.match(text, i)
+    if r:
+        return objects.get(int(r.group(1)))
+    d = _PDF_DICT_RE.match(text, i)
+    if not d:
+        return b""
+    start = j = d.end() - 2
+    depth, end = 0, min(len(text), start + limit)
+    while j < end:
+        two = text[j:j + 2]
+        if two == b"<<":
+            depth += 1
+            j += 2
+        elif two == b">>":
+            depth -= 1
+            j += 2
+            if depth == 0:
+                break
+        elif text[j] == 0x28:                      # a string: skip it
+            j += 2 + len(_pdf_literal_raw(text, j))
+        elif text[j] == 0x3C:                      # a hex string
+            k = text.find(b">", j)
+            j = k + 1 if k > 0 else end
+        else:
+            j += 1
+    return text[start:j]
 
 
 def _safe_reason(kind):

@@ -1,8 +1,10 @@
 """Files that come in chats: the checks, the page's and the phone's way in (POST /file), and the
 chat warning for app files. Every test file is made here and harmless (scripts/make_file_samples.py)."""
+import hashlib
 import io
 import json
 import os
+import re
 import sys
 import zipfile
 import zlib
@@ -83,7 +85,7 @@ def test_picture_and_font_bytes_are_not_pdf_keys(checker):
 
 def test_form_helpers_are_not_hidden_code_but_other_scripts_are(checker):
     f = checker.check(samples.pdf_form(), "form.pdf")
-    assert f.verdict == "safe" and "form whose only scripts are Acrobat's own helpers" in f.reasons[1]
+    assert f.verdict == "safe" and f.reasons[1] == "the PDF's only scripts are Acrobat's own helpers for numbers, dates and totals"
     typed = samples.pdf_form().replace(b'AFNumber_Keystroke\\(2, 0, 0, 0, "", true\\);', b"app.alert\\(1\\);")
     f = checker.check(typed, "form.pdf")                     # runs when you type in the field, not on opening
     assert f.verdict == "suspicious" and f.reasons[0] == "the PDF contains hidden code (JavaScript)"
@@ -242,3 +244,41 @@ def test_email_and_phone_links_are_no_websites(checker):
     assert checker.check(samples.docx(hyperlink=b"tel:+911234567890"), "letter.docx").verdict == "safe"
     ftp = samples.pdf_with_link(b"ftp://sbi-kyc-update-ps3lab.xyz/form")
     assert checker.check(ftp, "kyc.pdf").verdict == "dangerous"
+
+
+def _with_scripts(doc_script=None, click_scripts=()):
+    """A PDF with a document script (its /JavaScript name tree) and links that run scripts."""
+    def lit(js):
+        return b"(" + js.replace(b"\\", b"\\\\").replace(b"(", b"\\(").replace(b")", b"\\)").replace(b"\n", b"\\012") + b")"
+    objs, refs, catalog = [], [], b""
+    if doc_script is not None:
+        objs.append(b"<< /JavaScript << /Names [ (JSInit) << /Type /Action /S /JavaScript /JS " + lit(doc_script)
+                    + b" >> ] >> >>")
+        catalog = b" /Names 6 0 R"
+    for js in click_scripts:
+        refs.append(b"%d 0 R" % (6 + len(objs)))
+        objs.append(b"<< /Type /Annot /Subtype /Link /Rect [72 600 300 630] /A << /S /JavaScript /JS " + lit(js) + b" >> >>")
+    return samples.pdf(extra_catalog=catalog, annots=b" /Annots [" + b" ".join(refs) + b"]" if refs else b"", extra_objs=objs)
+
+
+def test_page_jumps_and_kicad_menus_are_no_hidden_code(checker, monkeypatch):
+    import detectors.files.checker as files
+    f = checker.check(_with_scripts(click_scripts=[b"this.zoom=100;this.pageNum=162", b"this.pageNum=3;"]), "book.pdf")
+    assert f.verdict == "safe" and f.reasons[1] == "the PDF's only scripts are page jumps"         # an e-book's contents
+    menu_function = b"function ShM(aEntries) {\n    app.popUpMenuEx.apply(app, aEntries);\n}\n"
+    menus = [b'ShM([\n["Reference designator = R1"],\n["Value = 10k \\"0805\\""],\n'
+             b'["https://www.ti.com/lit/ds/lm358.pdf", "https://www.ti.com/lit/ds/lm358.pdf"],\n]);']
+    kicad = _with_scripts(menu_function, menus)
+    f = checker.check(kicad, "schematic.pdf")              # not KiCad's own text: code, but nothing runs on opening
+    assert f.verdict == "suspicious" and f.reasons[0] == "the PDF contains hidden code (JavaScript)"
+    fingerprint = hashlib.sha256(re.sub(rb"\s+", b"", menu_function)).hexdigest()
+    monkeypatch.setattr(files, "_KICAD_MENU_FUNCTION", files._KICAD_MENU_FUNCTION | {fingerprint})
+    f = checker.check(kicad, "schematic.pdf")
+    assert f.verdict == "safe" and f.reasons[1] == "the PDF's only scripts are KiCad's menus for part details and links"
+    phishing = _with_scripts(menu_function, [menus[0].replace(b"https://www.ti.com/lit/ds/lm358.pdf",
+                                                              b"http://sbi-kyc-update-ps3lab.xyz/login")])
+    assert checker.check(phishing, "schematic.pdf").verdict == "dangerous"      # a menu's web address is a link
+    assert checker.check(_with_scripts(None, menus), "a.pdf").verdict == "suspicious"   # menus without KiCad's function
+    runs = _with_scripts(menu_function + b"app.alert(1);", menus)
+    assert checker.check(runs, "a.pdf").reasons[0] == "the PDF runs hidden code (JavaScript) as soon as it is opened"
+    assert len(files._KICAD_MENU_FUNCTION) == 3 and all(len(h) == 64 for h in files._KICAD_MENU_FUNCTION)
