@@ -22,7 +22,7 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | Network alerts in the phone app: a notification per new alert, Llama's text when ready | built (update 20); install from Android Studio next | [docs/android-companion.md](docs/android-companion.md), Part H |
 | Per-device risk view; messages meet network traffic: "Link from a scam message opened" | done: tested live on 3 November (updates 21–23) | [docs/network-detector.md](docs/network-detector.md) |
 | Measuring on the Pi: false alarms on the lab Wi-Fi, CPU, memory, temperature | measured for hours (updates 24–28): after the fixes, no false alarm in 20,960 flows of busy use; a whole day still to do | [eval/results_net.md](eval/results_net.md), [docs/network-detector.md](docs/network-detector.md#measure-it-on-real-traffic) |
-| File checker: files from chats (PDFs, Office files, apps, zips) on the Pi's page, by Share to PS3 Guardian, and app files named in chats | built (updates 29–31): 21 of 21 test files right; no false alarm on 521 ordinary PDFs; the team's 54 everyday files: 52 safe with update 30, the 2 left (an e-book's page jumps, a KiCad schematic) recognised in update 31, rerun next | [eval/results_files.md](eval/results_files.md), [docs/file-checker.md](docs/file-checker.md) |
+| File checker: files from chats (PDFs, Office files, apps, zips) on the Pi's page, by Share to PS3 Guardian, and app files named in chats | done (updates 29–32): 21 of 21 test files right; no false alarm on 521 ordinary PDFs; 53 of the team's 54 everyday files safe, 1 suspicious for a link, 20 ms per file on the Pi | [eval/results_files.md](eval/results_files.md), [docs/file-checker.md](docs/file-checker.md) |
 
 ## Hardware and software
 
@@ -72,6 +72,7 @@ Open http://localhost:8000 and paste a message or a link.
 | Lab Wi-Fi, busy use with the update 27 rules | no false alarm in 1.1 h of traffic and 20,960 flows (the first busy hour had 5, all fixed) | [eval/results_net.md](eval/results_net.md) |
 | File checker on 21 harmless test files | all 21 right: 6 safe, 15 dangerous (apps dressed as documents, PDF code, macros, remote templates, DDE, fake sign-in pages, phishing links) | [eval/results_files.md](eval/results_files.md) |
 | File checker on 521 ordinary PDFs (TeX Live's manuals, LibreOffice, Chromium, qpdf) | no false alarm (update 29: 4, fixed in update 30) | [eval/results_files.md](eval/results_files.md) |
+| File checker on the team's 54 everyday files, on the Pi | 53 safe, 1 suspicious (a link in an e-book), 0 dangerous; 20 ms per file | [eval/results_files.md](eval/results_files.md) |
 | DGA model, held-out names | 89.8% of machine-made names caught, 0.35% of real names flagged | [eval/results_net.md](eval/results_net.md) |
 | Llama 3.2 1B SpinQuant INT4 on the Pi 4, 4 threads | prefill 12.7 tok/s, decode 4.4 tok/s, load 11.7 s | [eval/results_pi4.md](eval/results_pi4.md) |
 | First 2-sentence advisor explanation on the Pi (`llama_main`) | ≈42.5 s end to end | [eval/results_pi4.md](eval/results_pi4.md) |

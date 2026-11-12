@@ -35,7 +35,7 @@ How it works and how to use it: [docs/file-checker.md](../docs/file-checker.md).
 - **What this shows:** every check works from the file's bytes to the advice, on the page, through `POST /file` and in the tests (`tests/test_files.py`: these files, plus password-locked zips, encrypted PDFs, a member too big to unpack, a web page named `.pdf`, files inside PDFs, scripts behind other filters, broken PDFs, e-mail links, the chat rule for app file names, and that the log never keeps a file's name).
 - **What it does not show:** how many real harmful files are caught. The test files are built to carry the signs; no real malware was used, and none should be copied to the Pi.
 
-## Everyday files on the Pi (13 November 2026, update 29)
+## Everyday files on the Pi (13 November 2026, updates 29 to 31)
 
 The team's own files on the Pi, `python scripts/check_files.py ~/normal-files --quiet`: 61 files, one of them over 25 MB (not checked). 60 checked in 2.6 s, reading included: about 43 ms per file.
 
@@ -70,9 +70,28 @@ The team's own files on the Pi, `python scripts/check_files.py ~/normal-files --
   - a KiCad schematic, dangerous: KiCad writes a document script that defines a menu function, and on every part a call like `ShM([["Reference designator = RV1"], ["Value = R_Potentiometer"], ...])`, which shows the part's details when clicked. Because the document script runs when the PDF opens, update 30 called it "runs hidden code as soon as it is opened".
 - **Without the datasets, 54 everyday files: 52 safe, 2 flagged (3.7%), both for harmless scripts.** Update 31 recognises page jumps and KiCad's menus (KiCad 8 to 10), and a document script that only defines functions no longer counts as running on opening. With KiCad's own script text, KiCad 9 and 10 schematics come out safe, a changed menu function is suspicious, and a phishing address in a part's menu is dangerous.
 
-The same folder with update 31: not run yet (below).
+**The same folder with update 31** (13 November): 56 different files, 1.1 s, 20 ms per file on the Pi.
 
-## Ordinary PDFs from other programs (update 29 against update 30)
+| File type | Files | Safe | Suspicious | Dangerous |
+| --- | --- | --- | --- | --- |
+| PDF | 35 | 34 | 1 | 0 |
+| Word, Excel or PowerPoint | 9 | 9 | 0 | 0 |
+| Photo or picture | 7 | 7 | 0 | 0 |
+| Text | 4 | 2 | 0 | 2 |
+| Old-style Office file | 1 | 1 | 0 | 0 |
+
+- **The KiCad schematic is safe**, and the e-book's scripts count as harmless.
+- **The e-book is still suspicious, now for a link.** One of its 86 web links has a name the link model finds unusual for a real company. That warning was there before too, behind the script warning (scores 0.6 and 0.65). The link model alone flags 7.6% of popular websites as suspicious ([results_url.md](results_url.md)), so a document with many links is more likely to get one. Since update 32, `--details` shows which website it is.
+
+| Everyday files, without the smishing datasets | Safe | Suspicious | Dangerous |
+| --- | --- | --- | --- |
+| Update 29 (56 files, copies counted each time) | 50 | 6 | 0 |
+| Update 30 (54 different files) | 52 | 1 | 1 |
+| Update 31 (54 different files) | **53** | **1** (a link in an e-book) | **0** |
+
+These are the files the fixes were made from, so the last row is not an independent measurement. The 521 PDFs below are: no false alarm with updates 30 and 31.
+
+## Ordinary PDFs from other programs (update 29 against updates 30 and 31)
 
 521 PDFs on the development machine: 501 different ones that came with it, mostly TeX Live's manuals (made by pdfTeX, LuaTeX, XeTeX and others), and 20 made for this test: LibreOffice with and without its document inside, Chromium, matplotlib with noisy pictures, and the same rewritten by qpdf with object streams and with encryption. 102 of the 521 use object streams.
 
@@ -93,5 +112,4 @@ The harmful test PDFs were rewritten by qpdf, as another PDF writer would store 
 
 ## Not measured yet
 
-- **The everyday files again, with update 31:** `python scripts/check_files.py ~/normal-files --quiet --details` on the Pi.
 - **Real chats:** whether WhatsApp's notification shows a document's name, which the warning for app files from saved contacts needs.

@@ -7,7 +7,7 @@ does it catch the harmful test files? Everything stays on this machine.
 
 Prints one line per file (verdict, kind, the first reason) and a table per file type. With
 --quiet only the flagged files are listed; --details adds what was found inside (for a PDF:
-its keys and the start of a script). Copies of a file (the same bytes, a name with the same
+its keys and the start of a script) and the websites that are not safe. Copies of a file (the same bytes, a name with the same
 ending) are counted once. Names are shown only here, on your screen.
 """
 import argparse
@@ -66,6 +66,9 @@ def main(argv=None):
                 print(f"{finding.verdict:10s}  {finding.category:18s}  {name}: {(finding.reasons or [''])[0]}")
                 if a.details and evidence:
                     print("            " + "; ".join(evidence))
+                flagged = [f"{x['link']} ({x['verdict']})" for x in finding.entities.get("links", []) if x["verdict"] != "safe"]
+                if a.details and flagged:
+                    print("            links: " + ", ".join(flagged))
     if not rows:
         print("No files found.")
         return 1
