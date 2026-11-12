@@ -153,9 +153,11 @@ def test_check_files_counts_copies_once(tmp_path, capsys):
     (tmp_path / "x.pdf").write_bytes(samples.pdf_autorun_js())
     (tmp_path / "card.apk").write_bytes(samples.fake_apk())          # the same bytes, another ending: not a copy
     (tmp_path / "card.pdf").write_bytes(samples.fake_apk())
+    (tmp_path / "kyc.pdf").write_bytes(samples.pdf_with_link())
     assert check_files.main([str(tmp_path), "--quiet", "--details"]) == 0
     out = capsys.readouterr().out
-    assert "5 different files" in out and "1 copy of another file left out" in out
+    assert "6 different files" in out and "1 copy of another file left out" in out
+    assert "links: sbi-kyc-update-ps3lab[.]xyz (dangerous)" in out
     assert "card.apk:" in out and "card.pdf: the file says it is .pdf" in out
     assert "scripts: code, run on opening, first: app.alert(" in out and "form.pdf" not in out
 
