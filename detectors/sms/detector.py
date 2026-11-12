@@ -20,6 +20,7 @@ from senders import apply_sender, classify_sender  # noqa: E402
 
 from advisor.categorize import categorize_message    # noqa: E402
 from advisor.findings import Finding, verdict_from_score  # noqa: E402
+from detectors.files.names import APP_EXT, app_file_in_text  # noqa: E402
 
 
 def sender_type(sender):
@@ -121,6 +122,14 @@ class SmsDetector:
             entities["claims_to_be"], entities["claims_kind"] = name, kind
         if links:                                  # shown in the app, never sent to Llama
             entities["links"] = [{"link": v.shown(), "verdict": v.verdict, "kind": v.kind} for v in links[:5]]
+        reasons = list(sig.reasons)
+        app = app_file_in_text(message)            # "Wedding_Invitation.apk": the name a chat app shows
+        if app:
+            score, verdict, category = max(score, 0.97), "dangerous", "app_file"
+            if not links:                          # an attachment, not a download link
+                reasons = [r for r in reasons if "app file (.apk) from a link" not in r]
+            reasons.insert(0, "the chat brought an Android app (APK) file, not a document or a photo" if app in APP_EXT
+                           else "the chat brought a program file, not a document or a photo")
         return Finding(source="sms", verdict=verdict, score=round(score, 3), category=category,
-                       reasons=list(sig.reasons), entities=entities,
+                       reasons=reasons, entities=entities,
                        raw_text=message, language=language)

@@ -27,6 +27,19 @@
             </intent-filter>
         </activity>
 
+        <!-- "Share to PS3 Guardian": a file (or a message's text) from WhatsApp, Messages or the
+             Files app is checked on the Pi. Android lets the app read only that one file. -->
+        <activity
+            android:name=".ShareActivity"
+            android:exported="true"
+            android:label="PS3 Guardian: check it">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
         <!-- Called by Android for every incoming SMS. BROADCAST_SMS means only the
              system can call it, so other apps cannot feed it fake messages. -->
         <receiver

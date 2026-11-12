@@ -42,6 +42,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from advisor.advise import Advisor
@@ -51,6 +52,7 @@ from advisor.playbooks import get_playbook
 from app.lab_devices import MODES, LabDevices, clean_readings
 from detectors.net.engine import LEASES as NET_LEASES, read_lease_names
 from detectors.net.flows import is_device
+from detectors.files.checker import MAX_BYTES as MAX_FILE_BYTES, FileChecker
 from detectors.net.scamlinks import WATCH, ScamLinks, sites_from, where_from
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -364,7 +366,7 @@ def risk_summary(day, week, books):
 
 def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net_alerts=None,
                lab=None, net_state=None, net_explain=None, net_explain_every_s=NET_EXPLAIN_EVERY_S,
-               net_watch=None, leases=None, lab_tests=None):
+               net_watch=None, leases=None, lab_tests=None, file_log=None):
     """net_explain: Llama explanations of network alerts (default: on, unless NET_EXPLAIN=0);
     net_explain_every_s=None leaves out the background thread (tests drive it through /alerts).
     net_watch: where flagged messages' websites go for the network monitor (scamlinks.py);
@@ -378,6 +380,8 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
             from detectors.url.detector import UrlDetector
             url_detector = UrlDetector()
     advisor = advisor or Advisor(backend=backend_from_env())
+    files = FileChecker(url_detector)
+    file_log = file_log or os.environ.get("FILE_LOG", os.path.join("logs", "file_checks.jsonl"))
     jobs = JobStore()
     app = FastAPI(title="PS3 Guardian")
 
@@ -443,6 +447,35 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
         out["text_only"] = {"verdict": text_only.verdict, "score": text_only.score}
         out["log_id"] = None if req.test else (sms_log or default_log()).add(
             req.message, req.sender, finding, text_only, channel=req.channel, app=req.app, device=req.device)
+        return out
+
+    @app.post("/file")
+    async def file(request: Request, name: str = "", language: str = "en", channel: str = "file"):
+        """One file, as the raw request body: the page's file picker, or Share to PS3 Guardian on
+        the phone. It is checked in memory and never stored. The log keeps only its type and the
+        verdict, never its name or content."""
+        if language not in ("en", "hi"):
+            raise HTTPException(status_code=422, detail="language: en or hi")
+        if int(request.headers.get("content-length") or 0) > MAX_FILE_BYTES:
+            raise HTTPException(status_code=413, detail=f"files up to {MAX_FILE_BYTES // 2**20} MB can be checked")
+        data = bytearray()
+        async for chunk in request.stream():
+            data += chunk
+            if len(data) > MAX_FILE_BYTES:
+                raise HTTPException(status_code=413, detail=f"files up to {MAX_FILE_BYTES // 2**20} MB can be checked")
+        if not data:
+            raise HTTPException(status_code=422, detail="the file is empty")
+        t0 = time.time()
+        finding = await run_in_threadpool(files.check, bytes(data), name[:200], language)
+        out = respond(finding, False, t0, time.time(), channel="file")
+        try:
+            os.makedirs(os.path.dirname(file_log) or ".", exist_ok=True)
+            with open(file_log, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"time": time.strftime("%Y-%m-%d %H:%M:%S"), "type": finding.entities.get("file_type"),
+                                    "size_kb": finding.entities.get("size_kb"), "verdict": finding.verdict,
+                                    "category": finding.category, "via": channel[:16]}) + "\n")
+        except OSError as e:
+            print(f"[app] could not write {file_log}: {e}", flush=True)
         return out
 
     @app.get("/explain/{job_id}")
@@ -637,12 +670,15 @@ h1{font-size:20px;margin:8px 0}#head{font-weight:700;font-size:18px}
 .item{border-top:1px solid var(--line);padding:8px 0}
 #llm{border-left:3px solid var(--accent);padding-left:10px}
 </style></head><body><main>
-<h1>Check a message or a link</h1>
+<h1>Check a message, a link or a file</h1>
 <div class="card">
 <textarea id="msg" placeholder="Paste an SMS, a WhatsApp message or a link"></textarea>
 <div class="row"><input id="sender" placeholder="Sender ID or number (optional)">
 <select id="lang"><option value="en">English</option><option value="hi">हिन्दी</option></select></div>
-<button id="go">Check</button></div>
+<button id="go">Check</button>
+<input type="file" id="file" aria-label="A file to check" style="width:100%;margin-top:12px">
+<button id="filego">Check a file</button>
+<p class="muted">A file that came in a chat (PDF, Office file, app, zip) is checked on this Pi and not kept.</p></div>
 <div class="card" id="out" hidden>
 <div id="head"></div><p id="what"></p><p id="why"></p>
 <p class="muted" id="llm" hidden></p>
@@ -774,6 +810,21 @@ async function setMode(device,mode){
   loadDevices();
 }
 loadDevices();setInterval(loadDevices,5000);
+function showResult(d){
+  const a=d.advice,f=d.finding;
+  $('out').hidden=false;$('head').textContent=a.headline;$('head').className=f.verdict;
+  show(a);
+  const e=f.entities||{};
+  const links=(e.links||[]).map(l=>l.link+' '+l.verdict).concat(e.link?[e.link+' ('+e.link_kind+')']:[]);
+  $('meta').textContent=`score ${f.score} | ${f.category} | backend ${d.backend}`
+    +(e.file_type?` | ${e.file_type}, ${e.size_kb} KB`:'')
+    +` | detect ${d.timing_ms.detect} ms`+(links.length?' | links: '+links.join(', '):'');
+  $('llm').hidden=!d.explain;
+  if(d.explain){$('llm').textContent='Llama is writing a plain-language explanation on this device...';
+    follow(d.explain.id,Date.now());}
+}
+function notChecked(text){$('out').hidden=false;$('head').textContent=text;$('head').className='';
+  $('what').textContent='';$('why').textContent='';$('steps').replaceChildren();$('meta').textContent='';$('llm').hidden=true;}
 $('go').onclick=async()=>{
   const body={message:$('msg').value,sender:$('sender').value||null,language:$('lang').value};
   if(!body.message.trim())return;
@@ -781,18 +832,23 @@ $('go').onclick=async()=>{
   $('go').disabled=true;$('go').textContent='Checking...';
   try{
     const r=await fetch('/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const d=await r.json();const a=d.advice,f=d.finding;
-    $('out').hidden=false;$('head').textContent=a.headline;$('head').className=f.verdict;
-    show(a);
-    const e=f.entities||{};
-    const links=(e.links||[]).map(l=>l.link+' '+l.verdict).concat(e.link?[e.link+' ('+e.link_kind+')']:[]);
-    $('meta').textContent=`score ${f.score} | ${f.category} | backend ${d.backend}`
-      +` | detect ${d.timing_ms.detect} ms`+(links.length?' | links: '+links.join(', '):'');
-    $('llm').hidden=!d.explain;
-    if(d.explain){$('llm').textContent='Llama is writing a plain-language explanation on this device...';
-      follow(d.explain.id,Date.now());}
-  }catch(e){$('out').hidden=false;$('head').textContent='Error: '+e;}
+    showResult(await r.json());
+  }catch(e){notChecked('Error: '+e);}
   finally{$('go').disabled=false;$('go').textContent='Check';}
+};
+$('filego').onclick=async()=>{
+  const file=$('file').files[0];
+  if(!file)return;
+  if(poll){clearTimeout(poll);poll=null;}
+  $('filego').disabled=true;$('filego').textContent='Checking...';
+  try{
+    const r=await fetch('/file?name='+encodeURIComponent(file.name)+'&language='+$('lang').value,
+      {method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file});
+    const d=await r.json();
+    if(!r.ok){notChecked('Not checked: '+(d.detail||('HTTP '+r.status)));return;}
+    showResult(d);
+  }catch(e){notChecked('Error: '+e);}
+  finally{$('filego').disabled=false;$('filego').textContent='Check a file';}
 };
 </script></main></body></html>"""
 

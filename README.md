@@ -2,7 +2,7 @@
 
 On-device threat, phishing and scam detection for the **Arm Bharat AI-SoC Student Challenge, PS3**.
 
-Specialist detectors flag scam SMS, phishing links and suspicious network behaviour in milliseconds. **Llama 3.2 1B**, running on the Raspberry Pi 4's Arm CPU through **ExecuTorch**, explains each alert in plain English or Hindi, and the app shows what to do next. Nothing leaves the device.
+Specialist detectors flag scam SMS, phishing links and suspicious network behaviour in milliseconds, and check files that come in chats. **Llama 3.2 1B**, running on the Raspberry Pi 4's Arm CPU through **ExecuTorch**, explains each alert in plain English or Hindi, and the app shows what to do next. Nothing leaves the device.
 
 ## Status
 
@@ -21,7 +21,8 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | Llama explanations for network alerts: a prompt of their own, written in the background | done on the Pi 4 (updates 17–23): all answers accepted (13 of 13); 21–31 s each, 86 s for the first after a message, repeats instant | [eval/results_net.md](eval/results_net.md), [docs/network-detector.md](docs/network-detector.md#llama-explanations) |
 | Network alerts in the phone app: a notification per new alert, Llama's text when ready | built (update 20); install from Android Studio next | [docs/android-companion.md](docs/android-companion.md), Part H |
 | Per-device risk view; messages meet network traffic: "Link from a scam message opened" | done: tested live on 3 November (updates 21–23) | [docs/network-detector.md](docs/network-detector.md) |
-| Measuring on the Pi: false alarms per day, CPU, memory, temperature | tools built (update 24); measurement next | [docs/network-detector.md](docs/network-detector.md#measure-it-on-real-traffic) |
+| Measuring on the Pi: false alarms on the lab Wi-Fi, CPU, memory, temperature | measured for hours (updates 24–28): after the fixes, no false alarm in 20,960 flows of busy use; a whole day still to do | [eval/results_net.md](eval/results_net.md), [docs/network-detector.md](docs/network-detector.md#measure-it-on-real-traffic) |
+| File checker: files from chats (PDFs, Office files, apps, zips) on the Pi's page, by Share to PS3 Guardian, and app files named in chats | built (update 29): 19 of 19 test files right; everyday files next | [eval/results_files.md](eval/results_files.md), [docs/file-checker.md](docs/file-checker.md) |
 
 ## Hardware and software
 
@@ -35,13 +36,14 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | `detectors/sms/` | SMS scam detector: India rules, baseline model, `Finding` wrapper |
 | `detectors/url/` | Phishing link checker: link parsing, brand and official-domain lists, public phishing list (SQLite), link model (`url_model.npz`) |
 | `detectors/net/` | Network detector: flows from NFStream (live or pcap) or CIC-IDS2017 CSVs, behaviour rules, DNS checks, DGA model (`dga_model.npz`), per-device baseline, the monitor service |
+| `detectors/files/` | File checker: the real type of a file from its first bytes, name tricks, APK permissions, PDF and Office signs, zips, links through the link checker |
 | `advisor/` | Turns a `Finding` into advice: playbooks, Llama prompt, output validator; `llm_engine.py` + `llm_service.py` keep Llama loaded on the Pi |
-| `app/` | FastAPI app: `POST /check` (a message or a link) and a phone-friendly page; `POST /url` for one link; `POST /sms` for the Android companion, with a traffic log; `GET /alerts` for network alerts; `/iot` for lab devices and their test modes |
-| `android/` | Android companion: a complete Android Studio project (Kotlin). Forwards incoming SMS with their sender IDs to the Pi, and keeps them while the Pi is out of reach; shows the Pi's network alerts as notifications |
+| `app/` | FastAPI app: `POST /check` (a message or a link) and a phone-friendly page; `POST /url` for one link; `POST /file` for a file (checked in memory, never stored); `POST /sms` for the Android companion, with a traffic log; `GET /alerts` for network alerts; `/iot` for lab devices and their test modes |
+| `android/` | Android companion: a complete Android Studio project (Kotlin). Forwards incoming SMS with their sender IDs to the Pi, and keeps them while the Pi is out of reach; shows the Pi's network alerts as notifications; checks files shared to it (Share to PS3 Guardian) |
 | `esp32/` | Lab device: Arduino sketch for the ESP32 on the IoT Pro Kit. Sends its sensor readings to the Pi; harmless test modes imitate infected IoT devices for the network detector ([docs/esp32-lab-device.md](docs/esp32-lab-device.md)) |
 | `tests/` | pytest suite (fake model and fake `llama_main`, so no torch is needed) |
 | `deploy/` | Track B: export, Pi 4 build, benchmark script, test prompts |
-| `scripts/` | `run_pi.sh`: starts the Llama service and the app on the Pi; `install_service.sh`: starts them at every boot (systemd); `sms_traffic.py`: exports and measures the companion's traffic log; `get_url_data.py`: downloads the link checker's lists; `install_netmon.sh`: the network monitor service; `setup_gateway.sh`: the Pi as a Wi-Fi hotspot, with automatic undo; `net_traffic.py`: label the monitor's alerts and count false alarms per day; `pi_usage.py`: CPU, memory and temperature |
+| `scripts/` | `run_pi.sh`: starts the Llama service and the app on the Pi; `install_service.sh`: starts them at every boot (systemd); `sms_traffic.py`: exports and measures the companion's traffic log; `get_url_data.py`: downloads the link checker's lists; `install_netmon.sh`: the network monitor service; `setup_gateway.sh`: the Pi as a Wi-Fi hotspot, with automatic undo; `net_traffic.py`: label the monitor's alerts and count false alarms per day; `pi_usage.py`: CPU, memory and temperature; `make_file_samples.py`: harmless test files for the file checker; `check_files.py`: check a folder of files and count false alarms |
 | `eval/` | Results for the report |
 | `docs/` | Notes per step |
 
@@ -67,6 +69,8 @@ Open http://localhost:8000 and paste a message or a link.
 | Link checker on brand-new phishing sites (held out, no lists) | 81% caught; 7.6% of popular websites flagged, 1.1% called dangerous | [eval/results_url.md](eval/results_url.md) |
 | Held-out phishing hosts using an Indian brand's name | 20 of 21 flagged; 0.3% of popular `.in` websites called dangerous | [eval/results_url.md](eval/results_url.md) |
 | Network detector on CIC-IDS2017 (5 days, 2.8M flows) | all 10 network-level attacks detected, 7 within the first minute; 46 false alarms in 40.7 h without beacon alerts (162 with) | [eval/results_net.md](eval/results_net.md) |
+| Lab Wi-Fi, busy use with the update 27 rules | no false alarm in 1.1 h of traffic and 20,960 flows (the first busy hour had 5, all fixed) | [eval/results_net.md](eval/results_net.md) |
+| File checker on 19 harmless test files | all 19 right: 4 safe, 15 dangerous (apps dressed as documents, PDF code, macros, remote templates, DDE, fake sign-in pages, phishing links) | [eval/results_files.md](eval/results_files.md) |
 | DGA model, held-out names | 89.8% of machine-made names caught, 0.35% of real names flagged | [eval/results_net.md](eval/results_net.md) |
 | Llama 3.2 1B SpinQuant INT4 on the Pi 4, 4 threads | prefill 12.7 tok/s, decode 4.4 tok/s, load 11.7 s | [eval/results_pi4.md](eval/results_pi4.md) |
 | First 2-sentence advisor explanation on the Pi (`llama_main`) | ≈42.5 s end to end | [eval/results_pi4.md](eval/results_pi4.md) |
@@ -77,4 +81,4 @@ This project uses Llama 3.2 1B Instruct (SpinQuant INT4) under the [Llama 3.2 Co
 
 ## Scope
 
-Defensive only. The repo has no attack or traffic-generation tools. The network detector is measured on labelled public data (CIC-IDS2017 flow records) and on the Pi's own lab network; it reads connection summaries, never the content of traffic.
+Defensive only. The repo has no attack or traffic-generation tools. The network detector is measured on labelled public data (CIC-IDS2017 flow records) and on the Pi's own lab network; it reads connection summaries, never the content of traffic. The file checker's test files are harmless files made for it; no real malware is used.
