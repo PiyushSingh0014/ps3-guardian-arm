@@ -256,3 +256,54 @@ Training and testing took 54 s on the Pi.
 - **The rule** now compares scams on the phones only where every text is kept. This was changed after seeing the first run, for the reason in point 2, and before the second run. Under the first rule, this run failed.
 
 **Next:** review, label the first phone's messages, then `measure` and `train_v2.py` again.
+
+## Real traffic and SMS model v2: second run
+
+14 November 2026, after `review` (update 34). The same 121 labelled messages; the review changed 8 fraud labels on SMS (7 to marketing, 1 to normal) and settled the 3 messages labelled two ways. 362 messages with text are not labelled yet.
+
+### v1 on the real traffic
+
+Every message the phones sent, as v1 decided at the time (`sms_traffic.py measure`):
+
+| Sender | Received | Flagged | Flagged and labelled: fraud / marketing / normal | Flagged, not labelled yet |
+| --- | --- | --- | --- | --- |
+| SMS from a registered sender ID | 273 | 35 (13%) | 1 / 14 / 2 | 18 |
+| SMS from a phone number | 16 | 11 | 1 / 1 / 5 | 4 |
+| Chat from an unknown number | 54 | 6 | 1 / 0 / 0 | 5 |
+| Chat from a saved contact (testing switch) | 2,331 | 193 (8%) | 12 / 5 / 18 | 158 |
+| All | 2,674 | 245 (9%) | 15 / 20 / 25 | 185 |
+
+- **False alarms on normal messages:** at least 0.9 per 100 messages received (25 of 2,674), and at most 7.9 if every flagged message not labelled yet turned out normal. Labelling the 185 flagged messages (`label --flagged`) gives the exact number.
+- **SMS from registered sender IDs:** 13% flagged; of those labelled, mostly marketing.
+- **SMS from phone numbers:** 5 of the 16 were normal and flagged. They are missed-call alerts ("You have a missed call from …", "… is now available to take calls"): they come from a phone number and name a number to call, like many scams.
+- **Chats from saved contacts** were 2,331 of the 2,674 messages. They reach the Pi only while a phone's testing switch is on; in normal use they are not checked.
+- **One scam was missed** where the log keeps every text: a fantasy-league offer from a registered sender ID, kept as fraud in the review. Where texts are kept only when flagged (phone numbers, chats), missed scams cannot be counted.
+
+### v1 against v2
+
+`train_v2.py`: 94 different labelled messages (14 fraud, 56 marketing, 24 normal) from phones B (19) and C (75). Flagged as the app decides:
+
+| Test | v1 | v2 |
+| --- | --- | --- |
+| India set: scams caught, of 100 | 96 | 96 |
+| India set: marketing / normal flagged | 60% / 63% | 56% / 64% |
+| Public held out: normal flagged, of 1,498 | 1% | 2% |
+| Phone B held out, SMS from sender IDs: marketing and normal flagged, of 8 | 1 | 0 |
+| Phone B held out, SMS from sender IDs: scams caught, of 1 | 1 | 0 |
+| Phone C held out, SMS from sender IDs: marketing and normal flagged, of 53 | 9 | 0 |
+| Phone C held out, SMS from sender IDs: scams caught, of 1 | 0 | 0 |
+
+On phone numbers and chats (kept only when v1 flagged them), v2 and v1 flag the same scams; v2 flags one more normal message on phone C and one fewer offer.
+
+**The rule's verdict: v2 does not pass, so the app keeps v1.**
+
+- **v2 did what it was built for:** from registered sender IDs it flagged no marketing at all on the phones it had not learned from (10 to 0).
+- **The same trust cost a scam:** on phone B, the one scam from a registered sender ID that v1 caught, v2 read as an offer and let through. A scam that comes from a registered ID and reads like an offer is the case v2's rule gives up on, and it decided the test.
+- **The evidence is thin either way:** 2 scams from registered sender IDs, 94 different team messages, two phones. Small changes in v2 also cost a little elsewhere: one more normal message flagged on the India set, about 1% more on the public data.
+
+### What next
+
+- **For Phase 1:** v1 with sender-aware scoring and the link checker. The tools and the rule stay in the repository, and v2 can be tried again on more labels without changing anything.
+- **More labels:** the 362 messages with text not labelled yet, and a third phone.
+- **Trust only the brands' own sender IDs:** v2 could read an offer as marketing only from sender IDs known to belong to the brand, as the link checker knows brands' official websites. A scam from another registered ID would then be scored as v1 scores it.
+

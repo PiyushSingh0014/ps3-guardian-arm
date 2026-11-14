@@ -135,4 +135,4 @@ def test_measure_splits_sms_and_chats(client, tmp_path):
     subprocess.run([sys.executable, script, "export", str(out), "--log", str(client.log_path)], check=True)
     label_rows(out, ["smishing", "smishing"])
     res = subprocess.run([sys.executable, script, "measure", str(out)], check=True, capture_output=True, text=True)
-    assert "Phones: A 1, B 1" in res.stdout and "SMS only" in res.stdout and "CHAT only" in res.stdout
+    assert "Labelled, by phone: A 1, B 1" in res.stdout and "SMS only" in res.stdout and "CHAT only" in res.stdout

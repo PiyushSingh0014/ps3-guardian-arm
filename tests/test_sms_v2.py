@@ -98,6 +98,22 @@ def test_label_asks_each_message_once_and_can_undo(log, tmp_path):
                     "- is a phone without a name)."]
 
 
+def test_label_only_the_flagged_messages(log, tmp_path, monkeypatch):
+    labels, said = tmp_path / "labels.json", []
+    write_log(log, [entry("s1", "Your OTP is 123456", verdict="safe"),
+                    entry("s2", "Win a prize, call now", sender="mobile", kind="mobile"),
+                    entry("s3", "Flat 50% off", device="C", sender="VM-CROMAS-P")])
+    seen = {}
+    monkeypatch.setattr(sms_traffic, "label", lambda *a, **k: seen.update(k) or 0)
+    sms_traffic.main(["label", "--flagged", "--log", str(log), "--labels", str(labels)])
+    assert seen == {"flagged": True}
+    monkeypatch.undo()
+    answers = iter(["f", "m"])
+    sms_traffic.label(str(log), str(labels), flagged=True, ask=lambda _: next(answers), say=said.append)
+    assert said[0] == "Flagged messages left to label, by phone: B 1, C 1"
+    assert json.loads(labels.read_text()) == {"s2": "smishing", "s3": "spam"}              # the OTP is not asked
+
+
 def test_labels_from_excel_can_be_imported(log, tmp_path, capsys):
     labels, sheet = tmp_path / "labels.json", tmp_path / "traffic.csv"
     labels.write_text(json.dumps({"e5": "spam"}))
@@ -120,7 +136,8 @@ def test_measure_reads_the_labels(log, tmp_path, capsys):
     labels.write_text(json.dumps({"e1": "ham", "e3": "smishing", "e5": "spam"}))
     assert sms_traffic.main(["measure", "--log", str(log), "--labels", str(labels)]) == 0
     out = capsys.readouterr().out
-    assert "5 messages, 3 labelled; 1 without text" in out and "Phones: B 2, C 1" in out
+    assert "5 messages, 3 labelled; 1 without text" in out
+    assert "Labelled, by phone: B 2, C 1" in out and "Received, by phone: B 4, C 1" in out
     rows = {line[:44].strip(): line[44:].split() for line in out.splitlines()
             if line.startswith(("SMS from", "all "))}
     # received, flagged, flagged and labelled fraud / marketing / normal, not labelled, missed scams, per 100
