@@ -13,7 +13,13 @@ The detectors own the verdict; Llama only explains. So this module:
     drops a sentence that states a number, names an organisation, or says "never" or "always"
     when the evidence does not. A small model invents such details; the checks above only
     caught forbidden forms, not invented facts.
-A rejected answer makes the advisor fall back to its template text.
+  * update 38b, after reading Llama's first 100 graded answers: "never" is grounded by "no ...
+    ever" too (the OTP fact says "No bank ... ever asks"); a sentence may not say where the
+    message's link goes or that .bank.in/.gov.in sites are not real; and a rule about what real
+    companies, banks or people do ("Real companies never ask for links") must come from a case
+    whose fact states such a rule.
+A rejected answer makes the advisor fall back to its template text; a dropped sentence 2 is
+replaced by the template's list of red flags (advisor/advise.py).
 """
 import re
 from dataclasses import dataclass, field
@@ -63,12 +69,41 @@ _EXTRA_ORGS = [("NPCI", r"\bnpci\b"), ("CERT-In", r"\bcert-?in\b"), ("SEBI", r"\
 ORGANISATIONS = [(name, rx) for name, _, rx in BRANDS] + [(n, re.compile(rx, re.I)) for n, rx in _EXTRA_ORGS]
 _NUMBER_RE = re.compile(r"\d+")
 _ABSOLUTE_RE = re.compile(r"\b(never|always)\b", re.I)
+_NO_EVER_RE = re.compile(r"\b(?:no|not|nobody|none|nothing)\b[^.;]*?\bever\b", re.I)   # "No bank ... ever asks"
 _DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
+
+# The case never says where a message's link goes, and its fact says genuine bank and government
+# websites end in .bank.in and .gov.in. Seen on the Pi: "the link ends in .bank.in, not .com",
+# "links ending in .bank.in are not real bank websites".
+_DOMAIN_CLAIM_RE = re.compile(
+    r"\b(?:the|this|its|their)\s+(?:link|website|site|address|url)\s+(?:also\s+)?(?:ends?|is)\s+(?:in|on|with)\s+"
+    r"(?:an?\s+)?(?:official\s+)?\.?(?:bank|gov)\.in\b"
+    r"|\.(?:bank|gov)\.in(?:\s+(?:websites?|sites?|links?|domains?|addresses?))?,?\s+(?:which\s+)?(?:are|is)\s+not\b",
+    re.I)
+# A rule about what real companies, banks or people do. Seen on the Pi for suspicious messages,
+# whose fact states no rule: Llama copied the worked example's "Real companies never ask for your
+# OTP" into "Real companies never ask for personal details or links", which is false.
+_RULE_RE = re.compile(
+    r"(?:^|[,;]\s*(?:and\s+|but\s+|so\s+)?)(?:real|genuine|legitimate|trusted|official)\b[^.,;]*?"
+    r"\b(?:never|do\s+not|don't|does\s+not|doesn't|would\s+not|wouldn't|will\s+not|won't|(?:are|is)\s+unlikely\s+to)\b",
+    re.I)
+_FACT_RULE_RE = re.compile(r"\b(?:never|not|only|always|no)\b", re.I)
+
+
+def _says_absolute(word, evidence):
+    if re.search(rf"\b{word}\b", evidence, re.I):
+        return True
+    return word == "never" and bool(_NO_EVER_RE.search(evidence))
+
+
+def _fact(evidence):
+    return next((line[len("Fact:"):] for line in evidence.splitlines() if line.startswith("Fact:")), "")
 
 
 def ungrounded(sentence, evidence, language="en"):
     """Why a sentence says more than the evidence Llama was given, or None. Numbers (1930, the
-    national helpline, is always allowed), organisations, and in English "never" and "always"."""
+    national helpline, is always allowed), organisations, and in English "never" and "always"
+    (or "no ... ever"), the link's domain, and rules about what real companies or people do."""
     sent, ev = sentence.translate(_DIGITS), (evidence or "").translate(_DIGITS)
     known = set(_NUMBER_RE.findall(ev)) | ALLOWED_NUMBERS
     extra = [n for n in _NUMBER_RE.findall(sent) if n not in known]
@@ -77,10 +112,14 @@ def ungrounded(sentence, evidence, language="en"):
     for name, rx in ORGANISATIONS:
         if rx.search(sent) and not rx.search(ev):
             return f"names {name}, which the evidence does not"
+    if _DOMAIN_CLAIM_RE.search(sent):
+        return "says where the link goes, or that .bank.in or .gov.in sites are not real"
     if language == "en":
         for word in {w.lower() for w in _ABSOLUTE_RE.findall(sent)}:
-            if not re.search(rf"\b{word}\b", ev, re.I):
+            if not _says_absolute(word, ev):
                 return f'says "{word}", which the evidence does not'
+        if _RULE_RE.search(sent) and not _FACT_RULE_RE.search(_fact(ev)):
+            return "a rule about what real companies or people do, which the fact does not state"
     return None
 
 

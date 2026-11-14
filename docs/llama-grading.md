@@ -4,7 +4,7 @@
 
 Llama explains each alert in two sentences from a short case: the verdict, the scam type, a checked fact, who the message pretends to be and the warning signs ([advisor/prompt.py](../advisor/prompt.py), `case_text`). Until update 38 the answer checker ([advisor/validator.py](../advisor/validator.py)) caught forbidden forms: a link, a phone number, "this is safe". It could not see an invented fact. "13 of 13 accepted by the checker" meant 13 answers passed some patterns, not 13 true answers (the hard review, gap 2.5). A 1B model at 4 bits does invent details: "Genuine companies never ask for bank account details or cashback" appeared with nothing in the case to support it.
 
-## Grounding checks (update 38)
+## Grounding checks (updates 38 and 38b)
 
 A sentence is dropped when it says more than the case Llama was shown:
 
@@ -12,9 +12,28 @@ A sentence is dropped when it says more than the case Llama was shown:
 | --- | --- |
 | A number the case does not have (1930, the helpline, is always allowed) | "Act within 24 hours" |
 | An organisation the case does not name (the brand list, plus RBI, NPCI, WhatsApp, the police, courts…) | "pretends to be from HDFC Bank" when the case says SBI |
-| "never" or "always" (English) when the case does not use the word | "Banks always use .bank.in links" |
+| "never" or "always" (English) when the case does not say it; "No bank … ever asks" says "never" (38b) | "Banks always use .bank.in links" |
+| Where the message's link goes, or that .bank.in or .gov.in sites are not real: the case never says where a link goes (38b) | "the link ends in .bank.in, not .com" |
+| A rule about what real companies, banks or people do, when the case's fact states no rule (38b) | "Real trusted sources do not ask you to call a number" for a suspicious message |
 
-If both sentences go, the app shows the playbook's template text, as for any rejected answer. `GUARDIAN_GROUNDING=0` in the app's environment switches the checks off.
+If both sentences go, the app shows the playbook's template text, as for any rejected answer. If only sentence 2 goes, the app shows the scanner's red flags in its place ([advisor/advise.py](../advisor/advise.py)). `GUARDIAN_GROUNDING=0` in the app's environment switches the checks off.
+
+Every worked example in the prompt must pass the checks against its own case (a test): Llama copies them, and update 38's "never" check dropped the OTP example's own second sentence.
+
+## The first run (15 November 2026)
+
+On the Pi, `generate` asked Llama for 100 different cases: 89 flagged messages from the India set and the 11 network alert samples, 183 sentences. Reading them showed what update 38 got wrong, fixed in 38b:
+
+| Problem | Example | Change in 38b |
+| --- | --- | --- |
+| The "never" check dropped sentences its case supports | "Real companies never ask for your OTP or PIN" (the fact: "No bank, company or government office ever asks you to share an OTP") | "no … ever" grounds "never": 3 sentences kept again |
+| .bank.in turned around | "the link ends in .bank.in, which is a known domain"; "links ending in .bank.in are not real bank websites" | new check: drops 4 sentences, 3 of them shown before |
+| Rules about real senders that the case does not state, in answers about suspicious messages (Llama copies the example "Real companies never ask for your OTP") | "Real messages from trusted sources do not ask you to open links or share personal details" | new check: drops 5 sentences, all shown before |
+| The case for an IRC alert carried the Telnet fact | (the case, not Llama) | the risky-port fact now fits every risky port |
+
+In all, 38b shows 163 of the 183 sentences (update 38: 168; before it: 183). Whether each sentence it drops or keeps is right is what the grading by hand measures (below).
+
+Reading also found sentences no word check can catch, for example "Genuine companies never ask for payment or sensitive information via link" (a prize scam: its fact has "never", so the check passes it) and "Real Aadhaar numbers are registered business sender IDs".
 
 ## Grading (two people, about an hour each)
 
@@ -26,15 +45,15 @@ On the Pi, from `~/ps3-guardian` with `source ~/ps3-venv/bin/activate`, while th
    python -m advisor.grade generate --india ~/india_sms_collection_v9.xlsx --net
    ```
 
-   It checks the India set's messages, builds the case for each flagged one, and asks Llama once per different case, up to 100, plus one of each network alert kind. Each answer takes 20–30 s; saved answers are instant. Ctrl+C stops it; run it again to carry on. Everything goes to `data/advisor/grading/answers.jsonl`, with which sentences users saw before update 38 and see now.
+   It checks the India set's messages, builds the case for each flagged one, and asks Llama once per different case, up to 100, plus one of each network alert kind. After a restart it waits up to 3 minutes for the Llama service to load. Each answer takes 20–30 s; saved answers are instant. Ctrl+C stops it; run it again to carry on. Everything goes to `data/advisor/grading/answers.jsonl`, with which sentences users saw before update 38.
 
-2. **Grade**, each person on their own:
+2. **Grade**, each person on their own, before reading anyone else's grades or this page's examples of wrong sentences:
 
    ```bash
    python -m advisor.grade label --grader piyush
    ```
 
-   Each sentence Llama wrote appears under its case. You are not told whether the checker kept it.
+   Each sentence Llama wrote appears under its case. You are not told whether the checker kept it. `--again` goes through sentences you graded before.
 
    | Key | Grade |
    | --- | --- |
@@ -44,16 +63,24 @@ On the Pi, from `~/ps3-guardian` with `source ~/ps3-venv/bin/activate`, while th
 
    Enter skips, `b` goes back, `q` stops; every grade is saved at once.
 
+   **Grade what each sentence says, not where it stands.** A sentence with several claims gets the worst grade among them. For example:
+
+   - "This message pretends to be from HDFC Bank to steal your net-banking login, card details or OTP through a fake KYC page." The case says "Pretends to be: HDFC Bank" and "Scammer wants: to steal your net-banking login, card details or OTP through a fake KYC page": **s**.
+   - "Real electricity companies do not ask you to call a personal number or install an app, and they do not rush you with a deadline." The first half is the fact; the case does not say the second: **n**.
+   - "Genuine banks do not update KYC on their website, and links ending in .bank.in are not real bank websites." The fact says banks update KYC on their official website and genuine bank links end in .bank.in: **w**.
+
 3. **Report**:
 
    ```bash
    python -m advisor.grade report
    ```
 
-   For each grader: the share of sentences supported, not supported and wrong, for everything Llama wrote, for what users saw before update 38, for what they see now, and for the sentences the new checks drop. With two graders, how often they agree (Cohen's kappa). Paste it into the chat for the results.
+   For each grader: the share of sentences supported, not supported and wrong, for everything Llama wrote (and first and second sentences apart), for what users saw before update 38, for what they see now (network alerts and messages apart), and for the sentences the checks drop. "Now" re-runs today's checks on the saved answers, so a change to the checks is measured on sentences already graded. With two graders, how often they agree (Cohen's kappa). `--wrong` also lists the sentences graded w, and whether users see them. Paste it into the chat for the results.
 
 ## Limits
 
 - The case is all Llama sees, so "supported" means supported by the scanner's evidence, not that the scan was right.
+- The 38b checks were written after reading these same answers, so how much they help here is the best case. The India set gives only about 104 different cases, so there is no second set of the same kind; the app's own alerts will show it over time.
+- The checks look at words, not meaning: a rule is allowed in any case whose fact states a rule, and one supported sentence is still dropped ("real banks never send messages from 10-digit mobile numbers", where the case says "real banks send SMS from registered sender IDs").
 - Graders know the project; a user study with non-experts (do the sentences help people act?) is Phase 2.
 - Hindi answers are not in this grading yet: they take about 50 s each.
