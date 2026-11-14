@@ -5,7 +5,10 @@
    f = fraud, m = genuine marketing, n = normal, Enter = not sure (skip), u = undo, q = stop.
    Identical messages (an OTP text from the same bank, digits aside) are asked once. Labels are
    saved at once in data/sms/labels.json; run it again to carry on where you stopped.
-2. Measure: flagged messages per label, text only vs with the sender ID, as the app decided:
+   A second look at labels that are likely wrong (the same message labelled two ways, fraud
+   from a registered sender ID): python scripts/sms_traffic.py review
+2. Measure: every message received by kind of sender, and flagged messages per label, text only
+   vs with the sender ID, as the app decided:
        python scripts/sms_traffic.py measure
 3. Train and compare SMS model v2: python detectors/sms/train_v2.py (docs/sms-model-v2.md).
 
@@ -83,44 +86,40 @@ def import_labels(sheet, labels_path, say=print):
     return 0
 
 
+RULES = """How to label: judge the message itself (the app's verdict is not shown).
+  f  fraud: it tries to trick you. A fake bank, KYC, parcel, prize, refund, job or loan message,
+     a link or number to a fake site or person, or it asks for money, an OTP, a PIN or your details.
+  m  marketing: a real business advertising: offers, sales, plans, cashback, even your own bank's.
+  n  normal: anything else that is real: OTPs, bank alerts, bills, bookings, deliveries, chats.
+     An OTP you did not ask for is still n: the message is real (someone may be trying your number).
+  u  undo the last answer     q  stop (every answer is saved at once)"""
+
+
+def phone_of(e):
+    return e.get("device") or "-"
+
+
 def same_message(e):
     """Messages asked once: the same text (digits aside) from the same sender on the same phone."""
     text = " ".join(re.sub(r"[\d#]", "#", e.get("text") or "").lower().split())
     return text, e.get("sender") or "", e.get("device") or ""
 
 
-def label(log_path, labels_path, device=None, again=False, ask=input, say=print):
-    entries = [e for e in read_log(log_path) if e.get("text")]
-    if device is not None:
-        names = sorted({e.get("device") or "-" for e in entries})
-        entries = [e for e in entries if (e.get("device") or "") == device]
-        if not entries:
-            say(f"No messages with text from phone {device}. Phones in the log: {', '.join(names) or 'none'} "
-                "(the names are case-sensitive).")
-            return 1
-    groups = {}
-    for e in entries:
-        groups.setdefault(same_message(e), []).append(e)
-    labels = load_labels(labels_path)
-    todo = [g for g in groups.values() if again or any(e["id"] not in labels for e in g)]
-    phones = sorted({(e.get("device") or "-") for e in entries})
-    if not todo:
-        say(f"Nothing left to label{' on phone ' + device if device else ''} "
-            f"({len(entries)} messages with text). --again labels them again.")
-        return 0
-    say(f"{len(todo)} messages to label ({sum(len(g) for g in todo)} with their copies), phones: {', '.join(phones)}.")
-    say("f = fraud, m = genuine marketing, n = normal, Enter = not sure, u = undo, q = stop. Saved at once.\n")
+def show(e, say, before="", after=""):
+    """One message to label: where it came from and its text, never the app's verdict."""
+    where = e["channel"].upper() + (f" ({e['app']})" if e.get("app") else "")
+    say(f"{before}phone {phone_of(e)} · {where} · {e.get('time', '')} · from {e.get('sender') or '?'}{after}")
+    for line in textwrap.wrap(e["text"], 100) or [""]:
+        say("    " + line)
+
+
+def ask_loop(todo, labels, labels_path, ask, say, header):
+    """Asks each group of copies once (todo: [(entries, note)]). Enter changes nothing; u undoes the
+    last answer, putting back the label it replaced."""
     done, i = [], 0
     while i < len(todo):
-        g, e = todo[i], todo[i][0]
-        where = e["channel"].upper() + (f" ({e['app']})" if e.get("app") else "")
-        app_said = f"{e.get('verdict', '?').upper()} {e.get('score', '')}"
-        alone = f"{e.get('text_verdict', '?').upper()} {e.get('text_score', '')}"
-        copies = f" · {len(g)} copies" if len(g) > 1 else ""
-        say(f"[{i + 1}/{len(todo)}] phone {e.get('device') or '-'} · {where} · {e.get('time', '')} · from "
-            f"{e.get('sender') or '?'} · app: {app_said} (text alone: {alone}){copies}")
-        for line in textwrap.wrap(e["text"], 100) or [""]:
-            say("    " + line)
+        group, note = todo[i]
+        header(i, group, note)
         try:
             answer = ask("label: ").strip().lower()
         except (EOFError, KeyboardInterrupt):
@@ -130,24 +129,91 @@ def label(log_path, labels_path, device=None, again=False, ask=input, say=print)
             break
         if answer == "u":
             if done:
-                i = done.pop()
-                for x in todo[i]:
-                    labels.pop(x["id"], None)
+                i, before = done.pop()
+                for e in todo[i][0]:
+                    if before[e["id"]] is None:
+                        labels.pop(e["id"], None)
+                    else:
+                        labels[e["id"]] = before[e["id"]]
                 save_labels(labels_path, labels)
             continue
         if answer in KEYS:
-            for x in g:
-                labels[x["id"]] = KEYS[answer]
+            done.append((i, {e["id"]: labels.get(e["id"]) for e in group}))
+            for e in group:
+                labels[e["id"]] = KEYS[answer]
             save_labels(labels_path, labels)
-            done.append(i)
         elif answer:
             say("    (f, m, n, Enter, u or q)")
             continue
         i += 1
+
+
+def label(log_path, labels_path, device=None, again=False, ask=input, say=print):
+    entries = [e for e in read_log(log_path) if e.get("text")]
+    labels = load_labels(labels_path)
+    left = Counter(phone_of(e) for e in entries if again or e["id"] not in labels)
+    if device is not None:
+        if not any(phone_of(e) == device for e in entries):
+            names = sorted({phone_of(e) for e in entries})
+            say(f"No messages with text from phone {device}. Phones in the log: {', '.join(names) or 'none'} "
+                "(the names are case-sensitive; - is a phone without a name).")
+            return 1
+        entries = [e for e in entries if phone_of(e) == device]
+    groups = {}
+    for e in entries:
+        groups.setdefault(same_message(e), []).append(e)
+    todo = [(g, "") for g in groups.values() if again or any(e["id"] not in labels for e in g)]
+    if not todo:
+        say(f"Nothing left to label{' on phone ' + device if device else ''} "
+            f"({len(entries)} messages with text). --again labels them again.")
+        return 0
+    say("Messages left to label, by phone: " + ", ".join(f"{p} {n}" for p, n in sorted(left.items())))
+    say(f"Now: {len(todo)} messages to label ({sum(len(g) for g, _ in todo)} with their copies).\n")
+    say(RULES + "\n  Enter: not sure (skipped)\n")
+
+    def header(i, group, note):
+        show(group[0], say, f"[{i + 1}/{len(todo)}] ", f" · {len(group)} copies" if len(group) > 1 else "")
+
+    ask_loop(todo, labels, labels_path, ask, say, header)
     mine = Counter(LABELS[labels[e["id"]]] for e in entries if e["id"] in labels)
-    left = sum(1 for e in entries if e["id"] not in labels)
+    rest = sum(1 for e in entries if e["id"] not in labels)
     say(f"\nLabelled{' on phone ' + device if device else ''}: " + ", ".join(f"{k} {n}" for k, n in mine.items())
-        + f"; {left} messages not labelled.")
+        + f"; {rest} messages not labelled.")
+    return 0
+
+
+def review(log_path, labels_path, ask=input, say=print):
+    """A second look at labels that are likely wrong: the same message labelled two ways (on one
+    phone or on two), and fraud from a registered sender ID, which belongs to a real business.
+    Asked without the app's verdict; Enter keeps the label as it is."""
+    labels = load_labels(labels_path)
+    groups = {}
+    for e in read_log(log_path):
+        if e.get("text") and e.get("id") in labels:
+            groups.setdefault(same_message(e)[0], []).append(e)
+    todo = []
+    for g in groups.values():
+        kinds = {labels[e["id"]] for e in g}
+        if len(kinds) > 1:
+            todo.append((g, "labelled two ways: " + " and ".join(sorted(LABELS[k] for k in kinds))))
+        elif kinds == {"smishing"} and any(e.get("sender_kind") == "business" for e in g):
+            todo.append((g, "labelled fraud, but it came from a registered sender ID"))
+    if not todo:
+        say("Nothing to review: no message is labelled two ways, and none from a registered sender ID is "
+            "labelled fraud.")
+        return 0
+    say(f"{len(todo)} labels to look at again ({sum(len(g) for g, _ in todo)} with their copies).")
+    say("A registered sender ID (like VK-SBIBNK-P) belongs to a real business: its offers are m, its OTPs "
+        "and alerts n.\nKeep f only if the message itself tries to trick you.\n")
+    say(RULES + "\n  Enter: keep the label as it is\n")
+
+    def header(i, group, note):
+        others = sorted({phone_of(e) for e in group[1:]} | {e.get("sender") or "?" for e in group[1:]})
+        show(group[0], say, f"[{i + 1}/{len(todo)}] ", f" · {len(group)} copies" if len(group) > 1 else "")
+        say(f"    -> {note}" + (f" (copies also: {', '.join(others)})" if others else ""))
+
+    ask_loop(todo, labels, labels_path, ask, say, header)
+    say("\nDone. Run measure and train_v2.py again.")
     return 0
 
 
@@ -166,16 +232,53 @@ def table(rows, title):
             print(f"{name:10s} {len(t):8d} {f1:12d} ({f1 / len(t):4.0%}) {f2:14d} ({f2 / len(t):4.0%})")
 
 
+# Who sent a message decides whether the log keeps its text (app/sms_log.py): always for SMS from
+# a registered sender ID or another sender name, only when flagged for phone numbers and chats.
+GROUPS = (("SMS from a registered sender ID", "sms", ("business",), True),
+          ("SMS from another name or short code", "sms", ("other",), True),
+          ("SMS from a phone number", "sms", ("mobile",), False),
+          ("SMS without a sender", "sms", ("unknown", ""), False),
+          ("Chat from an unknown number", "chat", ("mobile",), False),
+          ("Chat from a saved contact (testing switch)", "chat", ("name",), False),
+          ("Chat without a sender", "chat", ("unknown", ""), False))
+
+
+def received_table(rows):
+    """Every message received, labelled or not: false alarms per 100 messages need them all."""
+    print("\nEvery message received, as the app decided:")
+    print(f"{'':44s} {'':>8s} {'':>8s}  {'flagged and labelled':^24s} {'not':>8s} {'missed':>7s} {'normal flagged':>15s}")
+    print(f"{'sender':44s} {'received':>8s} {'flagged':>8s}  {'fraud':>6s} {'mkt':>6s} {'normal':>8s}  {'labelled':>8s} {'scams':>7s} {'per 100 msgs':>15s}")
+    total = Counter()
+    for name, channel, kinds, kept in GROUPS:
+        t = [r for r in rows if (r.get("channel") or "sms") == channel and (r.get("sender_kind") or "") in kinds]
+        if not t:
+            continue
+        flagged = [r for r in t if r.get("verdict") != "safe"]
+        c = Counter(label_of(r) for r in flagged)
+        todo = sum(1 for r in t if r.get("text") and label_of(r) not in LABELS)
+        missed = sum(1 for r in t if r.get("verdict") == "safe" and label_of(r) == "smishing")
+        total.update(received=len(t), flagged=len(flagged), fraud=c["smishing"], mkt=c["spam"], normal=c["ham"],
+                     todo=todo)
+        print(f"{name:44s} {len(t):8d} {len(flagged):8d}  {c['smishing']:6d} {c['spam']:6d} {c['ham']:8d}  "
+              f"{todo:8d} {missed if kept else '-':>7} {100 * c['ham'] / len(t):15.1f}")
+    if total["received"]:
+        print(f"{'all':44s} {total['received']:8d} {total['flagged']:8d}  {total['fraud']:6d} {total['mkt']:6d} "
+              f"{total['normal']:8d}  {total['todo']:8d} {'':>7} {100 * total['normal'] / total['received']:15.1f}")
+    print("Texts of SMS from phone numbers and of chats are kept only when flagged, so their missed scams\n"
+          "cannot be counted ('-'), and the shares by label below count only their flagged ones.")
+
+
 def measure_rows(rows):
     labelled = [r for r in rows if label_of(r) in LABELS]
     no_text = sum(1 for r in rows if not r.get("text"))
     print(f"{len(rows)} messages, {len(labelled)} labelled; {no_text} without text "
-          "(safe messages from phone numbers: the text is not kept)")
+          "(safe messages from phone numbers and safe chats: the text is not kept)")
     print("Senders:", ", ".join(f"{k} {n}" for k, n in Counter(r['sender_kind'] for r in labelled).items()))
     phones = Counter((r.get("device") or "-") for r in labelled)
     if set(phones) != {"-"}:
         print("Phones:", ", ".join(f"{k} {n}" for k, n in sorted(phones.items())))
-    table(labelled, "All messages")
+    received_table(rows)
+    table(labelled, "Labelled messages")
     channels = sorted({(r.get("channel") or "sms") for r in labelled})
     if len(channels) > 1:
         for ch in channels:
@@ -186,7 +289,7 @@ def measure_rows(rows):
         for r in wrong[:20]:
             where = f"{r.get('device') or '-'}/{r.get('channel') or 'sms'}"
             print(f"  {label_of(r):8s} {r['verdict']:10s} {where:10s} {r['sender']:14s} "
-                  f"{(r['text'] or '(text not stored)')[:70]}")
+                  f"{(' '.join((r['text'] or '(text not stored)').split()))[:70]}")
 
 
 def measure(path):
@@ -210,13 +313,14 @@ def main(argv=None):
     e = sub.add_parser("export")
     e.add_argument("out")
     lb = sub.add_parser("label")
-    lb.add_argument("--device", help="only this phone's messages (the name typed in its app, e.g. C)")
+    lb.add_argument("--device", help="only this phone's messages (the name typed in its app, e.g. C; - for none)")
     lb.add_argument("--again", action="store_true", help="also show messages labelled before")
     m = sub.add_parser("measure")
     m.add_argument("sheet", nargs="?", help="a labelled CSV from 'export'; without it, the labels from 'label'")
     im = sub.add_parser("import")
     im.add_argument("sheet", help="a CSV from 'export' with the 'label' column filled")
-    for p in (e, lb, m, im):
+    rv = sub.add_parser("review")
+    for p in (e, lb, m, im, rv):
         p.add_argument("--log", default=DEFAULT_LOG)
         p.add_argument("--labels", default=DEFAULT_LABELS)
     a = ap.parse_args(argv)
@@ -226,6 +330,8 @@ def main(argv=None):
         return label(a.log, a.labels, a.device, a.again)
     elif a.cmd == "import":
         return import_labels(a.sheet, a.labels)
+    elif a.cmd == "review":
+        return review(a.log, a.labels)
     elif a.sheet:
         measure(a.sheet)
     else:

@@ -142,7 +142,7 @@ New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.exampl
    python scripts/sms_traffic.py label --device B
    ```
 
-   `f` fraud, `m` genuine marketing, `n` normal, Enter if unsure, `u` undo, `q` stop. Identical messages are asked once, and labels are saved at once in `data/sms/labels.json`: run it again to carry on. Messages without text (safe messages from phone numbers, safe chats) are not asked.
+   `f` fraud, `m` genuine marketing, `n` normal, Enter if unsure, `u` undo, `q` stop; the screen explains each label, and the app's verdict is not shown. Identical messages are asked once, and labels are saved at once in `data/sms/labels.json`: run it again to carry on. Messages without text (safe messages from phone numbers, safe chats) are not asked. Afterwards, `python scripts/sms_traffic.py review` asks again about likely mistakes (fraud from a registered sender ID, a message labelled two ways).
    - **Or in Excel:** `python scripts/sms_traffic.py export ~/traffic.csv`, copy it to the laptop (PowerShell: `scp arrehinus@10.42.0.1:~/traffic.csv $HOME\Downloads\`), fill the `label` column with `smishing`, `spam` or `ham`, save as **CSV UTF-8**, copy it back (`scp $HOME\Downloads\traffic.csv arrehinus@10.42.0.1:~/`) and run `python scripts/sms_traffic.py import ~/traffic.csv`: the labels go into `data/sms/labels.json`, which model v2 reads.
 3. **Measure:**
 

@@ -35,6 +35,10 @@ Each is scored on the team's held-out messages, on the India test set and on the
 held-out messages, as the text alone and as the app decides (with the sender ID and the links).
 With messages from two phones or more, each phone is also held out in turn: v2 then learns from
 the other phones only, which shows how it does on a phone it has never seen.
+The team's tables have two groups. The log always keeps the text of an SMS from a registered
+sender ID (or another name), but from phone numbers and chats only when v1 flagged it: there v1
+caught every scam by construction, and false alarms v2 would add are not seen. So the last lines
+apply the rule of docs/sms-model-v2.md (step 5) to the India set and to the first group only.
 With --save, v2 is trained again on everything and saved as detectors/sms/sms_v2.joblib, which
 the app loads from its next start. That file is not in git: it learned from the team's messages.
 """
@@ -60,7 +64,7 @@ import train_baseline as tb  # noqa: E402
 V2_MODEL = os.path.join(HERE, "sms_v2.joblib")
 LABELS = {"smishing": "fraud", "spam": "marketing", "ham": "normal"}
 CLASSES = ("fraud", "marketing", "normal")
-COLUMNS = ["text", "cls", "origin", "sender", "key"]
+COLUMNS = ["text", "cls", "origin", "sender", "key", "kept"]
 NEAR_COPY = 0.7     # similarity of a template's variants ("OTP for Swiggy" / "OTP for Zomato": ~0.8)
 MIN_PHONE = 10      # labelled messages a phone needs to be held out on its own
 
@@ -114,7 +118,7 @@ def load_public(path):
                 continue
         cls = LABELS.get(lab)
         if cls:
-            rows.append({"text": msg, "cls": cls, "origin": f"public:{src}", "sender": "", "key": k})
+            rows.append({"text": msg, "cls": cls, "origin": f"public:{src}", "sender": "", "key": k, "kept": ""})
     out, conflicts = _dedupe(pd.DataFrame(rows, columns=COLUMNS))
     return out, unsure, conflicts
 
@@ -135,6 +139,14 @@ def sender_for(entry):
     return "9800000000" if kind == "mobile" else ""
 
 
+def kept(entry):
+    """Why the log has this message's text (app/sms_log.py): 'always' for an SMS from a registered
+    sender ID or another name; 'flagged' for phone numbers and chats, kept only when v1 flagged
+    them. On those, v1 caught every scam by construction, and v2's new false alarms are not seen."""
+    always = entry.get("channel", "sms") == "sms" and entry.get("sender_kind") in ("business", "other")
+    return "always" if always else "flagged"
+
+
 def load_team(log_path, labels_path):
     labels = {}
     if os.path.exists(labels_path):
@@ -146,7 +158,7 @@ def load_team(log_path, labels_path):
         if cls and e.get("text"):
             rows.append({"text": fill_digits(e["text"], e.get("id") or e["text"]), "cls": cls,
                          "origin": f"team:{e.get('device') or '-'}", "sender": sender_for(e),
-                         "key": key(e["text"])})
+                         "key": key(e["text"]), "kept": kept(e)})
     return _dedupe(pd.DataFrame(rows, columns=COLUMNS))
 
 
@@ -154,7 +166,7 @@ def load_india(path):
     from eval_india import read_test             # .xlsx needs openpyxl; a CSV needs nothing
     df = read_test(path)
     out = pd.DataFrame({"text": df.message, "cls": df.label.map(LABELS), "origin": "india",
-                        "sender": df.sender, "key": df.message.map(key)})
+                        "sender": df.sender, "key": df.message.map(key), "kept": ""})
     return out.drop_duplicates("key").reset_index(drop=True)
 
 
@@ -197,31 +209,83 @@ def verdicts(model, df, texts, links):
     return alone, app
 
 
+GROUPS = {"always": "SMS from sender IDs (every text is kept):",
+          "flagged": "Phone numbers and chats (kept only when v1 flagged them):"}
+
+
 def table(title, df, models, url):
+    """Prints the share of each class flagged; the team's messages in the two groups of kept().
+    Returns {model name: {(group, class): (messages, flagged as the app decides)}}."""
+    counts = {m.name: {} for m in models}
     if df.empty:
         print(f"\n{title}: no messages")
-        return
+        return counts
     print(f"\n{title}: {len(df)} messages. Share flagged (suspicious or dangerous):")
     names = [m.name for m in models]
     width = 8 * len(names) + 2 * (len(names) - 1)
-    print(f"{'':10s} {'':>5s}   {'text only':^{width}s}   {'as the app (sender + links)':^{width}s}")
-    print(f"{'label':10s} {'n':>5s}   " + "  ".join(f"{n:>8s}" for n in names) + "   "
+    print(f"{'':12s} {'':>5s}   {'text only':^{width}s}   {'as the app (sender + links)':^{width}s}")
+    print(f"{'label':12s} {'n':>5s}   " + "  ".join(f"{n:>8s}" for n in names) + "   "
           + "  ".join(f"{n:>8s}" for n in names))
     texts = [tb.clean_text(t) for t in df.text]                         # as the rules see them
     links = [url.check_text(t) if url else [] for t in texts]           # checked once for all models
     results = {m.name: verdicts(m, df, texts, links) for m in models}
-    for cls in CLASSES:
-        mask = (df.cls == cls).tolist()
-        n = sum(mask)
-        if not n:
+    groups = [g for g in GROUPS if (df.kept == g).any()] or [""]
+    for g in groups:
+        if g:
+            print(GROUPS[g])
+        for cls in CLASSES:
+            mask = ((df.cls == cls) & (df.kept == g)).tolist()
+            n = sum(mask)
+            if not n:
+                continue
+            cells = []
+            for part in (0, 1):
+                for m in models:
+                    flagged = sum(1 for keep, x in zip(mask, results[m.name][part]) if keep and x != "safe")
+                    cells.append(f"{flagged / n:8.0%}")
+                    if part == 1:
+                        counts[m.name][(g, cls)] = (n, flagged)
+            print(f"{('  ' if g else '') + cls:12s} {n:5d}   " + "  ".join(cells[:len(models)]) + "   "
+                  + "  ".join(cells[len(models):]))
+    return counts
+
+
+def rule(india, phones):
+    """The rule for using v2 (docs/sms-model-v2.md, step 5), on the counts of table():
+      1. India set: v2 catches as many of the scams as v1, give or take 2;
+      2. each phone held out, SMS from sender IDs: v2 flags no more normal and marketing messages
+         than v1 on any phone and fewer in all, and misses no more scams.
+    Phone numbers and chats are left out of 2: the log has only the messages v1 flagged there."""
+    print("\nRule (docs/sms-model-v2.md, step 5), as the app decides:")
+    ok = bool(india)
+    if india:
+        n, v1 = india["v1"].get(("", "fraud"), (0, 0))
+        v2 = india["v2"].get(("", "fraud"), (0, 0))[1]
+        ok &= v2 >= v1 - 2
+        print(f"  India set: scams caught v1 {v1}, v2 {v2} of {n}: {'ok' if v2 >= v1 - 2 else 'NOT ok'}")
+    else:
+        print("  India set: not given (--india): NOT ok")
+    total1 = total2 = 0
+    for phone, c in phones.items():
+        def flagged(model, cls):
+            return c[model].get(("always", cls), (0, 0))
+        if not any(g == "always" for g, _ in c["v1"]):
+            print(f"  Phone {phone}: no SMS from sender IDs, not checked")
             continue
-        cells = []
-        for part in (0, 1):
-            for m in models:
-                v = results[m.name][part]
-                flagged = sum(1 for keep, x in zip(mask, v) if keep and x != "safe")
-                cells.append(f"{flagged / n:8.0%}")
-        print(f"{cls:10s} {n:5d}   " + "  ".join(cells[:len(models)]) + "   " + "  ".join(cells[len(models):]))
+        alarms1 = flagged("v1", "normal")[1] + flagged("v1", "marketing")[1]
+        alarms2 = flagged("v2", "normal")[1] + flagged("v2", "marketing")[1]
+        n, caught1 = flagged("v1", "fraud")
+        caught2 = flagged("v2", "fraud")[1]
+        good = alarms2 <= alarms1 and caught2 >= caught1
+        ok &= good
+        total1, total2 = total1 + alarms1, total2 + alarms2
+        print(f"  Phone {phone}, SMS from sender IDs: normal and marketing flagged v1 {alarms1}, v2 {alarms2}; "
+              f"scams caught v1 {caught1}, v2 {caught2} of {n}: {'ok' if good else 'NOT ok'}")
+    fewer = total2 < total1
+    ok &= fewer
+    print(f"  All phones: normal and marketing flagged v1 {total1}, v2 {total2}: {'fewer, ok' if fewer else 'NOT fewer'}")
+    print("  -> v2 passes: --save it, then restart" if ok else "  -> v2 does not pass: the app keeps v1")
+    return ok
 
 
 def main(argv=None):
@@ -262,15 +326,17 @@ def main(argv=None):
         from detectors.url.detector import UrlDetector
         url = UrlDetector()
     table("Team messages held out", team_te, models, url)
-    if not india.empty:
-        table("India test set", india, models, url)
+    india_counts = table("India test set", india, models, url) if not india.empty else None
     table("Public messages held out", pub_te, models, url)
     phones = sorted(p for p, n in Counter(team.origin).items() if n >= MIN_PHONE)
+    phone_counts = {}
     if len(phones) >= 2:
         print("\nEach phone held out in turn: v2 learns from the public data and the other phones only.")
         for p in phones:
             unseen = Model("v2", [pub_tr, team[team.origin != p]], three=True)
-            table(f"Phone {p.split(':', 1)[1]}", team[team.origin == p], [models[0], unseen], url)
+            name = p.split(":", 1)[1]
+            phone_counts[name] = table(f"Phone {name}", team[team.origin == p], [models[0], unseen], url)
+    rule(india_counts, phone_counts)
     print(f"\n(trained on {len(pub_tr)} public and {len(team_tr)} team messages; {time.time() - t0:.0f} s)")
 
     if a.save:

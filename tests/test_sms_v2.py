@@ -82,8 +82,10 @@ def test_label_asks_each_message_once_and_can_undo(log, tmp_path):
     answers = iter(["n", "x", "u", "n", "f"])        # normal, a typo, undo, normal again, fraud
     sms_traffic.label(str(log), str(labels), device="B", ask=lambda _: next(answers), say=said.append)
     assert json.loads(labels.read_text()) == {"e1": "ham", "e2": "ham", "e3": "smishing"}
-    assert any("2 messages to label (3 with their copies)" in s for s in said)
+    assert "Messages left to label, by phone: B 3, C 1" in said          # e4 has no text
+    assert "Now: 2 messages to label (3 with their copies).\n" in said
     assert not any("Flat 50%" in s for s in said)                       # phone C's message is not shown
+    assert not any("SUSPICIOUS" in s.upper() or "0.6" in s for s in said if "phone B" in s)   # labelled blind
     said.clear()
     sms_traffic.label(str(log), str(labels), device="B", ask=lambda _: pytest.fail("asked again"),
                       say=said.append)
@@ -92,7 +94,8 @@ def test_label_asks_each_message_once_and_can_undo(log, tmp_path):
     assert json.loads(labels.read_text()) == {"e1": "ham", "e2": "ham", "e3": "smishing"}
     said.clear()
     assert sms_traffic.label(str(log), str(labels), device="b", say=said.append) == 1
-    assert said == ["No messages with text from phone b. Phones in the log: B, C (the names are case-sensitive)."]
+    assert said == ["No messages with text from phone b. Phones in the log: B, C (the names are case-sensitive; "
+                    "- is a phone without a name)."]
 
 
 def test_labels_from_excel_can_be_imported(log, tmp_path, capsys):
@@ -118,6 +121,36 @@ def test_measure_reads_the_labels(log, tmp_path, capsys):
     assert sms_traffic.main(["measure", "--log", str(log), "--labels", str(labels)]) == 0
     out = capsys.readouterr().out
     assert "5 messages, 3 labelled; 1 without text" in out and "Phones: B 2, C 1" in out
+    rows = {line[:44].strip(): line[44:].split() for line in out.splitlines()
+            if line.startswith(("SMS from", "all "))}
+    # received, flagged, flagged and labelled fraud / marketing / normal, not labelled, missed scams, per 100
+    assert rows["SMS from a registered sender ID"] == ["3", "3", "0", "1", "1", "1", "0", "33.3"]
+    assert rows["SMS from a phone number"] == ["2", "1", "1", "0", "0", "0", "-", "0.0"]
+    assert rows["all"] == ["5", "4", "1", "1", "1", "1", "20.0"]
+
+
+def test_review_asks_again_about_likely_wrong_labels(tmp_path):
+    path, labels = tmp_path / "sms.jsonl", tmp_path / "labels.json"
+    write_log(path, [entry("r1", "SBI Carnival: up to 5X points on spends", sender="VK-SBIBNK-P"),
+                     entry("r2", "Your OTP is 123456", device="B", sender="AX-SFGOLD-T"),
+                     entry("r3", "Your OTP is 654321", device="C", sender="AX-SFGOLD-T"),
+                     entry("r4", "Win Rs 5 lakh, pay the fee now", sender="mobile", kind="mobile"),
+                     entry("r5", "KYC pending, update at http://kyc.example", sender="AD-SBIKYC-S")])
+    labels.write_text(json.dumps({"r1": "smishing", "r2": "ham", "r3": "smishing", "r4": "smishing",
+                                  "r5": "smishing"}))
+    said, answers = [], iter(["m", "n", "u", "", "q"])     # change, change, undo it, keep, stop
+    assert sms_traffic.review(str(path), str(labels), ask=lambda _: next(answers), say=said.append) == 0
+    assert "3 labels to look at again (4 with their copies)." in said
+    assert json.loads(labels.read_text()) == {"r1": "spam", "r2": "ham", "r3": "smishing", "r4": "smishing",
+                                              "r5": "smishing"}
+    notes = [s for s in said if s.startswith("    -> ")]
+    assert notes[0] == "    -> labelled fraud, but it came from a registered sender ID"
+    assert notes[1].startswith("    -> labelled two ways: fraud and normal (copies also: AX-SFGOLD-T, C)")
+    assert not any("0.6" in s for s in said)                                        # asked blind
+    labels.write_text(json.dumps({"r4": "smishing"}))
+    said.clear()
+    sms_traffic.review(str(path), str(labels), ask=lambda _: pytest.fail("asked"), say=said.append)
+    assert said[0].startswith("Nothing to review")
 
 
 # --- training and comparing --------------------------------------------------------------------
@@ -191,8 +224,12 @@ def test_train_compare_and_save(data, capsys):
     assert "left out: 1 UCI-only spam, 1 labelled two ways" in text
     assert "Team:   30 different labelled messages" in text and "1 in the India set or near-copies" in text
     for title in ("Team messages held out", "India test set: 3 messages", "Public messages held out",
-                  "Phone B: 15 messages", "Phone C: 15 messages", "Saved SMS model v2"):
+                  "Phone B: 15 messages", "Phone C: 15 messages", "Saved SMS model v2",
+                  "SMS from sender IDs (every text is kept):",
+                  "Phone numbers and chats (kept only when v1 flagged them):",
+                  "Rule (docs/sms-model-v2.md, step 5), as the app decides:"):
         assert title in text
+    assert "  India set: scams caught v1 " in text and "  Phone B, SMS from sender IDs: " in text
 
     bundle = joblib.load(out)
     assert bundle["version"] == 2 and set(bundle["classes"]) == {"fraud", "marketing", "normal"}
@@ -204,6 +241,23 @@ def test_train_compare_and_save(data, capsys):
     assert d.text_score(msg, "9812345678") == pytest.approx(1 - p_normal)
     f = d.check("Your account will be blocked today, update KYC at http://kyc-9.example now", sender="9812345678")
     assert f.verdict != "safe"
+
+
+def test_the_rule_for_using_v2(capsys):
+    india = {"v1": {("", "fraud"): (100, 96)}, "v2": {("", "fraud"): (100, 94)}}
+    def phone(alarms1, alarms2, caught1=1, caught2=1):
+        return {"v1": {("always", "normal"): (10, alarms1), ("always", "fraud"): (2, caught1),
+                       ("flagged", "fraud"): (5, 5)},
+                "v2": {("always", "normal"): (10, alarms2), ("always", "fraud"): (2, caught2),
+                       ("flagged", "fraud"): (5, 1)}}          # phone numbers: not part of the rule
+    assert train_v2.rule(india, {"B": phone(3, 1), "C": phone(2, 2)})          # fewer in all, worse nowhere
+    assert not train_v2.rule(india, {"B": phone(3, 1), "C": phone(2, 3)})      # worse on phone C
+    assert not train_v2.rule(india, {"B": phone(3, 1, caught2=0)})             # a scam missed
+    assert not train_v2.rule(india, {"B": phone(2, 2)})                        # no fewer false alarms
+    worse = {"v1": india["v1"], "v2": {("", "fraud"): (100, 93)}}
+    assert not train_v2.rule(worse, {"B": phone(3, 1)})                        # 3 more scams missed
+    assert not train_v2.rule(None, {"B": phone(3, 1)})                         # India set needed
+    assert "-> v2 does not pass: the app keeps v1" in capsys.readouterr().out
 
 
 def test_the_app_prefers_v2_when_it_has_been_trained(tmp_path, monkeypatch):
