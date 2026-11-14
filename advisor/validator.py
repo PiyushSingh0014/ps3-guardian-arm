@@ -8,11 +8,17 @@ The detectors own the verdict; Llama only explains. So this module:
   * keeps at most 2 complete sentences (a sentence cut off by the token limit
     is dropped) and about 60 words (80 in Hindi),
   * applies two small deterministic fixes seen on the Pi: hedging ("is likely
-    a scam") when the scanner is confident, and wrong KYC expansions.
+    a scam") when the scanner is confident, and wrong KYC expansions,
+  * grounding (update 38, from the hard review): given the case Llama was shown (the evidence),
+    drops a sentence that states a number, names an organisation, or says "never" or "always"
+    when the evidence does not. A small model invents such details; the checks above only
+    caught forbidden forms, not invented facts.
 A rejected answer makes the advisor fall back to its template text.
 """
 import re
 from dataclasses import dataclass, field
+
+from detectors.sms.brands import BRANDS
 
 # Text the explanation may mention. "bank.in" and "gov.in" cover phrases such as
 # "genuine bank links end in .bank.in"; they are domain endings, not sites.
@@ -46,12 +52,46 @@ _GLOSSARY = [  # Title-case only, so ordinary phrases such as "you know your ban
 ]
 
 
+# Organisations Llama might name besides the brand list's (detectors/sms/brands.py).
+_EXTRA_ORGS = [("NPCI", r"\bnpci\b"), ("CERT-In", r"\bcert-?in\b"), ("SEBI", r"\bsebi\b"), ("IRCTC", r"\birctc\b"),
+               ("LIC", r"\blic\b"), ("WhatsApp", r"\bwhats\s?app\b"), ("Telegram", r"\btelegram\b"),
+               ("Google", r"\bgoogle\b"), ("Facebook", r"\bfacebook\b"), ("Instagram", r"\binstagram\b"),
+               ("Microsoft", r"\bmicrosoft\b"), ("Apple", r"\bapple\b"), ("Netflix", r"\bnetflix\b"),
+               ("Swiggy", r"\bswiggy\b"), ("Zomato", r"\bzomato\b"), ("the ED", r"\benforcement directorate\b"),
+               ("the NCB", r"\bncb\b"), ("Interpol", r"\binterpol\b"), ("the FBI", r"\bfbi\b"),
+               ("a court", r"\b(?:supreme|high) court\b")]
+ORGANISATIONS = [(name, rx) for name, _, rx in BRANDS] + [(n, re.compile(rx, re.I)) for n, rx in _EXTRA_ORGS]
+_NUMBER_RE = re.compile(r"\d+")
+_ABSOLUTE_RE = re.compile(r"\b(never|always)\b", re.I)
+_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
+
+
+def ungrounded(sentence, evidence, language="en"):
+    """Why a sentence says more than the evidence Llama was given, or None. Numbers (1930, the
+    national helpline, is always allowed), organisations, and in English "never" and "always"."""
+    sent, ev = sentence.translate(_DIGITS), (evidence or "").translate(_DIGITS)
+    known = set(_NUMBER_RE.findall(ev)) | ALLOWED_NUMBERS
+    extra = [n for n in _NUMBER_RE.findall(sent) if n not in known]
+    if extra:
+        return f"a number the evidence does not have ({extra[0]})"
+    for name, rx in ORGANISATIONS:
+        if rx.search(sent) and not rx.search(ev):
+            return f"names {name}, which the evidence does not"
+    if language == "en":
+        for word in {w.lower() for w in _ABSOLUTE_RE.findall(sent)}:
+            if not re.search(rf"\b{word}\b", ev, re.I):
+                return f'says "{word}", which the evidence does not'
+    return None
+
+
 @dataclass
 class Checked:
     what: str = ""          # sentence 1: who it pretends to be and what the scammer wants
     why: str = ""           # sentence 2: the warning signs
     flags: list = field(default_factory=list)
     ok: bool = False
+    # Every complete sentence Llama wrote: (sentence, shown to the user, why not). For grading.
+    sentences: list = field(default_factory=list)
 
 
 def scrub(text, flags):
@@ -97,7 +137,8 @@ def _glossary(sentence):
     return sentence
 
 
-def check_explanation(raw, verdict, language="en"):
+def check_explanation(raw, verdict, language="en", evidence=None):
+    """evidence: the case Llama was shown (prompt.case_text); None skips the grounding checks."""
     c = Checked()
     text = _SPECIAL_RE.split(raw or "", 1)[0]         # stop at the first chat-template token
     text = _PREAMBLE_RE.sub("", " ".join(text.split()))
@@ -119,21 +160,32 @@ def check_explanation(raw, verdict, language="en"):
         c.flags.append(f"kept the first {MAX_SENTENCES} of {len(complete)} sentences")
 
     kept = []
-    for s in complete[:MAX_SENTENCES]:
+    c.sentences = [[s, False, "more than 2 sentences"] for s in complete]
+    for i, raw_s in enumerate(complete[:MAX_SENTENCES]):
         before = len(c.flags)
-        s = scrub(s, c.flags)
+        s = scrub(raw_s, c.flags)
         if len(c.flags) > before:
             # "Call [number removed]" still reads like an instruction: drop the sentence.
             c.flags.append("dropped a sentence that contained a number or link")
             kept.append("")
+            c.sentences[i][2] = "a phone number or link"
+            continue
+        why_not = ungrounded(s, evidence, language) if evidence is not None else None
+        if why_not:
+            c.flags.append(f"dropped a sentence: {why_not}")
+            kept.append("")
+            c.sentences[i][2] = why_not
             continue
         fixed = _glossary(_dehedge(s) if verdict == "dangerous" else s)
         if fixed != s:
             c.flags.append("fixed wording (hedge or KYC expansion)")
         kept.append(fixed[:1].upper() + fixed[1:])
+        c.sentences[i][1:] = [True, ""]
 
     limit = MAX_WORDS.get(language, MAX_WORDS["en"])
     while kept and sum(len(s.split()) for s in kept) > limit:
+        if kept[-1]:
+            c.sentences[len(kept) - 1][1:] = [False, f"answer longer than {limit} words"]
         kept.pop()                                     # drop sentence 2 first
         c.flags.append(f"answer longer than {limit} words; shortened")
     c.what = kept[0] if kept else ""

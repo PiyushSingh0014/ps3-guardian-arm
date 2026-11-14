@@ -13,11 +13,12 @@ by code, never by the LLM; the emergency step (call 1930) is always included.
 Network alerts (source "net") get a prompt of their own (advisor/prompt.py); the app
 explains them in the background, newest first (NetExplanations in app/server.py).
 """
+import os
 from dataclasses import dataclass, field, asdict
 
 from .backends import TemplateBackend
 from .playbooks import load_playbooks, get_playbook
-from .prompt import build_prompt, max_new_tokens
+from .prompt import build_prompt, case_text, max_new_tokens
 from .validator import check_explanation
 
 MAX_STEPS = 3
@@ -109,7 +110,9 @@ class Advisor:
             base.flags.append(res.error or "no LLM output")
             return base
 
-        checked = check_explanation(res.text, finding.verdict, finding.language)
+        # Grounding: Llama's sentences may not say more than the case it was shown (GUARDIAN_GROUNDING=0: off).
+        evidence = None if os.environ.get("GUARDIAN_GROUNDING") == "0" else case_text(finding, book)
+        checked = check_explanation(res.text, finding.verdict, finding.language, evidence=evidence)
         if not checked.ok:
             base.flags += checked.flags
             return base
