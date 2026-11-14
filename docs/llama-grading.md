@@ -77,7 +77,15 @@ On the Pi, from `~/ps3-guardian` with `source ~/ps3-venv/bin/activate`, while th
    python -m advisor.grade label --grader piyush --recheck ravi
    ```
 
-   Keep your grade where you think it is right. The first pass stays in `firstpass_piyush.json`. With no second person, an AI pre-check of the first run (Claude's grades, `grades_ai-precheck.json`, not in the repo) can be the other grader; say so when you report the numbers.
+   Keep your grade where you think it is right. With no second person, an AI pre-check of the first run (Claude's grades, `grades_ai-precheck.json`, not in the repo) can be the other grader; say so when you report the numbers.
+
+   Llama often writes the same sentence word for word for one scam type ("This message pretends to be from a trusted source to rush you…"). It should get the same grade each time unless its case makes a difference. To grade again each one you graded in more than one way, each under its own case:
+
+   ```bash
+   python -m advisor.grade label --grader piyush --same
+   ```
+
+   Both keep your first pass, once, in `firstpass_piyush.json`.
 
 3. **Report**:
 
@@ -85,7 +93,7 @@ On the Pi, from `~/ps3-guardian` with `source ~/ps3-venv/bin/activate`, while th
    python -m advisor.grade report
    ```
 
-   For each grader: the share of sentences supported, not supported and wrong, for everything Llama wrote (and first and second sentences apart), for what users saw before update 38, for what they see now (network alerts and messages apart), and for the sentences the checks drop. "Now" re-runs today's checks on the saved answers, so a change to the checks is measured on sentences already graded. Then how many sentences Llama wrote word for word for the same scam type the grader graded in more than one way (`--same` lists them), and, for every two graders, how often they agree (Cohen's kappa). `--wrong` also lists the sentences graded w, and whether users see them. Paste it into the chat for the results.
+   For each grader: the share of sentences supported, not supported and wrong, for everything Llama wrote (and first and second sentences apart), for what users saw before update 38, for what they see now (network alerts and messages apart), and for the sentences the checks drop. "Now" re-runs today's checks on the saved answers, so a change to the checks is measured on sentences already graded. Then how many sentences Llama wrote word for word for the same scam type the grader graded in more than one way (`--same` lists them), and, for every two graders, how often they agree (Cohen's kappa). A grader's first pass is shown too: how many grades the second look changed, and how the first pass agreed with the other graders. `--wrong` also lists the sentences graded w, and whether users see them. Paste it into the chat for the results.
 
 ## Limits
 

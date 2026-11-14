@@ -270,3 +270,23 @@ def test_report_compares_every_pair_and_finds_one_sentence_graded_two_ways(tmp_p
     assert text.count("Same sentence and scam type graded differently: 0") == 2
     assert "asha: the same sentence, for the same scam type, graded differently (1):" in text
     assert "- bank_kyc_scam (s 1, w 1): This message pretends to be from SBI to steal your login." in text
+
+
+def test_a_consistency_pass_and_the_first_pass_in_the_report(tmp_path):
+    grade.generate(findings(), Advisor(backend=Llama(TWO)), str(tmp_path), say=lambda _: None)
+    ids = [a["id"] for a in grade.read_answers(str(tmp_path))]
+    (tmp_path / "grades_asha.json").write_text(json.dumps({ids[0]: {"0": "s", "1": "w"}, ids[1]: {"0": "w", "1": "w"}}))
+    (tmp_path / "grades_ravi.json").write_text(json.dumps({ids[0]: {"0": "s", "1": "w"}, ids[1]: {"0": "s", "1": "n"}}))
+    said, keys = [], iter(["s", "s"])                # the same first sentence, graded s and w: both shown
+    assert grade.label(str(tmp_path), "asha", ask=lambda _: next(keys), say=said.append, same=True) == 0
+    assert said[0].startswith("1 sentences you graded in more than one way, 2 times in all")
+    assert json.loads((tmp_path / "grades_asha.json").read_text())[ids[1]] == {"0": "s", "1": "w"}
+    said = []
+    assert grade.label(str(tmp_path), "asha", say=said.append, same=True) == 0
+    assert said == ["asha grades every repeated sentence one way."]
+    out = []
+    assert grade.report(str(tmp_path), say=out.append) == 0
+    text = "\n".join(out)
+    assert "asha's first pass is kept: the second look changed 1 of its 4 grades." in text
+    assert "asha's first pass and ravi: they agree on 50%, Cohen's kappa 0.27" in text
+    assert "asha and ravi graded 4 sentences both: they agree on 75%" in text

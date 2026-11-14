@@ -17,7 +17,9 @@ label: shows each sentence Llama wrote beside its case, without saying whether t
 it:  s = supported by the case,  n = not supported (the case does not say it, true or not),
 w = wrong (it contradicts the case, or it is false). Enter skips, b goes back, q stops. Saved at once.
 --recheck OTHER shows only the sentences this grader and OTHER graded differently, without either
-grade, for a second look (slips happen in an hour of grading); the first pass is kept.
+grade, for a second look (slips happen in an hour of grading); --same shows again each sentence the
+grader graded in more than one way (the same words, the same scam type). The first pass is kept, and
+the report shows how it agreed with the other graders.
 report: per grader, the share of sentences supported, not supported and wrong, for everything Llama
 wrote, for what users saw before update 38 and for what they see now; with two graders, how often
 they agree (Cohen's kappa). "Now" re-runs today's checks on the saved answers, so a change to the
@@ -154,20 +156,39 @@ def save(path, data):
     os.replace(tmp, path)
 
 
-def label(folder, grader, again=False, ask=input, say=print, recheck=None):
+def keep_first_pass(folder, grader, grades):
+    """Before a second look changes anything: the grader's first pass, once, in firstpass_NAME.json."""
+    first = os.path.join(folder, f"firstpass_{_name(grader)}.json")
+    if grades and not os.path.exists(first):
+        save(first, grades)
+    return first
+
+
+def label(folder, grader, again=False, ask=input, say=print, recheck=None, same=False):
     """recheck: another grader's name. Only the sentences the two graded differently are shown, without
-    either grade, for a second look; the first pass is kept once in firstpass_NAME.json."""
+    either grade, for a second look. same: every sentence Llama wrote word for word for the same scam
+    type that this grader graded in more than one way, each under its own case. Both keep the first
+    pass once in firstpass_NAME.json."""
     answers, path = read_answers(folder), grades_path(folder, grader)
     grades = load(path)
-    if recheck:
+    if same:
+        odd = [key for key, _ in differently_graded(answers, grades)]
+        items = [(a, i) for key in odd for a in answers for i, s in enumerate(a["sentences"])
+                 if (a["category"], s) == key and str(i) in grades.get(a["id"], {})]
+        if not items:
+            say(f"{grader} grades every repeated sentence one way.")
+            return 0
+        first = keep_first_pass(folder, grader, grades)
+        say(f"{len(odd)} sentences you graded in more than one way, {len(items)} times in all. Each is shown under "
+            f"its own case: give it the same grade unless its case makes a difference. (Your first pass is kept in "
+            f"{first}.)")
+    elif recheck:
         other = load(grades_path(folder, recheck))
         for name, marks in ((recheck, other), (grader, grades)):
             if not marks:
                 say(f"No grades from {name} in {folder}.")
                 return 1
-        first = os.path.join(folder, f"firstpass_{_name(grader)}.json")
-        if grades and not os.path.exists(first):
-            save(first, grades)
+        first = keep_first_pass(folder, grader, grades)
         items = [(a, i) for a in answers for i in range(len(a["sentences"]))
                  if other.get(a["id"], {}).get(str(i)) not in (None, grades.get(a["id"], {}).get(str(i)))
                  and str(i) in grades.get(a["id"], {})]
@@ -314,6 +335,19 @@ def report(folder, say=print, wrong=False, same=False):
         if k:
             say(f"\n{n1} and {n2} graded {len(pairs)} sentences both: they agree on {k[0]:.0%}, "
                 f"Cohen's kappa {k[1]:.2f}")
+    for fname in sorted(f for f in os.listdir(folder) if f.startswith("firstpass_") and f.endswith(".json")):
+        name, first = fname[len("firstpass_"):-len(".json")], load(os.path.join(folder, fname))
+        final = all_grades.get(name, {})
+        changed = sum(1 for a in first for i in first[a] if final.get(a, {}).get(i) not in (None, first[a][i]))
+        say(f"\n{name}'s first pass is kept: the second look changed {changed} of its "
+            f"{sum(len(v) for v in first.values())} grades.")
+        for other in names:
+            if other != name:
+                pairs = [(first[a][i], all_grades[other][a][i]) for a in first for i in first[a]
+                         if i in all_grades[other].get(a, {})]
+                k = kappa(pairs)
+                if k:
+                    say(f"{name}'s first pass and {other}: they agree on {k[0]:.0%}, Cohen's kappa {k[1]:.2f}")
     if same:
         for name in names:
             odd = differently_graded(answers, all_grades[name])
@@ -342,6 +376,8 @@ def main(argv=None):
     lb = sub.add_parser("label")
     lb.add_argument("--grader", required=True, help="your name: each grader gets a file of their own")
     lb.add_argument("--again", action="store_true", help="also show sentences graded before")
+    lb.add_argument("--same", action="store_true", help="grade again each sentence you graded in more than one "
+                    "way (the same words, the same scam type)")
     lb.add_argument("--recheck", metavar="OTHER", help="a second look at the sentences you and OTHER graded differently (neither grade shown)")
     rp = sub.add_parser("report")
     rp.add_argument("--wrong", action="store_true", help="also list the sentences graded w")
@@ -363,7 +399,7 @@ def main(argv=None):
             findings += list(india_findings(os.path.expanduser(a.india), SmsDetector()))
         return generate(findings, advisor, a.folder, a.max)
     if a.cmd == "label":
-        return label(a.folder, a.grader, a.again, recheck=a.recheck)
+        return label(a.folder, a.grader, a.again, recheck=a.recheck, same=a.same)
     return report(a.folder, wrong=a.wrong, same=a.same)
 
 
