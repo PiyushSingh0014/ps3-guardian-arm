@@ -216,3 +216,43 @@ On the public held-out messages (130 fraud, 130 marketing, 1,498 normal), both f
 - Because these choices were made after looking at the India set, the clean tests of v2 are the team's messages: 30% held out, and each phone held out in turn.
 
 **Next:** label the three phones' messages on the Pi, run `train_v2.py`, and use v2 only if it passes the rule fixed in advance ([docs/sms-model-v2.md](../docs/sms-model-v2.md), step 5).
+
+## Real traffic and SMS model v2: first run
+
+14 November 2026, on the Pi, with update 33. The log held 2,674 messages from the phones. 2,191 had no text: safe SMS from phone numbers and safe chats, whose text the Pi does not keep. 121 messages were labelled, from phones B (27) and C (94); the first phone's were not labelled yet.
+
+**v1 as the app decided** (`sms_traffic.py measure`), labelled messages only:
+
+| Flagged | SMS: messages | text only | with the sender | Chats: messages | flagged |
+| --- | --- | --- | --- | --- | --- |
+| Fraud | 11 | 10 | 5 | 13 | 13 |
+| Marketing | 52 | 49 | 12 (23%) | 5 | 5 |
+| Normal | 22 | 18 | 7 (32%) | 18 | 18 |
+
+**v1 against v2** (`train_v2.py`, 91 different labelled messages: 19 fraud, 49 marketing, 23 normal), flagged as the app decides:
+
+| Test | Messages | Fraud v1 / v2 | Marketing v1 / v2 | Normal v1 / v2 |
+| --- | --- | --- | --- | --- |
+| India set | 227 | 96% / 96% | 60% / 56% | 63% / 63% |
+| Team, 30% held out | 28 | 83% / 83% | 20% / 7% | 57% / 57% |
+| Phone B held out | 19 | 4 of 4 / 3 of 4 | 2 of 5 / 1 of 5 | 4 of 10 / 4 of 10 |
+| Phone C held out | 72 | 9 of 15 / 9 of 15 | 9 of 44 / 2 of 44 | 7 of 13 / 8 of 13 |
+| Public, held out | 1,758 | 100% / 100% | 88% / 91% | 1% / 2% |
+
+Training and testing took 54 s on the Pi.
+
+**Under the rule fixed in advance, v2 did not pass:** on phone B it missed one of 4 scams that v1 caught. The app keeps v1. But the run showed three problems that make these numbers unreliable:
+
+1. **Labels:** five SMS labelled fraud came from registered sender IDs and read like ordinary messages: an SBI points offer from `VK-SBIBNK-P`, a SafeGold OTP from a `-T` ID, a JioHotstar notice from a `-S` ID, a fantasy-league offer and a Jio reminder in Hindi. They are five of the six SMS "scams" that v1 let through. Three more messages were labelled two ways on different phones.
+2. **Which texts the log keeps:** the text of an SMS from a phone number, or of a chat, is kept only when v1 flagged it. So every labelled chat was flagged (100% in the table), every scam from a phone number was caught by v1 by construction, and v2 could only do worse on them. False alarms that v2 would add there are not seen either. The phone-B miss may be one of these.
+3. **Little data:** 91 different team messages, 23 of them normal, against 5,857 public ones. Of the 40 normal labels, 18 are chats from saved contacts, which reach the Pi only while a phone's testing switch is on. v2 learned too little to change much: it cut marketing flagged from registered IDs (phone C: 9 of 44 to 2 of 44), but not normal messages.
+
+**What changed for the second run (update 34):**
+
+- **Labelling is blind:** the app's verdict is no longer shown, and the screen explains each label. An OTP you did not ask for is normal: the message is real.
+- **`review`** asks again, blind, about fraud labels from registered sender IDs and messages labelled two ways.
+- **`measure`** counts every message received by kind of sender, labelled or not, and gives normal messages flagged per 100 received.
+- **`train_v2.py`** splits the team's tables into SMS from sender IDs (every text kept: a fair test) and phone numbers and chats (kept only when v1 flagged them), and prints the rule's verdict.
+- **The rule** now compares scams on the phones only where every text is kept. This was changed after seeing the first run, for the reason in point 2, and before the second run. Under the first rule, this run failed.
+
+**Next:** review, label the first phone's messages, then `measure` and `train_v2.py` again.

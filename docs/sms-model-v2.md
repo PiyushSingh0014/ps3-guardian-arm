@@ -48,7 +48,7 @@ These choices were made after looking at the India set, so it is no longer an un
 
 ## On the Pi
 
-**1. Apply the update** (as usual). Laptop, PowerShell:
+**1. Apply the update** (update 33 brought these tools; later updates the same way). Laptop, PowerShell:
 
 ```powershell
 scp $HOME\Downloads\ps3-guardian-update33.bundle arrehinus@10.42.0.1:~/
@@ -71,17 +71,35 @@ pip install openpyxl          # reads the India set (.xlsx); nothing happens if 
 python scripts/sms_traffic.py label --device B
 ```
 
-- For each message: `f` fraud, `m` genuine marketing, `n` normal, Enter if you are not sure (skipped), `u` to undo the last one, `q` to stop.
+Judge the message itself. The app's verdict is not shown (since update 34), so it cannot sway the label:
+
+| Key | Label | What it means |
+| --- | --- | --- |
+| `f` | fraud | It tries to trick you: a fake bank, KYC, parcel, prize, refund, job or loan message, a link or number to a fake site or person, or it asks for money, an OTP, a PIN or your details. |
+| `m` | marketing | A real business advertising: offers, sales, plans, cashback, even your own bank's. |
+| `n` | normal | Anything else that is real: OTPs, bank alerts, bills, bookings, deliveries, chats. An OTP you did not ask for is still `n`: the message is real, though someone may be trying your number. |
+
+- Enter if you are not sure (skipped), `u` to undo the last answer, `q` to stop.
 - The same message from the same sender (digits aside, for example every OTP from one bank) is asked once and labelled for all its copies.
-- Labels are saved at once in `data/sms/labels.json`. Run the command again to carry on where you stopped.
-- The phone name is the one typed in the app, and capitals count. A wrong name prints the names in the log.
-- Then `--device C`, and the first phone (its name, for example `A`).
+- Labels are saved at once in `data/sms/labels.json`. Run the command again to carry on where you stopped. The first line shows how many messages are left on each phone.
+- The phone name is the one typed in the app, and capitals count. A wrong name prints the names in the log; `-` is a phone without a name.
+- Then `--device C`, and the first phone.
+
+**2b. Look again at likely mistakes:**
+
+```bash
+python scripts/sms_traffic.py review
+```
+
+It asks again, without the verdict, about two kinds of label: the same message labelled two ways (on one phone or on two), and fraud from a registered sender ID such as `VK-SBIBNK-P`, which belongs to a real business. Answer `f`, `m` or `n`; Enter keeps the label.
 
 **3. Measure v1 on the real traffic** (what the app decided when the messages came in):
 
 ```bash
 python scripts/sms_traffic.py measure
 ```
+
+The first table counts every message received by kind of sender, labelled or not, and gives the normal messages flagged per 100 messages received. The log keeps the text of an SMS from a registered sender ID always, but from a phone number or a chat only when the app flagged it. So for those, missed scams cannot be counted, and the tables by label show only their flagged messages.
 
 **4. Compare v1 and v2:**
 
@@ -102,14 +120,21 @@ It prints the data it used, then the share of each class flagged by three models
 | Public messages held out | the public data; v2 must not get worse here |
 | Phone B, Phone C, … | each phone held out in turn: v2 learns from the other phones only, as for a new user's phone |
 
+The team's tables have two parts:
+
+- **SMS from sender IDs (every text is kept):** a fair comparison of v1 and v2.
+- **Phone numbers and chats (kept only when v1 flagged them):** v1 caught every scam here by construction, and false alarms that v2 would add are not seen. Shown, but not used for the decision.
+
 It takes a minute or two on the Pi. Paste the whole output into the chat.
 
-**5. Decide.** The rule, set before seeing the results. Use v2 only if, as the app decides:
+**5. Decide.** The last lines of the output apply the rule and say whether v2 passes. Use v2 only if, as the app decides:
 
 - on the India set, it catches at least as many of the 100 scams as v1, give or take 2;
-- on each phone held out in turn, it flags fewer normal and marketing messages than v1, and misses no more of that phone's scams.
+- on the SMS from sender IDs of each phone held out in turn, it flags no more normal and marketing messages than v1 on any phone and fewer in all, and misses no more scams.
 
 Otherwise the app keeps v1, and v2's numbers go in the report anyway.
+
+The first version of this rule (update 33) also compared scams from phone numbers and chats. The first run showed why that was unfair: the log keeps those texts only when v1 flagged them, so v1 cannot miss one there, and v2 can only do worse. The rule was corrected in update 34, before the second run ([eval/results_sms.md](../eval/results_sms.md#real-traffic-and-sms-model-v2-first-run)).
 
 **6. If v2 passes, save it and restart:**
 
@@ -136,4 +161,5 @@ curl -s http://localhost:8000/health
 - **Few team scams:** most of the team's messages are genuine. The India set's 100 scams remain the main test of catching fraud.
 - **No ordinary personal SMS from the team:** the Pi does not keep the text of safe messages from phone numbers. The public data covers personal chat.
 - **Masked digits:** a `#` cannot tell a toll-free `1800` from any other number.
-- **Labels by one person per phone,** without a second opinion.
+- **Labels by one person per phone,** with only a second look (`review`), not a second person.
+- **Chats from saved contacts** reach the Pi only while a phone has the testing switch on (Part F of the companion guide). Their false alarms are real, but in normal use those chats are not checked.
