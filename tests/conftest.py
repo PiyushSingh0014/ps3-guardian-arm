@@ -3,6 +3,7 @@
     the same on every machine; only tests may use it (GUARDIAN_ALLOW_SAMPLE_MODEL). These settings are
     made when this file loads, before any test module is imported: some build a detector at import;
   - every request carries a test pairing token (tests/auth.py), and every phone is a study phone;
+  - no sender rule is switched on (tests that need one pass rules= themselves), whatever the Pi has;
   - no test writes the Pi's real watch list of scam links, its log of lab tests, its log of checked
     files or its list of study phones."""
 import json
@@ -19,7 +20,7 @@ STUDY = os.path.join(tempfile.mkdtemp(prefix="ps3-test-study-"), "study.json")
 with open(STUDY, "w", encoding="utf-8") as f:
     json.dump({"phones": ["*"]}, f)
 os.environ.update(GUARDIAN_SMS_MODEL=SAMPLE_MODEL, GUARDIAN_ALLOW_SAMPLE_MODEL="1", GUARDIAN_TOKEN=TOKEN,
-                  GUARDIAN_STUDY=STUDY)
+                  GUARDIAN_STUDY=STUDY, GUARDIAN_SENDER_RULES=os.path.join(os.path.dirname(STUDY), "no_rules.json"))
 os.environ.pop("GUARDIAN_DEVICE_TOKEN", None)
 
 

@@ -51,6 +51,32 @@ _BRANDS = [
 ]
 BRANDS = [(name, kind, re.compile(rx, re.I)) for name, kind, rx in _BRANDS]
 
+# The roots found in each brand's registered sender IDs (the six characters in JD-SBIBNK-S), as
+# far as the team knows them. A brand without roots is never checked against its sender ID.
+# TRAI's full header list (Header Information Portal) would replace this guess.
+HEADER_ROOTS = {
+    "SBI": ("SBI",), "HDFC Bank": ("HDFC",), "ICICI Bank": ("ICICI",), "Axis Bank": ("AXIS",),
+    "Kotak Mahindra Bank": ("KOTAK",), "Punjab National Bank": ("PNB",), "Bank of Baroda": ("BOB", "BARODA"),
+    "Canara Bank": ("CANBNK", "CANARA"), "Yes Bank": ("YESB",), "IndusInd Bank": ("INDUS",),
+    "IDFC FIRST Bank": ("IDFC",), "the Reserve Bank of India": ("RBI",), "Paytm": ("PAYTM", "PYTM"),
+    "PhonePe": ("PHONPE", "PHNPE"), "Google Pay": ("GPAY", "GOOGLE"), "India Post": ("INDPST", "INPOST", "IPOST"),
+    "Amazon": ("AMAZON", "AMZN"), "Flipkart": ("FLPKRT", "FKRT", "FLIPKT"), "Jio": ("JIO",),
+    "Airtel": ("AIRTEL", "ARTL"), "BSNL": ("BSNL",), "TRAI": ("TRAI",), "UIDAI (Aadhaar)": ("UIDAI", "AADHAR"),
+    "EPFO": ("EPFO",),
+}
+
+
+def brands_named(text):
+    """Every (name, kind) from the list that the message names."""
+    return [(name, kind) for name, kind, rx in BRANDS if rx.search(text or "")]
+
+
+def header_belongs(root, names):
+    """True if the six-character root of a sender ID contains a known root of one of the brands."""
+    root = (root or "").upper()
+    return any(r in root for name in names for r in HEADER_ROOTS.get(name, ()))
+
+
 # For each scam type, which kinds of organisation the scammer usually pretends to be.
 _PREFERRED = {
     "bank_kyc_scam": ("bank", "regulator", "payment app"),
