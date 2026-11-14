@@ -17,7 +17,9 @@ it:  s = supported by the case,  n = not supported (the case does not say it, tr
 w = wrong (it contradicts the case, or it is false). Enter skips, b goes back, q stops. Saved at once.
 report: per grader, the share of sentences supported, not supported and wrong, for everything Llama
 wrote, for what users saw before update 38 and for what they see now; with two graders, how often
-they agree (Cohen's kappa).
+they agree (Cohen's kappa). "Now" re-runs today's checks on the saved answers, so a change to the
+checks is measured on sentences already graded. --wrong lists the sentences graded w (they come
+from the India set and the fixed network samples, not from the team's messages).
 """
 import argparse
 import hashlib
@@ -73,12 +75,30 @@ def different_cases(findings, advisor, limit):
     return out
 
 
-def generate(findings, advisor, folder=FOLDER, limit=100, say=print):
+def wait_for_llama(backend, say=print, wait_s=180, step_s=5, sleep=time.sleep):
+    """True once the Llama service answers /health. After `systemctl restart ps3-guardian` it loads
+    for about a minute; backends without a health check (tests, llama_main) count as ready."""
+    health = getattr(backend, "health", None)
+    if health is None:
+        return True
+    for k in range(int(wait_s // step_s) + 1):
+        if health().get("ok"):
+            return True
+        if k == 0:
+            say(f"Waiting for the Llama service (it loads for about a minute after a restart), up to {wait_s} s ...")
+        sleep(step_s)
+    say("The Llama service did not answer: is it running? curl -s http://127.0.0.1:8765/health")
+    return False
+
+
+def generate(findings, advisor, folder=FOLDER, limit=100, say=print, wait_s=180):
     os.makedirs(folder, exist_ok=True)
     done = {a["id"] for a in read_answers(folder)}
     cases = different_cases(findings, advisor, limit)
     todo = [c for c in cases if c[0] not in done]
     say(f"{len(cases)} different cases ({len(cases) - len(todo)} answered before): asking Llama for {len(todo)}.")
+    if todo and not wait_for_llama(advisor.backend, say, wait_s):
+        return 1
     failures = 0
     with open(os.path.join(folder, "answers.jsonl"), "a", encoding="utf-8") as out:
         for i, (cid, f, book, case) in enumerate(todo, 1):
@@ -190,33 +210,54 @@ def kappa(pairs):
     return agree, (agree - chance) / (1 - chance) if chance < 1 else 1.0
 
 
-def report(folder, say=print):
+def recheck(a):
+    """Today's checks re-run on a saved answer: (shown, why not, rejected whole). The saved result
+    is kept if the answer no longer splits into the same sentences."""
+    c = check_explanation(a["answer"], a["verdict"], a["language"], evidence=a["case"])
+    if [s for s, _, _ in c.sentences] != a["sentences"]:
+        return a["shown_now"], a["dropped_now"], a["rejected_now"]
+    return [k for _, k, _ in c.sentences], [w for _, _, w in c.sentences], not c.ok
+
+
+SUBSETS = [("everything Llama wrote", lambda a, i: True),
+           ("  first sentences", lambda a, i: i == 0),
+           ("  second sentences", lambda a, i: i == 1),
+           ("shown before update 38", lambda a, i: a["shown_before"][i]),
+           ("shown now", lambda a, i: a["now"][i]),
+           ("  network alerts", lambda a, i: a["now"][i] and a["source"] == "net"),
+           ("  messages", lambda a, i: a["now"][i] and a["source"] != "net"),
+           ("dropped by the checks", lambda a, i: a["shown_before"][i] and not a["now"][i])]
+
+
+def report(folder, say=print, wrong=False):
     answers = read_answers(folder)
     files = sorted(f for f in os.listdir(folder) if f.startswith("grades_") and f.endswith(".json")) \
         if os.path.isdir(folder) else []
     if not answers or not files:
         say("Nothing to report yet: generate, then label (python -m advisor.grade --help).")
         return 1
+    for a in answers:
+        a["now"], a["why_not"], a["rejected"] = recheck(a)
     n_sent = sum(len(a["sentences"]) for a in answers)
     by = Counter(a["source"] for a in answers)
     say(f"{len(answers)} answers ({', '.join(f'{k} {v}' for k, v in sorted(by.items()))}), {n_sent} sentences; "
         f"answers rejected whole (template shown): before {sum(a['rejected_before'] for a in answers)}, "
-        f"now {sum(a['rejected_now'] for a in answers)}")
+        f"now {sum(a['rejected'] for a in answers)}")
     dropped = Counter(re.sub(r" \(.*\)$", "", w) for a in answers for w, b, s in
-                      zip(a["dropped_now"], a["shown_before"], a["shown_now"]) if b and not s)
+                      zip(a["why_not"], a["shown_before"], a["now"]) if b and not s)
     if dropped:
-        say("Sentences the grounding checks now drop: " + ", ".join(f"{k} {v}" for k, v in dropped.most_common()))
+        say("Sentences today's checks drop: " + ", ".join(f"{k} {v}" for k, v in dropped.most_common()))
+    moved = sum(x != y for a in answers for x, y in zip(a["shown_now"], a["now"]))
+    if moved:
+        say(f"({moved} sentences are shown or dropped differently from when the answers were saved: "
+            "the checks have changed since)")
     all_grades = {}
     for fname in files:
         grader = fname[len("grades_"):-len(".json")]
         g = all_grades[grader] = load(os.path.join(folder, fname))
-        subsets = {"everything Llama wrote": lambda a, i: True,
-                   "shown before update 38": lambda a, i: a["shown_before"][i],
-                   "shown now": lambda a, i: a["shown_now"][i],
-                   "dropped by the new checks": lambda a, i: a["shown_before"][i] and not a["shown_now"][i]}
         say(f"\nGrader {grader}: {sum(len(v) for v in g.values())} of {n_sent} sentences graded")
         say(f"{'':28s} {'sentences':>9s} {'supported':>11s} {'not supported':>13s} {'wrong':>11s}")
-        for name, keep in subsets.items():
+        for name, keep in SUBSETS:
             labels = [g[a["id"]][str(i)] for a in answers for i in range(len(a["sentences"]))
                       if str(i) in g.get(a["id"], {}) and keep(a, i)]
             n, cells = _shares(labels)
@@ -229,6 +270,15 @@ def report(folder, say=print):
         if k:
             say(f"\n{names[0]} and {names[1]} graded {len(pairs)} sentences both: they agree on {k[0]:.0%}, "
                 f"Cohen's kappa {k[1]:.2f}")
+    if wrong:
+        say("\nSentences graded wrong (w):")
+        for a in answers:
+            for i, s in enumerate(a["sentences"]):
+                marks = {name: g.get(a["id"], {}).get(str(i)) for name, g in sorted(all_grades.items())}
+                if "w" in marks.values():
+                    status = "users see it" if a["now"][i] else f"dropped: {a['why_not'][i]}"
+                    who = ", ".join(f"{name} {m}" for name, m in marks.items() if m)
+                    say(f"- {a['category']} ({who}; {status}): {s}")
     return 0
 
 
@@ -243,6 +293,7 @@ def main(argv=None):
     lb.add_argument("--grader", required=True, help="your name: each grader gets a file of their own")
     lb.add_argument("--again", action="store_true", help="also show sentences graded before")
     rp = sub.add_parser("report")
+    rp.add_argument("--wrong", action="store_true", help="also list the sentences graded w")
     for p in (g, lb, rp):
         p.add_argument("--folder", default=FOLDER)
     a = ap.parse_args(argv)
@@ -261,7 +312,7 @@ def main(argv=None):
         return generate(findings, advisor, a.folder, a.max)
     if a.cmd == "label":
         return label(a.folder, a.grader, a.again)
-    return report(a.folder)
+    return report(a.folder, wrong=a.wrong)
 
 
 if __name__ == "__main__":
