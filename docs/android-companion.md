@@ -135,34 +135,24 @@ New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.exampl
      - Phone numbers are not stored, nor the names of chat senders.
      - The text of safe messages from phone numbers (mostly personal chats) is not stored, nor the text of any chat that was judged safe.
    - **OTPs:** on Android 17 and later, OTP messages that carry an app code (the 11-character string at the end) reach the app three hours late. Android protects them, and that is fine for this test.
-2. **Export the log** on the Pi:
+2. **Label it on the Pi.** Each person labels their own phone's messages (the name typed in the app):
 
    ```bash
    cd ~/ps3-guardian && source ~/ps3-venv/bin/activate
-   python scripts/sms_traffic.py export ~/traffic.csv
+   python scripts/sms_traffic.py label --device B
    ```
 
-3. **Label it.** Copy the file to the laptop. In PowerShell:
-
-   ```powershell
-   scp arrehinus@10.140.209.76:~/traffic.csv $HOME\Downloads\
-   ```
-
-   Open it in Excel and fill the `label` column with `smishing`, `spam` or `ham`; leave a row empty if you are unsure. Save it as **CSV UTF-8**.
-   - With several phones, each person labels the rows of their own phone (the `device` column).
-   - A row without text is a safe message from a phone number or a safe chat: if you need to, find it on the phone by its `time`.
-4. **Measure.** Copy it back and run:
-
-   ```powershell
-   scp $HOME\Downloads\traffic.csv arrehinus@10.140.209.76:~/traffic.csv
-   ```
+   `f` fraud, `m` genuine marketing, `n` normal, Enter if unsure, `u` undo, `q` stop. Identical messages are asked once, and labels are saved at once in `data/sms/labels.json`: run it again to carry on. Messages without text (safe messages from phone numbers, safe chats) are not asked.
+   - **Or in Excel:** `python scripts/sms_traffic.py export ~/traffic.csv`, copy it to the laptop (PowerShell: `scp arrehinus@10.42.0.1:~/traffic.csv $HOME\Downloads\`), fill the `label` column with `smishing`, `spam` or `ham`, save as **CSV UTF-8**, copy it back (`scp $HOME\Downloads\traffic.csv arrehinus@10.42.0.1:~/`) and run `python scripts/sms_traffic.py import ~/traffic.csv`: the labels go into `data/sms/labels.json`, which model v2 reads.
+3. **Measure:**
 
    ```bash
-   python scripts/sms_traffic.py measure ~/traffic.csv
+   python scripts/sms_traffic.py measure
    ```
 
    It prints flagged messages per label, text only vs with the sender ID, for all messages and then separately for SMS and chats, and how many came from each phone: the real-traffic numbers that replace the projection in `eval/results_sms.md`.
-5. **Clean up:** after measuring, delete the log on the Pi with `rm ~/ps3-guardian/logs/sms_traffic.jsonl`.
+4. **Train SMS model v2** from the labelled messages: [sms-model-v2.md](sms-model-v2.md).
+5. **Clean up** only after that: the log and the labels are v2's training data. When the project ends, delete `logs/sms_traffic.jsonl`, `data/sms/labels.json` and `detectors/sms/sms_v2.joblib` on the Pi.
 
 ## Part F: chats (RCS and WhatsApp)
 
@@ -188,7 +178,7 @@ More phones give more, and more varied, messages: other banks, operators and app
 3. **Collect:** their messages wait on their phone (up to 500) until it is on the Pi's hotspot, then go to the Pi by themselves.
 4. **Agree first:** the Pi keeps sender IDs, verdicts and the text of flagged messages with digits masked; never phone numbers, chat senders' names or the text of safe personal messages. They can uninstall the app at any time.
 
-When labelling (Part E), each person labels their own phone's rows: they know best whether a message really came from their bank.
+When labelling (Part E), each person labels their own phone's messages (`label --device B`): they know best whether a message really came from their bank.
 
 ## Part H: network alerts from the Pi's Wi-Fi
 

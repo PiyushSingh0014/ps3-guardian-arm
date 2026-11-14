@@ -184,10 +184,35 @@ Five Airtel offers with links on Airtel's own sites turned safe, and four messag
 
 ### Next
 
-1. **Measure on real traffic:** about a week of SMS through the companion, labelled by hand, with `scripts/sms_traffic.py measure`.
-2. **Real Indian normal messages in training.** OTPs, bank alerts and delivery updates from business sender IDs, taken from phones other than the test set's and anonymised. This helps when the sender is unknown.
-3. **Three classes** (fraud, marketing, normal), so the app can show marketing as low-risk.
+1. **Measure on real traffic:** about a week of SMS through the companion, labelled by hand, with `scripts/sms_traffic.py measure`. (Collected from three phones; labelling on the Pi since update 33.)
+2. **Real Indian normal messages in training.** OTPs, bank alerts and delivery updates from business sender IDs, taken from phones other than the test set's and anonymised. This helps when the sender is unknown. (SMS model v2, below.)
+3. **Three classes** (fraud, marketing, normal), so the app can show marketing as low-risk. (SMS model v2, below.)
 
 ```bash
 python detectors/sms/eval_india.py --train merged_sms.csv --test india_sms_collection_v9.xlsx --show 20
 ```
+
+## SMS model v2: before the team's messages
+
+Update 33 (14 November 2026). How v2 works and how to train it: [docs/sms-model-v2.md](../docs/sms-model-v2.md).
+
+v2 has three classes (fraud, marketing, normal) and learns from the team's labelled SMS as well. Only a registered sender ID may send marketing in India, so the app starts from the chance of fraud for a message from a registered ID, and from the chance of fraud or marketing for anyone else, as v1 did.
+
+Measured with `detectors/sms/train_v2.py` before any team message was labelled: the public data, the India test set (copies and near-copies of its messages never train) and the same 70/30 split for every model. "As the app" means with the sender and the links.
+
+| India set, flagged | Messages | v1, text only | v1, as the app | 3 classes, text only | 3 classes, as the app |
+| --- | --- | --- | --- | --- | --- |
+| Fraud | 100 | 95% | 96% | 95% | 96% |
+| Marketing | 52 | 98% | 60% | 98% | 58% |
+| Normal | 75 | 68% | 61% | 71% | 61% |
+
+On the public held-out messages (130 fraud, 130 marketing, 1,498 normal), both flag all the fraud and 1% of normal messages; v1 flags 88% of marketing, three classes 92%.
+
+- **With the public data alone, three classes change almost nothing.** Without a registered sender ID, v2 scores like v1 on purpose. Most genuine messages in the India set have a sender typed by hand, and the public data has none.
+- **v1 here is trained again** on the same public messages as the others, so its numbers differ a little from `eval_india.py`'s (94%, 96% and 64% text only).
+- **Two first ideas were dropped** after these measurements:
+  - Scoring every message by its chance of fraud caught only 71% of the India set's scams (15% of normal messages flagged): many Indian scams read like offers.
+  - Reading every digit as 7, to match the log's `#`, flagged more normal messages (65% as the app): a 6-digit OTP then looks like the premium-rate numbers in the public data's spam.
+- Because these choices were made after looking at the India set, the clean tests of v2 are the team's messages: 30% held out, and each phone held out in turn.
+
+**Next:** label the three phones' messages on the Pi, run `train_v2.py`, and use v2 only if it passes the rule fixed in advance ([docs/sms-model-v2.md](../docs/sms-model-v2.md), step 5).
