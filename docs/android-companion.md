@@ -66,14 +66,16 @@ Don't start `scripts/run_pi.sh` by hand any more: a second copy cannot use port 
    git push origin step3 step3:main
    sudo systemctl restart ps3-guardian
    for i in $(seq 40); do curl -sf http://127.0.0.1:8000/health > /dev/null && break; sleep 5; done
-   grep "pairing token" logs/app.log | tail -n 1
+   hostname -I; cat ~/.ps3_guardian_token
    ```
 
    The loop waits up to about 3 minutes while Llama loads. `--no-edit` stops git from opening an editor for the merge message (your Pi has merge commits of its own). If an editor does open, save and close it: in nano, Ctrl+X, Y, Enter.
 
-3. The last line shows the two values the app needs:
-   - the Pi address, for example `http://10.140.209.76:8000`
-   - the pairing token, 8 characters. It is created once and kept in `~/.ps3_guardian_token`.
+3. The last two lines show the values the app needs:
+   - the Pi address: the first address `hostname -I` prints, as `http://<address>:8000` (on the lab Wi-Fi, `http://10.42.0.1:8000`)
+   - the pairing token, 22 characters, created once and kept in `~/.ps3_guardian_token`. Every request to the Pi needs it, from the phones and from the page in a browser (the page asks for it once). It is never printed in the log.
+
+   **Since update 36** the token is longer: after the first restart with update 36, type the new one into each phone's app (**Save**, then **Test connection**) and once into the page. Until then the phones keep their messages and send them later. The old short token now works only for the ESP32's readings ([esp32-lab-device.md](esp32-lab-device.md)).
 
 ## Part B: build the app (laptop)
 
@@ -131,6 +133,7 @@ New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.exampl
    - **Away from the Pi:** an SMS that arrives while the phone cannot reach the Pi is kept on the phone and shows "WAITING for the Pi". It is sent by itself once the Pi can be reached again: within about 15 minutes, or at once when you open the app. Its line then says "checked later". Up to 500 messages are kept, only in the app's private storage, until the Pi has checked them.
    - **Hotspot:** when you come back, the Pi reconnects to your phone's hotspot by itself, as long as the hotspot is on. If your phone switches the hotspot off when nothing is connected, turn that timeout off in the hotspot settings.
    - **Privacy on the Pi:**
+     - Texts are kept only for **study phones**, listed in `data/sms/study.json`: phones whose owners agreed. Other phones: time, sender kind and verdicts only. The file was created with the phones already in the log; remove a name to stop keeping that phone's texts.
      - Digits are replaced by `#`.
      - Phone numbers are not stored, nor the names of chat senders.
      - The text of safe messages from phone numbers (mostly personal chats) is not stored, nor the text of any chat that was judged safe.
@@ -176,7 +179,7 @@ More phones give more, and more varied, messages: other banks, operators and app
 1. **Install** the app the same way: Part C, over USB from Android Studio, never by sending the APK.
 2. **Set it up** as in Part D, with the **same Pi address and token** and a **different phone name** (for example `B`, `C`). Part F (chats) is up to them.
 3. **Collect:** their messages wait on their phone (up to 500) until it is on the Pi's hotspot, then go to the Pi by themselves.
-4. **Agree first:** the Pi keeps sender IDs, verdicts and the text of flagged messages with digits masked; never phone numbers, chat senders' names or the text of safe personal messages. They can uninstall the app at any time.
+4. **Agree first:** the Pi keeps sender IDs and verdicts. If they also agree to the study, add their phone name to `data/sms/study.json` on the Pi: then it also keeps texts with digits masked (business messages, and flagged personal ones); never phone numbers, chat senders' names or the text of safe personal messages. They can leave the study (remove the name) or uninstall the app at any time.
 
 When labelling (Part E), each person labels their own phone's messages (`label --device B`): they know best whether a message really came from their bank.
 
@@ -216,7 +219,8 @@ The Pi checks files that came in WhatsApp, Messages or an email: what the file r
 | What you see | Fix |
 | --- | --- |
 | "Cannot reach the Pi" | Same hotspot? On the Pi, `curl -s http://127.0.0.1:8000/health` must print `{"ok":true,...}`; if not, `systemctl status ps3-guardian --no-pager` and `tail -n 30 logs/app.log`. The Pi's address is in `hostname -I`. |
-| `HTTP 401` | The token is wrong: `cat ~/.ps3_guardian_token` on the Pi |
+| `HTTP 401` | The token is wrong or old (it changed in update 36): `cat ~/.ps3_guardian_token` on the Pi, type it again, **Save** |
+| `HTTP 429` | Ten wrong tokens in a minute from this phone: wait a minute, then type the right one |
 | `HTTP 503` | The Pi has no token: `sudo systemctl restart ps3-guardian` |
 | "WAITING for the Pi" | Normal while the phone cannot reach the Pi; the message is sent later by itself. Many of them: check the Pi as for "Cannot reach the Pi". |
 | No alert, but the list shows the message | It was judged safe (no alert for safe messages), or notifications are off for the app |

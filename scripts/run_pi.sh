@@ -42,13 +42,22 @@ grep "^\[llm\]" logs/llm_service.log 2>/dev/null || true
 IP="$(hostname -I | awk '{print $1}')"
 echo "App: open http://$IP:8000 on a phone on the same network"
 
-# Pairing token for the Android companion (POST /sms). Created once, kept in a file.
+# Pairing tokens, created once and kept in files (never printed in the log):
+#   ~/.ps3_guardian_token     the phones and the page; every request needs it (128 bits)
+#   ~/.ps3_lab_device_token   lab devices (the ESP32): good only for posting readings (POST /iot)
+# Before update 36 there was one short token for everything. It becomes the lab-device token, so the
+# ESP32 keeps working without a new upload, and the phones get a new, long token.
 TOKEN_FILE="$HOME/.ps3_guardian_token"
-if [ ! -s "$TOKEN_FILE" ]; then
-  python -c 'import secrets; print(secrets.token_hex(4))' > "$TOKEN_FILE"
-  chmod 600 "$TOKEN_FILE"
+DEVICE_TOKEN_FILE="$HOME/.ps3_lab_device_token"
+new_token() { python -c 'import secrets; print(secrets.token_urlsafe(16))' > "$1"; chmod 600 "$1"; }
+if [ -s "$TOKEN_FILE" ] && [ "$(tr -d '[:space:]' < "$TOKEN_FILE" | wc -c)" -lt 20 ] && [ ! -s "$DEVICE_TOKEN_FILE" ]; then
+  mv "$TOKEN_FILE" "$DEVICE_TOKEN_FILE"
+  echo "The old short pairing token is now the lab-device token (ESP32 only); the phones need the new one."
 fi
-export GUARDIAN_TOKEN="${GUARDIAN_TOKEN:-$(cat "$TOKEN_FILE")}"
-echo "Android app: Pi address http://$IP:8000, pairing token $GUARDIAN_TOKEN"
+[ -s "$TOKEN_FILE" ] || new_token "$TOKEN_FILE"
+[ -s "$DEVICE_TOKEN_FILE" ] || new_token "$DEVICE_TOKEN_FILE"
+export GUARDIAN_TOKEN="${GUARDIAN_TOKEN:-$(tr -d '[:space:]' < "$TOKEN_FILE")}"
+export GUARDIAN_DEVICE_TOKEN="${GUARDIAN_DEVICE_TOKEN:-$(tr -d '[:space:]' < "$DEVICE_TOKEN_FILE")}"
+echo "Phones and page: Pi address http://$IP:8000; pairing token: cat $TOKEN_FILE"
 
 ADVISOR_BACKEND=service exec uvicorn app.server:app --host 0.0.0.0 --port 8000

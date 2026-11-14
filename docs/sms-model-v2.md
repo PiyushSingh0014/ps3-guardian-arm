@@ -145,7 +145,7 @@ sudo systemctl restart ps3-guardian
 curl -s http://localhost:8000/health
 ```
 
-`--save` trains v2 again on all the messages (still never on the India set) and writes `detectors/sms/sms_v2.joblib`. The app loads it at start: `/health` shows `"sms_model": "v2 (sms_v2.joblib)"`.
+`--save` trains v2 again on all the messages (still never on the India set) and writes `detectors/sms/sms_v2.joblib`. The app loads it at start: `/health` shows `"sms_model": {"version": 2, "file": "sms_v2.joblib", "messages": …}`.
 
 **To go back to v1:** `rm detectors/sms/sms_v2.joblib`, then `sudo systemctl restart ps3-guardian`.
 

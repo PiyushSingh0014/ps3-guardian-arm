@@ -4,7 +4,6 @@ import json
 import time
 
 import pytest
-from fastapi.testclient import TestClient
 
 from advisor.advise import Advisor
 from app.server import create_app
@@ -14,8 +13,8 @@ from detectors.net.flows import TCP, UDP, FlowRec
 from detectors.net.scamlinks import ScamLinks
 from detectors.sms.detector import SmsDetector
 from detectors.url.detector import UrlDetector
+from tests.auth import TOKEN, client as authed
 
-TOKEN = "pair1234"
 SCAM = ("Dear customer your SBI account will be blocked today. Update KYC now: http://sbi-kyc-verify-ps3lab.xyz/login "
         "also https://onlinesbi.sbi and bit.ly/3xYz12")
 PARCEL = "Your parcel is held. Pay Rs 25 fee: http://po9.in/Ab12 or call now"
@@ -29,7 +28,7 @@ def detector():
 
 def client(detector, tmp_path, monkeypatch):
     monkeypatch.setenv("GUARDIAN_TOKEN", TOKEN)
-    return TestClient(create_app(detector=detector, advisor=Advisor(), net_alerts=str(tmp_path / "alerts.jsonl"),
+    return authed(create_app(detector=detector, advisor=Advisor(), net_alerts=str(tmp_path / "alerts.jsonl"),
                                  net_state=str(tmp_path / "devices.json"), net_watch=str(tmp_path / "watch.json"),
                                  leases=(str(tmp_path / "leases"),), net_explain_every_s=None))
 

@@ -10,7 +10,7 @@ import zipfile
 import zlib
 
 import pytest
-from fastapi.testclient import TestClient
+from tests.auth import client
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 import make_file_samples as samples  # noqa: E402
@@ -210,7 +210,7 @@ def test_advice_and_llama_prompt_for_files(checker):
 @pytest.fixture
 def app_client(tmp_path):
     detector = SmsDetector(url_detector=UrlDetector(model_path=None, intel_path=None, top_sites=None))
-    return TestClient(create_app(detector=detector, advisor=Advisor(), net_alerts=str(tmp_path / "alerts.jsonl"),
+    return client(create_app(detector=detector, advisor=Advisor(), net_alerts=str(tmp_path / "alerts.jsonl"),
                                  net_state=str(tmp_path / "devices.json"), net_explain_every_s=None))
 
 
@@ -236,7 +236,7 @@ def test_post_file_checks_in_memory_and_logs_no_name(app_client, monkeypatch):
 
 def test_page_has_the_file_picker(app_client):
     page = app_client.get("/").text
-    assert 'id="file"' in page and "fetch('/file?name='" in page
+    assert 'id="file"' in page and "api('/file?name='" in page
 
 
 def test_email_and_phone_links_are_no_websites(checker):

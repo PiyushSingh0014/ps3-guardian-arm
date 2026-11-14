@@ -4,7 +4,7 @@ import sys
 import time
 
 import pytest
-from fastapi.testclient import TestClient
+from tests.auth import client as authed
 
 from advisor.advise import Advisor
 from advisor.backends import GenResult, LlamaMainBackend
@@ -108,7 +108,7 @@ def test_low_severity_spam_skips_llm(detector):
 # --- API -----------------------------------------------------------------------
 def test_api_check_template_backend():
     from app.server import app
-    r = TestClient(app).post("/check", json={"message": SCAM, "sender": "9812345678"})
+    r = authed(app).post("/check", json={"message": SCAM, "sender": "9812345678"})
     assert r.status_code == 200
     body = r.json()
     assert body["finding"]["verdict"] in ("suspicious", "dangerous")
@@ -120,7 +120,7 @@ def test_api_answers_at_once_then_explains_in_background(detector):
     from app.server import create_app
     good = ("This message pretends to be from SBI to steal your bank login. "
             "Real banks send SMS from registered sender IDs.")
-    client = TestClient(create_app(detector=detector, advisor=Advisor(backend=InstantBackend(good))))
+    client = authed(create_app(detector=detector, advisor=Advisor(backend=InstantBackend(good))))
     body = client.post("/check", json={"message": SCAM, "sender": "9812345678"}).json()
     assert body["advice"]["source"] == "template" and body["explain"]["status"] == "pending"
     job = body["explain"]["id"]

@@ -103,17 +103,47 @@ def default_model():
     return os.environ.get("GUARDIAN_SMS_MODEL") or (V2_MODEL if os.path.exists(V2_MODEL) else tb.MODEL)
 
 
+ALLOW_SAMPLE = "GUARDIAN_ALLOW_SAMPLE_MODEL"     # tests set it to 1: the 30-message sample model
+
+
+def sample_allowed():
+    return os.environ.get(ALLOW_SAMPLE) == "1"
+
+
+def load_model(model_path):
+    """The model bundle. The app refuses a missing model, or one trained on the bundled 30-message
+    sample, rather than run on a toy without anyone knowing; tests allow the sample."""
+    if not os.path.exists(model_path):
+        if not sample_allowed():
+            raise RuntimeError(f"no SMS model at {model_path}. Train it first, on the Pi: python "
+                               "detectors/sms/train_baseline.py --data ~/merged_sms.csv")
+        if not os.path.exists(tb.SAMPLE_MODEL):
+            print(f"[sms] no model at {model_path}; training the 30-message sample model ({ALLOW_SAMPLE}=1)")
+            tb.train(tb.SAMPLE, out=tb.SAMPLE_MODEL)
+        model_path = tb.SAMPLE_MODEL
+    bundle = joblib.load(model_path)
+    if bundle.get("data") == os.path.basename(tb.SAMPLE) and not sample_allowed():
+        raise RuntimeError(f"{model_path} was trained on the 30-message sample, not real data. Train it again, "
+                           "on the Pi: python detectors/sms/train_baseline.py --data ~/merged_sms.csv")
+    return model_path, bundle
+
+
+def model_info(model_path, bundle):
+    """What the model learned from, for /health and the log; None where the bundle does not say
+    (models trained before update 36)."""
+    counts = bundle.get("trained_on")
+    messages = bundle.get("messages") or (sum(counts.values()) if isinstance(counts, dict) else None)
+    return {"version": int(bundle.get("version", 1)), "file": os.path.basename(model_path), "messages": messages,
+            "data": bundle.get("data"), "date": bundle.get("date"),
+            "features": len(getattr(bundle["vec"], "vocabulary_", {}) or {})}
+
+
 class SmsDetector:
     """url_detector: "auto" checks links with detectors/url (model and lists when present),
     None skips them, or pass a UrlDetector."""
 
     def __init__(self, model_path=None, url_detector="auto"):
-        model_path = model_path or default_model()
-        if not os.path.exists(model_path):
-            print(f"[sms] no model at {model_path}; training on the bundled sample first")
-            tb.train(tb.SAMPLE)
-            model_path = tb.MODEL
-        bundle = joblib.load(model_path)
+        model_path, bundle = load_model(model_path or default_model())
         self.clf, self.vec = bundle["clf"], bundle["vec"]
         # v1: two classes (threat or not). v2: three classes (fraud, marketing, normal), trained
         # with the team's messages too. model_score() turns either into the score decide() uses.
@@ -124,6 +154,11 @@ class SmsDetector:
         else:
             self.fraud_col, self.normal_col = classes.index(1), classes.index(0)
         self.model_name = f"v{self.version} ({os.path.basename(model_path)})"
+        self.info = model_info(model_path, bundle)
+        i = self.info
+        print(f"[sms] model {self.model_name}: " + (f"{i['messages']:,} messages" if i["messages"] else
+              "training size not recorded") + (f" from {i['data']}" if i["data"] else "")
+              + (f", {i['date']}" if i["date"] else "") + f", {i['features']:,} features", flush=True)
         if url_detector == "auto":
             from detectors.url.detector import UrlDetector
             url_detector = UrlDetector()
@@ -140,9 +175,20 @@ class SmsDetector:
         return model_score(*self.text_probs(message), sender)
 
     def check(self, message: str, sender: Optional[str] = None, language: str = "en") -> Finding:
+        return self._finding(message, sender, language, *self._prepare(message))
+
+    def check_pair(self, message: str, sender: Optional[str] = None, language: str = "en"):
+        """(with the sender, text only) for POST /sms: the text is scored and its links checked once."""
+        prepared = self._prepare(message)
+        return (self._finding(message, sender, language, *prepared),
+                self._finding(message, None, language, *prepared))
+
+    def _prepare(self, message):
         text = tb.clean_text(message)                       # same cleaning for the rules
-        links = self.url.check_text(text) if self.url else []
-        score, verdict, sig = decide(self.text_score(message, sender), text, sender, links=links)
+        return text, (self.url.check_text(text) if self.url else []), self.text_probs(message)
+
+    def _finding(self, message, sender, language, text, links, probs) -> Finding:
+        score, verdict, sig = decide(model_score(*probs, sender), text, sender, links=links)
         category = categorize_message(text, sig) if verdict != "safe" else "none"
         if category in ("generic_suspicious", "promo_spam") and any(
                 v.verdict != "safe" and v.kind not in ("shortener", "chat") for v in links):
