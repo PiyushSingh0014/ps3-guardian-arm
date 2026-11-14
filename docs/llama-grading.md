@@ -31,6 +31,8 @@ On the Pi, `generate` asked Llama for 100 different cases: 89 flagged messages f
 | Rules about real senders that the case does not state, in answers about suspicious messages (Llama copies the example "Real companies never ask for your OTP") | "Real messages from trusted sources do not ask you to open links or share personal details" | new check: drops 5 sentences, all shown before |
 | The case for an IRC alert carried the Telnet fact | (the case, not Llama) | the risky-port fact now fits every risky port |
 
+The job-scam fact also read badly, and Llama copies it word for word: "they do not pay for online tasks that later need a deposit to withdraw earnings". It now reads "no real job asks for a deposit before you can withdraw what you earned" (38c).
+
 In all, 38b shows 163 of the 183 sentences (update 38: 168; before it: 183). Whether each sentence it drops or keeps is right is what the grading by hand measures (below).
 
 Reading also found sentences no word check can catch, for example "Genuine companies never ask for payment or sensitive information via link" (a prize scam: its fact has "never", so the check passes it) and "Real Aadhaar numbers are registered business sender IDs".
@@ -61,7 +63,7 @@ On the Pi, from `~/ps3-guardian` with `source ~/ps3-venv/bin/activate`, while th
    | `n` | not supported: the case does not say it (true or not) |
    | `w` | wrong: it contradicts the case, or it is false |
 
-   Enter skips, `b` goes back, `q` stops; every grade is saved at once.
+   Enter skips, `b` goes back, `q` stops. Every grade is saved at once and echoed (`-> supported`), so a key pressed for the wrong sentence shows at once: press `b` to fix it.
 
    **Grade what each sentence says, not where it stands.** A sentence with several claims gets the worst grade among them. For example:
 
@@ -69,13 +71,21 @@ On the Pi, from `~/ps3-guardian` with `source ~/ps3-venv/bin/activate`, while th
    - "Real electricity companies do not ask you to call a personal number or install an app, and they do not rush you with a deadline." The first half is the fact; the case does not say the second: **n**.
    - "Genuine banks do not update KYC on their website, and links ending in .bank.in are not real bank websites." The fact says banks update KYC on their official website and genuine bank links end in .bank.in: **w**.
 
+   **A second look.** An hour of grading brings slips: a key pressed for the wrong sentence, the same sentence graded two ways. When a second grader has finished, each one looks again at the sentences the two graded differently, without seeing either grade:
+
+   ```bash
+   python -m advisor.grade label --grader piyush --recheck ravi
+   ```
+
+   Keep your grade where you think it is right. The first pass stays in `firstpass_piyush.json`. With no second person, an AI pre-check of the first run (Claude's grades, `grades_ai-precheck.json`, not in the repo) can be the other grader; say so when you report the numbers.
+
 3. **Report**:
 
    ```bash
    python -m advisor.grade report
    ```
 
-   For each grader: the share of sentences supported, not supported and wrong, for everything Llama wrote (and first and second sentences apart), for what users saw before update 38, for what they see now (network alerts and messages apart), and for the sentences the checks drop. "Now" re-runs today's checks on the saved answers, so a change to the checks is measured on sentences already graded. With two graders, how often they agree (Cohen's kappa). `--wrong` also lists the sentences graded w, and whether users see them. Paste it into the chat for the results.
+   For each grader: the share of sentences supported, not supported and wrong, for everything Llama wrote (and first and second sentences apart), for what users saw before update 38, for what they see now (network alerts and messages apart), and for the sentences the checks drop. "Now" re-runs today's checks on the saved answers, so a change to the checks is measured on sentences already graded. Then how many sentences Llama wrote word for word for the same scam type the grader graded in more than one way (`--same` lists them), and, for every two graders, how often they agree (Cohen's kappa). `--wrong` also lists the sentences graded w, and whether users see them. Paste it into the chat for the results.
 
 ## Limits
 

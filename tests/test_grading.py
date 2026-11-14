@@ -228,3 +228,45 @@ def test_kappa():
     assert grade.kappa([("s", "s"), ("n", "n")])[1] == pytest.approx(1.0)
     assert grade.kappa([("s", "n"), ("n", "s")])[1] < 0
     assert grade.kappa([]) is None
+
+
+TWO = "This message pretends to be from SBI to steal your login. Banks always reply within 24 hours."
+
+
+def test_a_second_look_where_two_graders_differ(tmp_path):
+    grade.generate(findings(), Advisor(backend=Llama(TWO)), str(tmp_path), say=lambda _: None)
+    ids = [a["id"] for a in grade.read_answers(str(tmp_path))]
+    (tmp_path / "grades_asha.json").write_text(json.dumps({ids[0]: {"0": "w", "1": "n"}, ids[1]: {"0": "s", "1": "n"}}))
+    (tmp_path / "grades_ravi.json").write_text(json.dumps({ids[0]: {"0": "s", "1": "n"}, ids[1]: {"0": "s", "1": "w"}}))
+    said, keys = [], iter(["s", ""])                 # asha changes the first; Enter keeps her grade on the second
+    assert grade.label(str(tmp_path), "asha", ask=lambda _: next(keys), say=said.append, recheck="ravi") == 0
+    assert said[0].startswith("2 sentences where asha and ravi differ") and "firstpass_asha.json" in said[0]
+    assert any("What Llama was shown" in s for s in said) and "    -> supported" in said     # each grade echoed
+    assert json.loads((tmp_path / "grades_asha.json").read_text()) == {ids[0]: {"0": "s", "1": "n"},
+                                                                       ids[1]: {"0": "s", "1": "n"}}
+    first = tmp_path / "firstpass_asha.json"
+    assert json.loads(first.read_text())[ids[0]]["0"] == "w"
+    keys = iter(["q"])
+    assert grade.label(str(tmp_path), "asha", ask=lambda _: next(keys), say=lambda _: None, recheck="ravi") == 0
+    assert json.loads(first.read_text())[ids[0]]["0"] == "w"                  # the first pass is kept, once
+    said = []
+    assert grade.label(str(tmp_path), "asha", say=said.append, recheck="zed") == 1 and "No grades from zed" in said[0]
+    assert not list(tmp_path.glob("grades_firstpass*"))                       # never read as a grader
+
+
+def test_report_compares_every_pair_and_finds_one_sentence_graded_two_ways(tmp_path):
+    grade.generate(findings(), Advisor(backend=Llama(TWO)), str(tmp_path), say=lambda _: None)
+    ids = [a["id"] for a in grade.read_answers(str(tmp_path))]
+    for name, marks in {"asha": {ids[0]: {"0": "s", "1": "w"}, ids[1]: {"0": "w", "1": "w"}},
+                        "ravi": {ids[0]: {"0": "s", "1": "w"}, ids[1]: {"0": "s", "1": "w"}},
+                        "zoya": {ids[0]: {"0": "s", "1": "n"}, ids[1]: {"0": "s", "1": "n"}}}.items():
+        (tmp_path / f"grades_{name}.json").write_text(json.dumps(marks))
+    out = []
+    assert grade.report(str(tmp_path), say=out.append, same=True) == 0
+    text = "\n".join(out)
+    for pair in ("asha and ravi", "asha and zoya", "ravi and zoya"):
+        assert f"{pair} graded 4 sentences both" in text
+    assert text.count("Same sentence and scam type graded differently: 1 (--same lists them)") == 1     # asha
+    assert text.count("Same sentence and scam type graded differently: 0") == 2
+    assert "asha: the same sentence, for the same scam type, graded differently (1):" in text
+    assert "- bank_kyc_scam (s 1, w 1): This message pretends to be from SBI to steal your login." in text

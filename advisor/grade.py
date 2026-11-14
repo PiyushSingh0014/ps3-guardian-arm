@@ -4,6 +4,7 @@ Run on the Pi from the repo root while the Llama service is running (scripts/run
 
     python -m advisor.grade generate --india ~/india_sms_collection_v9.xlsx --net    # about an hour
     python -m advisor.grade label --grader piyush        # each grader on their own
+    python -m advisor.grade label --grader piyush --recheck ravi   # a second look where two graders differ
     python -m advisor.grade report                       # the rates, before and after the grounding checks
 
 generate: runs the app's SMS detector on the India set, builds the case Llama is shown for each
@@ -15,14 +16,18 @@ run it again to carry on. Run it when nobody is using the app: the alerts would 
 label: shows each sentence Llama wrote beside its case, without saying whether the validator kept
 it:  s = supported by the case,  n = not supported (the case does not say it, true or not),
 w = wrong (it contradicts the case, or it is false). Enter skips, b goes back, q stops. Saved at once.
+--recheck OTHER shows only the sentences this grader and OTHER graded differently, without either
+grade, for a second look (slips happen in an hour of grading); the first pass is kept.
 report: per grader, the share of sentences supported, not supported and wrong, for everything Llama
 wrote, for what users saw before update 38 and for what they see now; with two graders, how often
 they agree (Cohen's kappa). "Now" re-runs today's checks on the saved answers, so a change to the
 checks is measured on sentences already graded. --wrong lists the sentences graded w (they come
-from the India set and the fixed network samples, not from the team's messages).
+from the India set and the fixed network samples, not from the team's messages). --same lists the
+sentences Llama wrote word for word for the same scam type that a grader graded in more than one way.
 """
 import argparse
 import hashlib
+import itertools
 import json
 import os
 import re
@@ -127,8 +132,12 @@ def generate(findings, advisor, folder=FOLDER, limit=100, say=print, wait_s=180)
     return 0
 
 
+def _name(grader):
+    return re.sub(r"[^A-Za-z0-9_-]", "", grader)[:32] or "grader"
+
+
 def grades_path(folder, grader):
-    return os.path.join(folder, f"grades_{re.sub(r'[^A-Za-z0-9_-]', '', grader)[:32] or 'grader'}.json")
+    return os.path.join(folder, f"grades_{_name(grader)}.json")
 
 
 def load(path):
@@ -145,11 +154,31 @@ def save(path, data):
     os.replace(tmp, path)
 
 
-def label(folder, grader, again=False, ask=input, say=print):
+def label(folder, grader, again=False, ask=input, say=print, recheck=None):
+    """recheck: another grader's name. Only the sentences the two graded differently are shown, without
+    either grade, for a second look; the first pass is kept once in firstpass_NAME.json."""
     answers, path = read_answers(folder), grades_path(folder, grader)
     grades = load(path)
-    items = [(a, i) for a in answers for i in range(len(a["sentences"]))
-             if again or str(i) not in grades.get(a["id"], {})]
+    if recheck:
+        other = load(grades_path(folder, recheck))
+        for name, marks in ((recheck, other), (grader, grades)):
+            if not marks:
+                say(f"No grades from {name} in {folder}.")
+                return 1
+        first = os.path.join(folder, f"firstpass_{_name(grader)}.json")
+        if grades and not os.path.exists(first):
+            save(first, grades)
+        items = [(a, i) for a in answers for i in range(len(a["sentences"]))
+                 if other.get(a["id"], {}).get(str(i)) not in (None, grades.get(a["id"], {}).get(str(i)))
+                 and str(i) in grades.get(a["id"], {})]
+        if not items:
+            say(f"{grader} and {recheck} grade every sentence they both graded the same way.")
+            return 0
+        say(f"{len(items)} sentences where {grader} and {recheck} differ. Grade each one again; neither grade is "
+            f"shown, so keep yours where you think it is right. (Your first pass is kept in {first}.)")
+    else:
+        items = [(a, i) for a in answers for i in range(len(a["sentences"]))
+                 if again or str(i) not in grades.get(a["id"], {})]
     if not items:
         say(f"Nothing left to grade for {grader} ({sum(len(a['sentences']) for a in answers)} sentences)."
             + ("" if answers else " Run generate first."))
@@ -185,6 +214,7 @@ def label(folder, grader, again=False, ask=input, say=print):
             grades.setdefault(a["id"], {})[str(i)] = answer
             save(path, grades)
             done.append(k)
+            say(f"    -> {GRADES[answer]}")        # an echo makes a key pressed for the wrong sentence visible
         elif answer:
             say("    (s, n, w, Enter, b or q)")
             continue
@@ -229,7 +259,19 @@ SUBSETS = [("everything Llama wrote", lambda a, i: True),
            ("dropped by the checks", lambda a, i: a["shown_before"][i] and not a["now"][i])]
 
 
-def report(folder, say=print, wrong=False):
+def differently_graded(answers, grades):
+    """[((scam type, sentence), Counter of grades)] for each sentence Llama wrote word for word in more
+    than one answer of the same scam type and the grader graded in more than one way: worth a second look."""
+    seen = {}
+    for a in answers:
+        for i, s in enumerate(a["sentences"]):
+            mark = grades.get(a["id"], {}).get(str(i))
+            if mark:
+                seen.setdefault((a["category"], s), []).append(mark)
+    return [(key, Counter(marks)) for key, marks in seen.items() if len(set(marks)) > 1]
+
+
+def report(folder, say=print, wrong=False, same=False):
     answers = read_answers(folder)
     files = sorted(f for f in os.listdir(folder) if f.startswith("grades_") and f.endswith(".json")) \
         if os.path.isdir(folder) else []
@@ -262,14 +304,22 @@ def report(folder, say=print, wrong=False):
                       if str(i) in g.get(a["id"], {}) and keep(a, i)]
             n, cells = _shares(labels)
             say(f"{name:28s} {n:9d} {cells[0]:>11s} {cells[1]:>13s} {cells[2]:>11s}")
+        odd = differently_graded(answers, g)
+        say(f"Same sentence and scam type graded differently: {len(odd)}" + (" (--same lists them)" if odd else ""))
     names = sorted(all_grades)
-    if len(names) >= 2:
-        g1, g2 = all_grades[names[0]], all_grades[names[1]]
+    for n1, n2 in itertools.combinations(names, 2):
+        g1, g2 = all_grades[n1], all_grades[n2]
         pairs = [(g1[a][i], g2[a][i]) for a in g1 for i in g1[a] if i in g2.get(a, {})]
         k = kappa(pairs)
         if k:
-            say(f"\n{names[0]} and {names[1]} graded {len(pairs)} sentences both: they agree on {k[0]:.0%}, "
+            say(f"\n{n1} and {n2} graded {len(pairs)} sentences both: they agree on {k[0]:.0%}, "
                 f"Cohen's kappa {k[1]:.2f}")
+    if same:
+        for name in names:
+            odd = differently_graded(answers, all_grades[name])
+            say(f"\n{name}: the same sentence, for the same scam type, graded differently ({len(odd)}):")
+            for (category, sentence), marks in odd:
+                say(f"- {category} ({', '.join(f'{m} {c}' for m, c in sorted(marks.items()))}): {sentence}")
     if wrong:
         say("\nSentences graded wrong (w):")
         for a in answers:
@@ -292,8 +342,10 @@ def main(argv=None):
     lb = sub.add_parser("label")
     lb.add_argument("--grader", required=True, help="your name: each grader gets a file of their own")
     lb.add_argument("--again", action="store_true", help="also show sentences graded before")
+    lb.add_argument("--recheck", metavar="OTHER", help="a second look at the sentences you and OTHER graded differently (neither grade shown)")
     rp = sub.add_parser("report")
     rp.add_argument("--wrong", action="store_true", help="also list the sentences graded w")
+    rp.add_argument("--same", action="store_true", help="also list identical sentences a grader graded differently")
     for p in (g, lb, rp):
         p.add_argument("--folder", default=FOLDER)
     a = ap.parse_args(argv)
@@ -311,8 +363,8 @@ def main(argv=None):
             findings += list(india_findings(os.path.expanduser(a.india), SmsDetector()))
         return generate(findings, advisor, a.folder, a.max)
     if a.cmd == "label":
-        return label(a.folder, a.grader, a.again)
-    return report(a.folder, wrong=a.wrong)
+        return label(a.folder, a.grader, a.again, recheck=a.recheck)
+    return report(a.folder, wrong=a.wrong, same=a.same)
 
 
 if __name__ == "__main__":
