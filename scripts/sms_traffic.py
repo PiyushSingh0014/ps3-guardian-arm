@@ -5,6 +5,7 @@
    f = fraud, m = genuine marketing, n = normal, Enter = not sure (skip), u = undo, q = stop.
    Identical messages (an OTP text from the same bank, digits aside) are asked once. Labels are
    saved at once in data/sms/labels.json; run it again to carry on where you stopped.
+   Only the flagged messages, to count false alarms quickly: label --flagged
    A second look at labels that are likely wrong (the same message labelled two ways, fraud
    from a registered sender ID): python scripts/sms_traffic.py review
 2. Measure: every message received by kind of sender, and flagged messages per label, text only
@@ -148,8 +149,9 @@ def ask_loop(todo, labels, labels_path, ask, say, header):
         i += 1
 
 
-def label(log_path, labels_path, device=None, again=False, ask=input, say=print):
-    entries = [e for e in read_log(log_path) if e.get("text")]
+def label(log_path, labels_path, device=None, again=False, ask=input, say=print, flagged=False):
+    """flagged: only the messages the app flagged, each a true alert or a false alarm."""
+    entries = [e for e in read_log(log_path) if e.get("text") and not (flagged and e.get("verdict") == "safe")]
     labels = load_labels(labels_path)
     left = Counter(phone_of(e) for e in entries if again or e["id"] not in labels)
     if device is not None:
@@ -167,7 +169,8 @@ def label(log_path, labels_path, device=None, again=False, ask=input, say=print)
         say(f"Nothing left to label{' on phone ' + device if device else ''} "
             f"({len(entries)} messages with text). --again labels them again.")
         return 0
-    say("Messages left to label, by phone: " + ", ".join(f"{p} {n}" for p, n in sorted(left.items())))
+    say(f"{'Flagged messages' if flagged else 'Messages'} left to label, by phone: "
+        + ", ".join(f"{p} {n}" for p, n in sorted(left.items())))
     say(f"Now: {len(todo)} messages to label ({sum(len(g) for g, _ in todo)} with their copies).\n")
     say(RULES + "\n  Enter: not sure (skipped)\n")
 
@@ -276,7 +279,9 @@ def measure_rows(rows):
     print("Senders:", ", ".join(f"{k} {n}" for k, n in Counter(r['sender_kind'] for r in labelled).items()))
     phones = Counter((r.get("device") or "-") for r in labelled)
     if set(phones) != {"-"}:
-        print("Phones:", ", ".join(f"{k} {n}" for k, n in sorted(phones.items())))
+        print("Labelled, by phone:", ", ".join(f"{k} {n}" for k, n in sorted(phones.items())))
+        print("Received, by phone:", ", ".join(f"{k} {n}" for k, n in sorted(Counter(
+            (r.get("device") or "-") for r in rows).items())))
     received_table(rows)
     table(labelled, "Labelled messages")
     channels = sorted({(r.get("channel") or "sms") for r in labelled})
@@ -315,6 +320,7 @@ def main(argv=None):
     lb = sub.add_parser("label")
     lb.add_argument("--device", help="only this phone's messages (the name typed in its app, e.g. C; - for none)")
     lb.add_argument("--again", action="store_true", help="also show messages labelled before")
+    lb.add_argument("--flagged", action="store_true", help="only the messages the app flagged (to count false alarms)")
     m = sub.add_parser("measure")
     m.add_argument("sheet", nargs="?", help="a labelled CSV from 'export'; without it, the labels from 'label'")
     im = sub.add_parser("import")
@@ -327,7 +333,7 @@ def main(argv=None):
     if a.cmd == "export":
         export(a.log, a.out, a.labels)
     elif a.cmd == "label":
-        return label(a.log, a.labels, a.device, a.again)
+        return label(a.log, a.labels, a.device, a.again, flagged=a.flagged)
     elif a.cmd == "import":
         return import_labels(a.sheet, a.labels)
     elif a.cmd == "review":

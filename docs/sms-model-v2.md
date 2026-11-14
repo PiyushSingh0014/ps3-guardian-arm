@@ -84,6 +84,7 @@ Judge the message itself. The app's verdict is not shown (since update 34), so i
 - Labels are saved at once in `data/sms/labels.json`. Run the command again to carry on where you stopped. The first line shows how many messages are left on each phone.
 - The phone name is the one typed in the app, and capitals count. A wrong name prints the names in the log; `-` is a phone without a name.
 - Then `--device C`, and the first phone.
+- `--flagged` asks only the messages the app flagged: each is either a true alert or a false alarm, so these are the labels the false-alarm count needs.
 
 **2b. Look again at likely mistakes:**
 
