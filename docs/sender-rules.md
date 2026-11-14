@@ -54,3 +54,21 @@ In the cloud, with v1 trained on the public data as on the Pi, on the India set'
 | `brand` | 6 | yes |
 
 The 7 extra are names typed into the sheet that have the shape of a six-letter header without a suffix ("Airtel", "Travel", "swiggy"). Real messages carry real headers; the Pi's run decides.
+
+## On the Pi (15 November 2026)
+
+With the S25's messages labelled, on the India set and the team's messages from registered sender IDs (the app's v1, links checked):
+
+| Rules | India genuine flagged (of 35) | Team genuine flagged (of 181) | Team scams caught (of 4) | Team not labelled flagged (of 6) |
+| --- | --- | --- | --- | --- |
+| none (today) | 6 | 23 | 1 | 0 |
+| `suffix` | 13 | 23 | 1 | 0 |
+| `cap` | 6 | 23 | 1 | 0 |
+| `brand` | 6 | 23 | 1 | 0 |
+
+The team's 191 different messages from registered IDs: 101 marketing, 80 normal, 4 scams, 6 not labelled.
+
+- **`cap` and `brand` pass and are switched on.** They changed no verdict here: none of these messages asked for a secret, and no risky message named a bank from another company's ID. They guard against what these phones did not receive, such as a registered ID asking for your OTP.
+- **`suffix` stays off:** +7 false alarms on the India set's typed names; no change on the phones, whose headers all carry a suffix.
+- **What the rules do not fix:** v1 lets through 3 of the 4 scams from registered IDs. They ask for no secret and name no bank, so only the sender's discount decides them. TRAI's header list, with each header's owner, is the next step (Phase 2 if it cannot be downloaded in time).
+- **False alarms on real traffic:** v1 flags 23 of the 181 genuine messages from registered IDs (13%).

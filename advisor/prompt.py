@@ -179,6 +179,12 @@ def build_user_turn(finding, playbook):
                        wants=playbook.wants)
 
 
+def case_text(finding, playbook):
+    """The case Llama is shown for this alert (its user turn): all the evidence it has, so the
+    validator's grounding checks hold its answer to it."""
+    return build_net_user_turn(finding, playbook) if finding.source == "net" else build_user_turn(finding, playbook)
+
+
 def static_prefix(language="en", n_examples=len(EXAMPLES)):
     """System text plus worked examples: identical for every alert in a language."""
     lang = language if language in LANG_NAMES else "en"

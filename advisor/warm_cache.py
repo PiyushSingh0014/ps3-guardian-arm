@@ -32,7 +32,7 @@ from advisor.advise import Advisor
 from advisor.backends import LlamaServiceBackend
 from advisor.findings import Finding
 from advisor.playbooks import get_playbook
-from advisor.prompt import build_prompt, max_new_tokens
+from advisor.prompt import build_prompt, case_text, max_new_tokens
 from advisor.validator import check_explanation
 
 
@@ -150,7 +150,8 @@ def main():
         else:
             res = backend.generate(p, max_new_tokens=n_new)
             text, m = res.text, res.metrics
-        c = check_explanation(text, f.verdict, f.language)
+        c = check_explanation(text, f.verdict, f.language,
+                              evidence=case_text(f, get_playbook(advisor.books, f.category)))
         results.append((f, n, text, c, m))
         print(f"[{i}/{len(prompts)}] {f.category:<26} {'cached' if m.get('cached') else str(m.get('total_s', '?')) + ' s':>8} "
               f"{'OK ' if c.ok else 'REJ'} {text[:90]!r}")
