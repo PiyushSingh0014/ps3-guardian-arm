@@ -5,6 +5,7 @@ common Finding contract. When you train a better model later, only this file
 changes; the advisor and the API stay the same.
 """
 import os
+import re
 import sys
 from typing import Optional
 
@@ -14,12 +15,12 @@ if _HERE not in sys.path:                 # lets the day-1 scripts keep their pl
 
 import joblib                                    # noqa: E402
 import train_baseline as tb                      # noqa: E402
-from brands import claimed_identity              # noqa: E402
-from rules_india import extract_signals          # noqa: E402
-from senders import apply_sender, classify_sender  # noqa: E402
+from brands import HEADER_ROOTS, brands_named, claimed_identity, header_belongs  # noqa: E402
+from rules_india import BANK_DETAILS_RE, asks_for_secret, extract_signals  # noqa: E402
+from senders import active_rules, apply_sender, classify_sender, sender_odds  # noqa: E402
 
 from advisor.categorize import categorize_message    # noqa: E402
-from advisor.findings import Finding, verdict_from_score  # noqa: E402
+from advisor.findings import SUSPICIOUS_AT, Finding, verdict_from_score  # noqa: E402
 from detectors.files.names import APP_EXT, app_file_in_text  # noqa: E402
 
 
@@ -64,17 +65,65 @@ def apply_links(score, links, sig):
     return (_odds_times(score, k) if k != 1.0 else score), False
 
 
-def decide(score, text, sender=None, use_sender=True, links=None):
+# The organisations whose names make a message's claims about money or accounts worth checking.
+RISKY_KINDS = ("bank", "regulator", "payment app", "government")
+RISKY_CLAIM_RE = re.compile(r"\b(kyc|blocked|block(?:ing)?|suspend\w*|deactivat\w*|frozen|freeze|expir\w*|penalty"
+                            r"|unauthori[sz]ed|re-?activat\w*|update your (?:kyc|pan|aadhaa?r|details|account))\b", re.I)
+
+
+def _unsafe_link(links):
+    return any(v.verdict != "safe" for v in links or [])
+
+
+def brand_mismatch(text, info, links=None):
+    """The brand rule: the name of the bank, payment app or government office that a risky message
+    (an account threat, a request for a secret or details, a link that is not safe) names, when its
+    business sender ID does not look like that organisation's or any other brand the message names."""
+    named = brands_named(text)
+    risky = [n for n, kind in named if kind in RISKY_KINDS and n in HEADER_ROOTS]
+    if not risky or info.kind != "business":
+        return None
+    if not (RISKY_CLAIM_RE.search(text) or asks_for_secret(text) or BANK_DETAILS_RE.search(text)
+            or _unsafe_link(links)):
+        return None
+    return None if header_belongs(info.root, [n for n, _ in named]) else risky[0]
+
+
+def cap_reason(text, links=None):
+    """The cap rule: why no sender ID may make this message safe, or None."""
+    if asks_for_secret(text):
+        return "asks you to share or enter an OTP, PIN or password, which a genuine sender never does"
+    if _unsafe_link(links) and any(kind in RISKY_KINDS for _, kind in brands_named(text)):
+        return "names a bank, payment app or government office and carries a link that is not safe"
+    return None
+
+
+def decide(score, text, sender=None, use_sender=True, links=None, rules=None):
     """Text score -> (final score, verdict, signals). Shared by the app and eval_india.py.
 
     The sender multiplies the odds of fraud (senders.py), then the links do (apply_links);
     an .apk link, a site on the phishing lists or a brand's name on someone else's site
-    makes the message dangerous whoever sent it.
+    makes the message dangerous whoever sent it. rules: the sender rules switched on
+    (senders.SENDER_RULES); None reads them from data/sms/sender_rules.json, as the app does.
     """
+    rules = active_rules() if rules is None else frozenset(rules)
     sig = extract_signals(text, sender=sender)
+    cap = None
     if use_sender:
-        score = apply_sender(score, classify_sender(sender), sig)
+        info = classify_sender(sender)
+        k = sender_odds(info, sig, rules)
+        if k < 1 and "brand" in rules:
+            brand = brand_mismatch(text, info, links)
+            if brand:
+                k = 1.0
+                sig.reasons.insert(0, f"names {brand}, but its sender ID does not look like one of {brand}'s")
+        if k < 1 and "cap" in rules and score >= SUSPICIOUS_AT:
+            cap = cap_reason(text, links)
+        score = apply_sender(score, info, sig, k=k)
     score, decisive = apply_links(score, links, sig)
+    if cap and score < SUSPICIOUS_AT:          # the sender (and official links) may not clear it
+        score = SUSPICIOUS_AT
+        sig.reasons.insert(0, cap)
     verdict = verdict_from_score(score)
     if sig.has_apk and sig.has_url:          # an .apk link is near-certainly malicious
         verdict, score = "dangerous", max(score, 0.95)

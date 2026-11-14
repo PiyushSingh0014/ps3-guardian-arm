@@ -37,6 +37,25 @@ TRAI_SUFFIX_RE  = re.compile(r'-[PSTG]\b')
 GOV_SITE_RE     = re.compile(r'\b[a-z0-9-]+\.(gov|nic)\.in\b', re.I)
 NETBANKING_RE   = re.compile(r'\bnet\s?banking\b', re.I)
 BANK_DETAILS_RE = re.compile(r'\b(share|send|enter|confirm|update|provide|give|submit)\b[^.]{0,30}\b(bank|account)\s+(details|number)\b', re.I)
+# Asks the reader to hand over a secret. Not a model feature (the features stay as in v1): the
+# sender rules use it, because a genuine OTP message also names the OTP ("do not share it", "enter
+# OTP 4821 to log in"). So "enter" counts only for a PIN or card details, never for an OTP.
+_SECRET = r"(otp|one[\s-]?time[\s-]?password|upi\s*pin|m?pin|cvv|password|card\s*(?:number|details)|bank\s*details)"
+ASK_SECRET_RE   = re.compile(r"\b(share|send|tell|give|provide|forward|disclose|reply\s+with)\b\W+(?:[\w-]+\W+){0,4}?"
+                             + _SECRET + r"\b"
+                             r"|\benter\b\W+(?:[\w-]+\W+){0,3}?(upi\s*pin|m?pin|cvv|card\s*(?:number|details))\b", re.I)
+NEGATION_RE     = re.compile(r"\b(not|never|don'?t|do\s+not|no\s+one|nobody)\b", re.I)
+
+
+def asks_for_secret(message):
+    """True when the message asks the reader to share or enter an OTP, PIN, password or card
+    number; "Do not share your OTP with anyone" and "Your OTP is 4821" do not."""
+    m = message or ""
+    for hit in ASK_SECRET_RE.finditer(m):
+        before = m[max(0, hit.start() - 24):hit.start()]
+        if not NEGATION_RE.search(before) and not NEGATION_RE.search(hit.group(0)):
+            return True
+    return False
 
 
 def named_kinds(message):

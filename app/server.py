@@ -54,6 +54,7 @@ from detectors.net.engine import LEASES as NET_LEASES, read_lease_names
 from detectors.net.flows import is_device
 from detectors.files.checker import MAX_BYTES as MAX_FILE_BYTES, FileChecker
 from detectors.net.scamlinks import WATCH, ScamLinks, sites_from, where_from
+from detectors.sms.detector import active_rules    # the detector module sets up its flat imports
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NET_ALERTS = os.path.join(ROOT, "logs", "net_alerts.jsonl")
@@ -691,6 +692,7 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
     def health():
         h = {"ok": True, "backend": advisor.backend.name, "jobs_pending": jobs.queued(),
              "sms_model": getattr(detector, "info", None),
+             "sender_rules": sorted(active_rules()),
              "links": url_detector.info(),
              "net": {"alerts_file": os.path.exists(alerts_path),
                      "alerts_mb": round(os.path.getsize(alerts_path) / 1e6, 2) if os.path.exists(alerts_path) else 0,
