@@ -30,7 +30,7 @@ import sys
 import textwrap
 from collections import Counter
 
-COLUMNS = ["id", "time", "device", "channel", "app", "sender", "sender_kind", "verdict", "score",
+COLUMNS = ["id", "time", "device", "study", "channel", "app", "sender", "sender_kind", "verdict", "score",
            "text_verdict", "text_score", "category", "text", "label", "notes"]
 LABELS = {"smishing": "fraud", "spam": "marketing", "ham": "normal"}
 KEYS = {"f": "smishing", "m": "spam", "n": "ham"}
@@ -274,8 +274,10 @@ def received_table(rows):
 def measure_rows(rows):
     labelled = [r for r in rows if label_of(r) in LABELS]
     no_text = sum(1 for r in rows if not r.get("text"))
+    not_study = sum(1 for r in rows if r.get("study") in (False, "False", "false"))
     print(f"{len(rows)} messages, {len(labelled)} labelled; {no_text} without text "
-          "(safe messages from phone numbers and safe chats: the text is not kept)")
+          "(safe messages from phone numbers and safe chats: the text is not kept"
+          + (f"; {not_study} from phones not in the study" if not_study else "") + ")")
     print("Senders:", ", ".join(f"{k} {n}" for k, n in Counter(r['sender_kind'] for r in labelled).items()))
     phones = Counter((r.get("device") or "-") for r in labelled)
     if set(phones) != {"-"}:

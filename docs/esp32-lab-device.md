@@ -25,7 +25,7 @@ ESP32 ──Wi-Fi PS3-Guardian-Lab──► Pi (10.42.0.1)
 - **Repeating a test.** The same problem is reported at most once every 10 minutes, so wait that long between runs of the same test.
 - **Llama's explanation.** With the Llama service running, Llama's two-sentence explanation appears under each alert once it is written. The first one takes longest, and a test explained before is instant: see [network-detector.md](network-detector.md#llama-explanations). To have all four instant in a video, run `python -m advisor.warm_cache --net` on the Pi once beforehand.
 
-The page shows which test is running and the latest alerts about the device. Mode buttons need no token, like the rest of the page, so only people on the lab Wi-Fi can use them.
+The page shows which test is running and the latest alerts about the device. Like every request to the Pi, the mode buttons need the pairing token, which the page asks for once.
 
 ## Set up (once)
 
@@ -39,13 +39,13 @@ You need Arduino IDE 2 with the **esp32 by Espressif** boards package, and the l
 
 2. **Open the sketch** `esp32/ps3_lab_device/ps3_lab_device.ino`. A copy is also in the laptop folder `D:\ARM\ps3-starter\sms_detector\esp32\ps3_lab_device`.
 
-3. **Secrets.** In that folder, `secrets.h` holds the lab Wi-Fi password and the pairing token. It is never uploaded to git. If it is missing, copy `secrets.example.h` to `secrets.h`. Fill in the two lines marked FILL IN. To see both values, run this on the Pi:
+3. **Secrets.** In that folder, `secrets.h` holds the lab Wi-Fi password and the lab-device token. It is never uploaded to git. If it is missing, copy `secrets.example.h` to `secrets.h`. Fill in the two lines marked FILL IN. To see both values, run this on the Pi:
 
    ```bash
-   cat ~/.ps3_lab_wifi ~/.ps3_guardian_token
+   cat ~/.ps3_lab_wifi ~/.ps3_lab_device_token
    ```
 
-   The first line printed is the Wi-Fi password; the second is the token.
+   The first line printed is the Wi-Fi password; the second is the token for `PI_TOKEN`. The lab-device token is good only for posting readings (`POST /iot`): a device that leaks it cannot read alerts or messages. Since update 36 the phones use a separate, longer pairing token; an ESP32 flashed before keeps working, because its old token became the lab-device token.
 
 4. **Wiring and pins.** On the IoT Pro Kit, the sensors are separate modules with their own pin headers. The ESP32 has two header strips beside it, labelled with GPIO numbers. A female–female jumper wire joins a sensor's signal pin to the ESP32 pin. Each sensor gets its power from its **PWR SWITCH** (the red DIP switches); set it to ON.
 
@@ -70,7 +70,7 @@ You need Arduino IDE 2 with the **esp32 by Espressif** boards package, and the l
 | Serial Monitor says | Fix |
 | --- | --- |
 | `Not on the Wi-Fi yet` | Check `WIFI_PASS` in `secrets.h`, and that the Pi is the hotspot: `bash scripts/setup_gateway.sh --status`. |
-| `The Pi refused the pairing token` | `PI_TOKEN` in `secrets.h` must equal `cat ~/.ps3_guardian_token` on the Pi. |
+| `The Pi refused the pairing token` | `PI_TOKEN` in `secrets.h` must equal `cat ~/.ps3_lab_device_token` on the Pi. |
 | `Report not accepted: connection refused` | The Pi app is not running: `sudo systemctl status ps3-guardian`. |
 | `BMP180: not found` | Check `I2C_SDA` and `I2C_SCL`. |
 | A reading is missing on the page | That sensor did not answer: check its pin. A sensor that does not answer is left out rather than shown as 0. |
@@ -80,7 +80,7 @@ The device's name on the Wi-Fi is `esp32-lab`, so alerts show it next to its add
 ## How it fits
 
 - The Pi side is `app/lab_devices.py`:
-  - `POST /iot`: readings in (pairing token needed), mode out.
+  - `POST /iot`: readings in (the lab-device token, or the pairing token), mode out.
   - `GET /iot`: the page's view, with each device's latest network alerts.
   - `POST /iot/mode`: the page's buttons.
 - Readings and device names come from the device, so the Pi checks them (numbers only, at most 20) and the page shows them as plain text.

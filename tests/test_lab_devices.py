@@ -3,14 +3,13 @@ import json
 import time
 
 import pytest
-from fastapi.testclient import TestClient
+from tests.auth import TOKEN, client
 
 from advisor.advise import Advisor
 from app.lab_devices import MODES, LabDevices, clean_readings
 from app.server import create_app
 from detectors.sms.detector import SmsDetector
 
-TOKEN = "pair1234"
 GOOD = {"device": "esp32-lab", "mode": "normal",
         "readings": {"temp_c": 27.4, "humidity": 61, "pressure_hpa": 1008.25, "obstacle": 1, "rssi": -52}}
 
@@ -35,11 +34,11 @@ def setup(detector, tmp_path, monkeypatch):
     alerts, state = tmp_path / "net_alerts.jsonl", tmp_path / "devices.json"
     app = create_app(detector=detector, advisor=Advisor(), net_alerts=str(alerts),
                      lab=LabDevices(clock=clock), net_state=str(state))
-    return TestClient(app), clock, alerts, state
+    return client(app), clock, alerts, state
 
 
 def post(c, body=GOOD, token=TOKEN, **kw):
-    return c.post("/iot", json=body, headers={"X-Guardian-Token": token} if token else {}, **kw)
+    return c.post("/iot", json=body, headers={"X-Guardian-Token": token or ""}, **kw)    # "": no token
 
 
 def test_reports_need_the_pairing_token(setup, monkeypatch):

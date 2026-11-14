@@ -26,6 +26,7 @@ import html
 import os
 import re
 import sys
+import time
 
 import numpy as np
 import pandas as pd
@@ -47,6 +48,7 @@ except ImportError:
 HERE = os.path.dirname(os.path.abspath(__file__))
 SAMPLE = os.path.join(HERE, "sample_messages.csv")
 MODEL = os.path.join(HERE, "sms_baseline.joblib")
+SAMPLE_MODEL = os.path.join(HERE, "sms_sample.joblib")    # the 30-message sample: for tests only, never the app
 
 _ARTEFACT_RE = re.compile(r"<#>|�")    # UCI number placeholder; lost characters
 
@@ -133,7 +135,10 @@ def report(y_true, pred, proba, messages, show_errors=0):
             print(f"  {proba[i]:.2f}  {clean_text(messages[i])[:150]}")
 
 
-def train(data_path, dedupe=True, holdout_source=None, show_errors=0):
+def train(data_path, dedupe=True, holdout_source=None, show_errors=0, out=None):
+    """Trains on 70% of data_path, reports on the rest, saves to out (default MODEL) with a record of
+    what it learned from, which the app shows in /health."""
+    out = out or MODEL
     df = load(data_path, dedupe=dedupe)
     print(f"Loaded {len(df)} messages  (threat={int(df.y.sum())}, "
           f"ham={int(len(df) - df.y.sum())})")
@@ -161,8 +166,9 @@ def train(data_path, dedupe=True, holdout_source=None, show_errors=0):
     print(f"\n=== Evaluation ({title}) ===")
     report(te.y.values, pred, proba, te.message.values, show_errors)
 
-    joblib.dump({"clf": clf, "vec": vec}, MODEL)
-    print(f"\nSaved model -> {MODEL}")
+    joblib.dump({"clf": clf, "vec": vec, "version": 1, "messages": len(tr), "data": os.path.basename(data_path),
+                 "date": time.strftime("%Y-%m-%d %H:%M")}, out)
+    print(f"\nSaved model -> {out}")
     if holdout_source:
         print("Note: this model was trained without the held-out source; "
               "rerun without --holdout-source for your final model.")
@@ -200,5 +206,6 @@ if __name__ == "__main__":
     if a.predict:
         predict(a.predict)
     else:
+        sample = os.path.abspath(a.data) == os.path.abspath(SAMPLE)     # never over the app's real model
         train(a.data, dedupe=not a.no_dedupe, holdout_source=a.holdout_source,
-              show_errors=a.show_errors)
+              show_errors=a.show_errors, out=SAMPLE_MODEL if sample else MODEL)

@@ -3,7 +3,7 @@ import json
 import time
 
 import pytest
-from fastapi.testclient import TestClient
+from tests.auth import client
 
 from advisor.advise import Advisor
 from advisor.backends import GenResult
@@ -151,7 +151,7 @@ def test_alerts_are_explained_in_the_background_newest_first(tmp_path):
     path = tmp_path / "net_alerts.jsonl"
     write_alerts(path, [old, beacon(), scan])                                      # the file is oldest first
     backend = Backend()
-    c = TestClient(create_app(detector=SmsDetector(url_detector=None), advisor=Advisor(backend=backend),
+    c = client(create_app(detector=SmsDetector(url_detector=None), advisor=Advisor(backend=backend),
                               net_alerts=str(path), net_explain_every_s=None))
 
     first = c.get("/alerts").json()["alerts"]
@@ -248,7 +248,7 @@ def test_no_explanations_without_llama_or_when_switched_off(tmp_path):
     path = tmp_path / "net_alerts.jsonl"
     write_alerts(path, [beacon()])
     for advisor, flag in [(Advisor(), None), (Advisor(backend=Backend()), False)]:
-        c = TestClient(create_app(detector=SmsDetector(url_detector=None), advisor=advisor, net_alerts=str(path),
+        c = client(create_app(detector=SmsDetector(url_detector=None), advisor=advisor, net_alerts=str(path),
                                   net_explain=flag, net_explain_every_s=None))
         assert c.get("/alerts").json()["alerts"][0]["explain"] is None
 

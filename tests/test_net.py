@@ -6,7 +6,7 @@ describes what a scan, a flood or a beacon looks like as connection summaries.
 import json
 
 import pytest
-from fastapi.testclient import TestClient
+from tests.auth import client
 
 from advisor.advise import Advisor
 from app.server import create_app
@@ -230,7 +230,7 @@ def test_cic_rows_and_the_monitor_file(tmp_path):
     line = json.loads(out.read_text().splitlines()[0])
     assert line["finding"]["category"] == "brute_force" and line["finding"]["entities"]["label"] == "SSH-Patator"
 
-    c = TestClient(create_app(detector=__import__("detectors.sms.detector", fromlist=["SmsDetector"]).SmsDetector(
+    c = client(create_app(detector=__import__("detectors.sms.detector", fromlist=["SmsDetector"]).SmsDetector(
         url_detector=None), advisor=Advisor(), net_alerts=str(out)))
     body = c.get("/alerts").json()
     assert len(body["alerts"]) == 1

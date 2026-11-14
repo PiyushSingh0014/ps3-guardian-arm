@@ -3,7 +3,7 @@ how links change an SMS verdict. Rules-only detectors keep these tests independe
 downloaded lists and of the trained model."""
 import numpy as np
 import pytest
-from fastapi.testclient import TestClient
+from tests.auth import client
 
 from advisor.advise import Advisor
 from app.server import create_app
@@ -191,7 +191,7 @@ def test_official_link_lowers_the_score(sms):
 
 
 def test_links_in_the_api(sms):
-    c = TestClient(create_app(detector=sms, advisor=Advisor()))
+    c = client(create_app(detector=sms, advisor=Advisor()))
     r = c.post("/url", json={"url": "https://hdfcbank.weebly.com/login"})
     assert r.status_code == 200
     body = r.json()

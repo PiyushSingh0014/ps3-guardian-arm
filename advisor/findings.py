@@ -32,7 +32,8 @@ def verdict_from_score(score: float) -> str:
 class Finding:
     source: str                      # "sms" | "url" | "flow" | "dns"
     verdict: str                     # "safe" | "suspicious" | "dangerous"
-    score: float                     # calibrated probability of a threat, 0..1
+    score: float                     # risk 0..1: a model's probability times hand-set odds (sender,
+                                     # links); not calibrated on real traffic
     category: str                    # playbook key, e.g. "bank_kyc_scam"; "none" if safe
     reasons: list = field(default_factory=list)    # human-readable evidence
     entities: dict = field(default_factory=dict)   # e.g. {"claims_to_be": "SBI", "sender": ...}

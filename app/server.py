@@ -24,11 +24,11 @@ shows each explanation once it is checked. NET_EXPLAIN=0 switches this off.
 Lab devices (the ESP32, esp32/ps3_lab_device) post their readings to POST /iot and
 get back the test mode the page asked for (GET /iot, POST /iot/mode; app/lab_devices.py).
 
-The web page (/ and /check), /alerts, GET /iot and /iot/mode have no login: keep them
-on your own network (the lab Wi-Fi is WPA2). The Android companion uses POST /sms and
-lab devices POST /iot; both need the pairing token in the X-Guardian-Token header
-(GUARDIAN_TOKEN on the Pi; scripts/run_pi.sh creates one). /sms logs each message for
-measuring (app/sms_log.py).
+Every request needs the pairing token in the X-Guardian-Token header (GUARDIAN_TOKEN on the
+Pi; scripts/run_pi.sh creates one), except the page itself (/: it asks for the token once) and
+requests from the Pi itself. Lab devices may use their own token (GUARDIAN_DEVICE_TOKEN), which
+is good only for POST /iot. Ten wrong tokens in a minute from one address block it for a minute.
+/sms logs each message for measuring (app/sms_log.py): texts only from study phones.
 """
 import hashlib
 import json
@@ -40,8 +40,8 @@ from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
-from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
@@ -99,12 +99,60 @@ class LabMode(BaseModel):
     mode: str = Field(..., pattern="^[a-z]{1,16}$")
 
 
-def require_token(given):
+LOOPBACK = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}      # the Pi's own scripts: curl .../health
+OPEN_PATHS = {"/"}          # the page holds no data; it asks for the token and sends it with each call
+DEVICE_PATHS = {("POST", "/iot")}       # all that a lab device's own token may do
+
+
+def _same(given, token):
+    return bool(token) and secrets.compare_digest(given.encode(), token.encode())
+
+
+class TokenGuard:
+    """Counts wrong pairing tokens per address: MAX_WRONG in WINDOW_S seconds block that address
+    (even with the right token) until the oldest of them is WINDOW_S old. A missing token does not
+    count: the page sends none until it has been given one."""
+    MAX_WRONG, WINDOW_S = 10, 60
+
+    def __init__(self, clock=time.time):
+        self.clock, self.wrong, self.lock = clock, {}, threading.Lock()
+
+    def _recent(self, ip):
+        now = self.clock()
+        times = [t for t in self.wrong.get(ip, []) if now - t < self.WINDOW_S]
+        if times:
+            self.wrong[ip] = times
+        else:
+            self.wrong.pop(ip, None)
+        return times
+
+    def blocked(self, ip):
+        with self.lock:
+            return len(self._recent(ip)) >= self.MAX_WRONG
+
+    def note_wrong(self, ip):
+        with self.lock:
+            self.wrong[ip] = self._recent(ip) + [self.clock()]
+            if len(self.wrong) > 1000:                       # many addresses at once: forget the oldest
+                del self.wrong[next(iter(self.wrong))]
+
+
+def check_token(method, path, ip, given, guard):
+    """None if the request may go on, else (status, reason)."""
+    if path in OPEN_PATHS or ip in LOOPBACK:
+        return None
     token = os.environ.get("GUARDIAN_TOKEN", "")
     if not token:
-        raise HTTPException(status_code=503, detail="no pairing token on the Pi: set GUARDIAN_TOKEN")
-    if not secrets.compare_digest((given or "").encode(), token.encode()):
-        raise HTTPException(status_code=401, detail="wrong pairing token")
+        return 503, "no pairing token on the Pi: set GUARDIAN_TOKEN (scripts/run_pi.sh creates one)"
+    if guard.blocked(ip):
+        return 429, "too many wrong pairing tokens from this address: wait a minute"
+    if given and (_same(given, token) or ((method, path) in DEVICE_PATHS
+                                          and _same(given, os.environ.get("GUARDIAN_DEVICE_TOKEN", "")))):
+        return None
+    if given:
+        guard.note_wrong(ip)
+        return 401, "wrong pairing token"
+    return 401, "pairing token needed (X-Guardian-Token)"
 
 
 class LearnedState:
@@ -366,11 +414,12 @@ def risk_summary(day, week, books):
 
 def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net_alerts=None,
                lab=None, net_state=None, net_explain=None, net_explain_every_s=NET_EXPLAIN_EVERY_S,
-               net_watch=None, leases=None, lab_tests=None, file_log=None):
+               net_watch=None, leases=None, lab_tests=None, file_log=None, token_guard=None):
     """net_explain: Llama explanations of network alerts (default: on, unless NET_EXPLAIN=0);
     net_explain_every_s=None leaves out the background thread (tests drive it through /alerts).
     net_watch: where flagged messages' websites go for the network monitor (scamlinks.py);
-    leases: the files with device names (tests pass their own)."""
+    leases: the files with device names (tests pass their own); token_guard: a TokenGuard (tests
+    pass one with their own clock)."""
     if detector is None:
         from detectors.sms.detector import SmsDetector
         detector = SmsDetector()
@@ -384,6 +433,15 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
     file_log = file_log or os.environ.get("FILE_LOG", os.path.join("logs", "file_checks.jsonl"))
     jobs = JobStore()
     app = FastAPI(title="PS3 Guardian")
+    guard = token_guard or TokenGuard()
+
+    @app.middleware("http")
+    async def pairing_token(request: Request, call_next):
+        refused = check_token(request.method, request.url.path, request.client.host if request.client else "",
+                              request.headers.get("x-guardian-token", ""), guard)
+        if refused:
+            return JSONResponse({"detail": refused[1]}, status_code=refused[0])
+        return await call_next(request)
 
     watch = ScamLinks(net_watch or os.environ.get("NET_WATCH", WATCH))
 
@@ -432,16 +490,18 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
         return respond(finding, wait, t0, time.time(), channel="url")
 
     @app.post("/sms")
-    def sms(req: CheckIn, x_guardian_token: Optional[str] = Header(None)):
+    def sms(req: CheckIn):
         """For the Android companion: the SMS as received, with its sender ID."""
-        require_token(x_guardian_token)
         from detectors.sms.detector import classify_sender
         sender = req.sender
         if req.channel == "chat" and classify_sender(sender).kind != "mobile":
             sender = None       # a chat shows a contact or brand name, not a registered sender ID
         t0 = time.time()
-        finding = detector.check(req.message, sender=sender, language=req.language)
-        text_only = detector.check(req.message, sender=None, language=req.language)
+        if hasattr(detector, "check_pair"):              # the text is scored and its links checked once
+            finding, text_only = detector.check_pair(req.message, sender=sender, language=req.language)
+        else:
+            finding = detector.check(req.message, sender=sender, language=req.language)
+            text_only = detector.check(req.message, sender=None, language=req.language)
         t1 = time.time()
         out = respond(finding, False, t0, t1, channel=req.channel)
         out["text_only"] = {"verdict": text_only.verdict, "score": text_only.score}
@@ -524,9 +584,9 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
         return None
 
     @app.post("/iot")
-    def iot_report(req: LabReport, request: Request, x_guardian_token: Optional[str] = Header(None)):
-        """A lab device's readings (every 15 s); the answer is the mode it should be in."""
-        require_token(x_guardian_token)
+    def iot_report(req: LabReport, request: Request):
+        """A lab device's readings (every 15 s); the answer is the mode it should be in. The device's
+        own token is enough here (DEVICE_PATHS)."""
         try:
             readings = clean_readings(req.readings)
             return lab.report(req.device, request.client.host if request.client else "", readings, req.mode)
@@ -630,7 +690,7 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
     @app.get("/health")
     def health():
         h = {"ok": True, "backend": advisor.backend.name, "jobs_pending": jobs.queued(),
-             "sms_model": getattr(detector, "model_name", None),
+             "sms_model": getattr(detector, "info", None),
              "links": url_detector.info(),
              "net": {"alerts_file": os.path.exists(alerts_path),
                      "alerts_mb": round(os.path.getsize(alerts_path) / 1e6, 2) if os.path.exists(alerts_path) else 0,
@@ -670,7 +730,12 @@ h1{font-size:20px;margin:8px 0}#head{font-weight:700;font-size:18px}
 .risk-at_risk{background:var(--danger)}.risk-check{background:var(--warn)}.risk-ok{background:var(--ok)}
 .item{border-top:1px solid var(--line);padding:8px 0}
 #llm{border-left:3px solid var(--accent);padding-left:10px}
+code{font-size:14px}
 </style></head><body><main>
+<div class="card" id="pair" hidden>
+<p id="pairnote">This page needs the pairing token. On the Pi: <code>cat ~/.ps3_guardian_token</code></p>
+<div class="row"><input id="tok" type="password" autocomplete="off" aria-label="Pairing token" placeholder="Pairing token">
+<button id="tokgo">Save</button></div></div>
 <h1>Check a message, a link or a file</h1>
 <div class="card">
 <textarea id="msg" placeholder="Paste an SMS, a WhatsApp message or a link"></textarea>
@@ -692,7 +757,26 @@ h1{font-size:20px;margin:8px 0}#head{font-weight:700;font-size:18px}
 <div class="card"><p class="muted" id="netnote">No network alerts yet.</p><div id="alerts"></div></div>
 <script>
 const $=id=>document.getElementById(id);
-let poll=null;
+let poll=null,needToken=false,memToken='';
+function getToken(){try{return localStorage.getItem('ps3-token')||memToken;}catch(e){return memToken;}}
+function askToken(text){needToken=true;$('pair').hidden=false;$('pairnote').textContent=text;}
+async function api(path,opts){
+  opts=opts||{};opts.headers=Object.assign({},opts.headers||{});
+  const t=getToken();if(t)opts.headers['X-Guardian-Token']=t;
+  const r=await fetch(path,opts);
+  if(r.status===401){
+    askToken(t?'The Pi refused this token. Type the pairing token again (on the Pi: cat ~/.ps3_guardian_token).'
+      :'This page needs the pairing token. On the Pi: cat ~/.ps3_guardian_token');
+    throw new Error('pairing token needed');
+  }
+  if(r.status===429)throw new Error('too many wrong tokens from this device: wait a minute');
+  return r;
+}
+$('tokgo').onclick=()=>{
+  const t=$('tok').value.trim();if(!t)return;
+  memToken=t;try{localStorage.setItem('ps3-token',t);}catch(e){}
+  needToken=false;$('pair').hidden=true;$('tok').value='';loadAlerts();loadRisk();loadDevices();
+};
 function show(a){
   $('what').textContent=a.what;$('why').textContent=a.why;
   $('steps').replaceChildren(...a.steps.map(s=>{const li=document.createElement('li');li.textContent=s;return li;}));
@@ -709,7 +793,7 @@ function llmNote(a,secs){
 }
 async function follow(id,t0){
   try{
-    const r=await fetch('/explain/'+encodeURIComponent(id));const d=await r.json();
+    const r=await api('/explain/'+encodeURIComponent(id));const d=await r.json();
     if(d.status==='pending'){
       $('llm').textContent=(d.started?'Llama is writing a plain-language explanation on this device... '
         :'Llama is finishing another explanation first... ')+Math.round((Date.now()-t0)/1000)+' s';
@@ -734,8 +818,9 @@ function alertItem(a){
   div.append(...parts);return div;
 }
 async function loadAlerts(){
+  if(needToken)return;
   try{
-    const r=await fetch('/alerts?limit=20');const d=await r.json();
+    const r=await api('/alerts?limit=20');const d=await r.json();
     $('alerts').replaceChildren(...d.alerts.map(alertItem));
     $('netnote').textContent=d.alerts.length?'Newest first. The network monitor checks every device on the Wi-Fi of this Pi.':'No network alerts yet.';
   }catch(e){$('netnote').textContent='Could not load network alerts: '+e;}
@@ -756,8 +841,9 @@ function riskItem(d){
   div.append(...parts);return div;
 }
 async function loadRisk(){
+  if(needToken)return;
   try{
-    const r=await fetch('/devices');const d=await r.json();
+    const r=await api('/devices');const d=await r.json();
     $('risky').replaceChildren(...d.devices.map(riskItem));
     $('riskynote').textContent=d.devices.length?'Riskiest first. At risk: a dangerous alert in the last 24 hours; Check: a suspicious one.'
       :'No device seen yet: devices appear once they use the Wi-Fi of this Pi.';
@@ -797,8 +883,9 @@ function deviceItem(d,modes){
   return div;
 }
 async function loadDevices(){
+  if(needToken)return;
   try{
-    const r=await fetch('/iot');const d=await r.json();
+    const r=await api('/iot');const d=await r.json();
     $('devices').replaceChildren(...d.devices.map(x=>deviceItem(x,d.modes)));
     $('devnote').textContent=d.devices.length?'Test modes only imitate what malware does on a network (look-ups of names that '
       +'do not exist, a small page fetched on a timer). Nothing is attacked, and each test stops by itself.'
@@ -806,7 +893,7 @@ async function loadDevices(){
   }catch(e){$('devnote').textContent='Could not load lab devices: '+e;}
 }
 async function setMode(device,mode){
-  try{await fetch('/iot/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device,mode})});}
+  try{await api('/iot/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device,mode})});}
   catch(e){}
   loadDevices();
 }
@@ -832,7 +919,7 @@ $('go').onclick=async()=>{
   if(poll){clearTimeout(poll);poll=null;}
   $('go').disabled=true;$('go').textContent='Checking...';
   try{
-    const r=await fetch('/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const r=await api('/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     showResult(await r.json());
   }catch(e){notChecked('Error: '+e);}
   finally{$('go').disabled=false;$('go').textContent='Check';}
@@ -843,7 +930,7 @@ $('filego').onclick=async()=>{
   if(poll){clearTimeout(poll);poll=null;}
   $('filego').disabled=true;$('filego').textContent='Checking...';
   try{
-    const r=await fetch('/file?name='+encodeURIComponent(file.name)+'&language='+$('lang').value,
+    const r=await api('/file?name='+encodeURIComponent(file.name)+'&language='+$('lang').value,
       {method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file});
     const d=await r.json();
     if(!r.ok){notChecked('Not checked: '+(d.detail||('HTTP '+r.status)));return;}
