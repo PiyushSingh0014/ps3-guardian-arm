@@ -83,26 +83,66 @@ def decide(score, text, sender=None, use_sender=True, links=None):
     return score, verdict, sig
 
 
+V2_MODEL = os.path.join(_HERE, "sms_v2.joblib")     # train_v2.py --save; not in git
+
+
+def model_score(p_fraud, p_normal, sender=None):
+    """The text score decide() starts from. SMS model v2 tells fraud from genuine marketing, but
+    in India only a registered sender ID (JD-HDFCBK-P) may send marketing (senders.py). So:
+      - from a registered sender ID: the chance of fraud, and an offer is just an offer;
+      - from a phone number, a chat or an unknown sender: the chance of fraud or marketing,
+        as v1 scored every message: an "offer" from a personal number is not a genuine one.
+    For v1, p_fraud is the chance of a threat and p_normal is 1 - p_fraud, so both give the same."""
+    if classify_sender(sender).kind == "business":
+        return float(p_fraud)
+    return float(1.0 - p_normal)
+
+
+def default_model():
+    """GUARDIAN_SMS_MODEL if set; else SMS model v2 when it has been trained here; else v1."""
+    return os.environ.get("GUARDIAN_SMS_MODEL") or (V2_MODEL if os.path.exists(V2_MODEL) else tb.MODEL)
+
+
 class SmsDetector:
     """url_detector: "auto" checks links with detectors/url (model and lists when present),
     None skips them, or pass a UrlDetector."""
 
-    def __init__(self, model_path=tb.MODEL, url_detector="auto"):
+    def __init__(self, model_path=None, url_detector="auto"):
+        model_path = model_path or default_model()
         if not os.path.exists(model_path):
             print(f"[sms] no model at {model_path}; training on the bundled sample first")
             tb.train(tb.SAMPLE)
+            model_path = tb.MODEL
         bundle = joblib.load(model_path)
         self.clf, self.vec = bundle["clf"], bundle["vec"]
+        # v1: two classes (threat or not). v2: three classes (fraud, marketing, normal), trained
+        # with the team's messages too. model_score() turns either into the score decide() uses.
+        self.version = int(bundle.get("version", 1))
+        classes = list(self.clf.classes_)
+        if self.version >= 2:
+            self.fraud_col, self.normal_col = classes.index("fraud"), classes.index("normal")
+        else:
+            self.fraud_col, self.normal_col = classes.index(1), classes.index(0)
+        self.model_name = f"v{self.version} ({os.path.basename(model_path)})"
         if url_detector == "auto":
             from detectors.url.detector import UrlDetector
             url_detector = UrlDetector()
         self.url = url_detector
 
-    def check(self, message: str, sender: Optional[str] = None, language: str = "en") -> Finding:
+    def text_probs(self, message: str):
+        """(chance of fraud, chance of a normal message) for the text. v1: fraud means any threat."""
         x, _ = tb.build_features([message], vec=self.vec)     # cleans text internally
+        p = self.clf.predict_proba(x)[0]
+        return float(p[self.fraud_col]), float(p[self.normal_col])
+
+    def text_score(self, message: str, sender: Optional[str] = None) -> float:
+        """The model's score before the sender's odds and the links (model_score)."""
+        return model_score(*self.text_probs(message), sender)
+
+    def check(self, message: str, sender: Optional[str] = None, language: str = "en") -> Finding:
         text = tb.clean_text(message)                       # same cleaning for the rules
         links = self.url.check_text(text) if self.url else []
-        score, verdict, sig = decide(float(self.clf.predict_proba(x)[0, 1]), text, sender, links=links)
+        score, verdict, sig = decide(self.text_score(message, sender), text, sender, links=links)
         category = categorize_message(text, sig) if verdict != "safe" else "none"
         if category in ("generic_suspicious", "promo_spam") and any(
                 v.verdict != "safe" and v.kind not in ("shortener", "chat") for v in links):

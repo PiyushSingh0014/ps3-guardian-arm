@@ -13,7 +13,8 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | Track B: Llama 3.2 1B on the Pi 4 via ExecuTorch | done: 12.7 tok/s prefill, 4.4 tok/s decode | [eval/results_pi4.md](eval/results_pi4.md), [deploy/README.md](deploy/README.md) |
 | Step 3: fast advisor (persistent Llama service with a native C++ engine, prompt v4) | done on the Pi 4: explanations in 19–28 s per new alert | [docs/step3-fast-advisor.md](docs/step3-fast-advisor.md) |
 | India SMS test set (227 real messages) and sender-aware scoring | measured | [eval/results_sms.md](eval/results_sms.md), [docs/india-sms-test-set.md](docs/india-sms-test-set.md) |
-| Android companion: reads incoming SMS with their sender IDs | running on a Galaxy S25 with the Pi; first real SMS checked; real-traffic measurement next | [docs/android-companion.md](docs/android-companion.md) |
+| Android companion: reads incoming SMS with their sender IDs | running on a Galaxy S25 with the Pi, and on two teammates' phones; their SMS collected on the Pi | [docs/android-companion.md](docs/android-companion.md) |
+| SMS model v2: three classes (fraud, marketing, normal), learns from the team's labelled SMS; marketing trusted only from registered sender IDs | tools ready (update 33): labelling on the Pi, comparison with v1; with the public data alone, three classes change almost nothing (India set: 96% of scams caught, as v1); team results next | [docs/sms-model-v2.md](docs/sms-model-v2.md), [eval/results_sms.md](eval/results_sms.md#sms-model-v2-before-the-teams-messages) |
 | Chats (RCS, WhatsApp) from unknown numbers, via notification access; several phones | running on the Galaxy S25 (opt-in) | [docs/android-companion.md](docs/android-companion.md), Parts F–G |
 | Phishing link checker: official domains, brand rules, public phishing list, link model; links inside SMS and chats | done (update 9) | [eval/results_url.md](eval/results_url.md), [docs/url-detector.md](docs/url-detector.md) |
 | Network detector: scans, floods, password guessing, beacons, DGA names, DNS tunnels, phishing look-ups, per-device normal; the Pi as the Wi-Fi hotspot for lab devices | done (update 10); live on the Pi's own lab Wi-Fi since 1 November 2026 (updates 12–16) | [eval/results_net.md](eval/results_net.md), [docs/network-detector.md](docs/network-detector.md) |
@@ -33,7 +34,7 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 
 | Folder | What is in it |
 | --- | --- |
-| `detectors/sms/` | SMS scam detector: India rules, baseline model, `Finding` wrapper |
+| `detectors/sms/` | SMS scam detector: India rules, baseline model (v1), model v2 training and comparison (`train_v2.py`), `Finding` wrapper |
 | `detectors/url/` | Phishing link checker: link parsing, brand and official-domain lists, public phishing list (SQLite), link model (`url_model.npz`) |
 | `detectors/net/` | Network detector: flows from NFStream (live or pcap) or CIC-IDS2017 CSVs, behaviour rules, DNS checks, DGA model (`dga_model.npz`), per-device baseline, the monitor service |
 | `detectors/files/` | File checker: the real type of a file from its first bytes, name tricks, APK permissions, PDF and Office signs, zips, links through the link checker |
@@ -43,7 +44,7 @@ Specialist detectors flag scam SMS, phishing links and suspicious network behavi
 | `esp32/` | Lab device: Arduino sketch for the ESP32 on the IoT Pro Kit. Sends its sensor readings to the Pi; harmless test modes imitate infected IoT devices for the network detector ([docs/esp32-lab-device.md](docs/esp32-lab-device.md)) |
 | `tests/` | pytest suite (fake model and fake `llama_main`, so no torch is needed) |
 | `deploy/` | Track B: export, Pi 4 build, benchmark script, test prompts |
-| `scripts/` | `run_pi.sh`: starts the Llama service and the app on the Pi; `install_service.sh`: starts them at every boot (systemd); `sms_traffic.py`: exports and measures the companion's traffic log; `get_url_data.py`: downloads the link checker's lists; `install_netmon.sh`: the network monitor service; `setup_gateway.sh`: the Pi as a Wi-Fi hotspot, with automatic undo; `net_traffic.py`: label the monitor's alerts and count false alarms per day; `pi_usage.py`: CPU, memory and temperature; `make_file_samples.py`: harmless test files for the file checker; `check_files.py`: check a folder of files and count false alarms |
+| `scripts/` | `run_pi.sh`: starts the Llama service and the app on the Pi; `install_service.sh`: starts them at every boot (systemd); `sms_traffic.py`: labels, exports and measures the companion's traffic log; `get_url_data.py`: downloads the link checker's lists; `install_netmon.sh`: the network monitor service; `setup_gateway.sh`: the Pi as a Wi-Fi hotspot, with automatic undo; `net_traffic.py`: label the monitor's alerts and count false alarms per day; `pi_usage.py`: CPU, memory and temperature; `make_file_samples.py`: harmless test files for the file checker; `check_files.py`: check a folder of files and count false alarms |
 | `eval/` | Results for the report |
 | `docs/` | Notes per step |
 

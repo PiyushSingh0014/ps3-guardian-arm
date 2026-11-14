@@ -630,6 +630,7 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
     @app.get("/health")
     def health():
         h = {"ok": True, "backend": advisor.backend.name, "jobs_pending": jobs.queued(),
+             "sms_model": getattr(detector, "model_name", None),
              "links": url_detector.info(),
              "net": {"alerts_file": os.path.exists(alerts_path),
                      "alerts_mb": round(os.path.getsize(alerts_path) / 1e6, 2) if os.path.exists(alerts_path) else 0,
