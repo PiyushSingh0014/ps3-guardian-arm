@@ -68,7 +68,7 @@ First, **what the file really is**, from its first bytes: the name does not coun
 
 ### On the Pi's page
 
-1. On a laptop or phone on `PS3-Guardian-Lab`, open http://10.42.0.1:8000.
+1. On a laptop or phone on `PS3-Guardian-Lab`, open https://10.42.0.1:8443 (since update 39; the browser warns once about the Pi's own certificate: [android-companion.md](android-companion.md), Part J).
 2. Under the message box, choose the file and press **Check a file**.
 3. The answer shows the verdict, the file's real type and size, the reasons and the steps. For a suspicious or dangerous file, Llama's explanation follows.
 
@@ -82,10 +82,14 @@ If chats are switched on in the app ([android-companion.md](android-companion.md
 
 ### From a script
 
+On the Pi itself (plain HTTP from the Pi needs no token):
+
 ```bash
 curl -s --data-binary @Invitation.pdf -H "Content-Type: application/octet-stream" \
-     "http://10.42.0.1:8000/file?name=Invitation.pdf&language=en"
+     "http://127.0.0.1:8000/file?name=Invitation.pdf&language=en"
 ```
+
+From another machine, use HTTPS and the pairing token: `curl -s --cacert pi-cert.pem -H "X-Guardian-Token: $TOKEN" ... "https://10.42.0.1:8443/file?..."`, where `pi-cert.pem` is a copy of the Pi's `~/.ps3_tls_cert.pem` (the certificate names the address `10.42.0.1`).
 
 `POST /file` takes the file as the raw request body; `name` (for its ending), `language` (`en` or `hi`) and `channel` (written to the log as `via`) are optional. It answers like `POST /check`. A file over 25 MB gets HTTP 413, an empty one 422. On Windows PowerShell, write `curl.exe`.
 

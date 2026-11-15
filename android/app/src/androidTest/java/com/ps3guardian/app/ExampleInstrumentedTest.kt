@@ -1,4 +1,4 @@
-package com.example.ps3guardian
+package com.ps3guardian.app
 
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -19,6 +19,6 @@ class ExampleInstrumentedTest {
     fun useAppContext() {
         // Context of the app under test.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("com.example.ps3guardian", appContext.packageName)
+        assertEquals("com.ps3guardian.app", appContext.packageName)
     }
 }

@@ -1,4 +1,4 @@
-package com.example.ps3guardian
+package com.ps3guardian.app
 
 import android.content.Context
 import org.json.JSONArray
@@ -65,7 +65,7 @@ object NetAlerts {
     /** Asks the Pi once and handles the answer. False if the Pi could not be reached. */
     fun check(c: Context): Boolean {
         val reply = try {
-            PiClient(Settings.piUrl(c), Settings.token(c)).alerts(LIMIT)
+            PiClient.of(c).alerts(LIMIT)
         } catch (e: Exception) {
             Settings.netFailed(c)
             return false

@@ -84,10 +84,12 @@ class SmsLog:
         self.lock = threading.Lock()
         self.study = study or StudyPhones(log_path=self.path)
 
-    def add(self, message, sender, finding, text_only, channel="sms", app=None, device=None):
+    def add(self, message, sender, finding, text_only, channel="sms", app=None, device=None, study=None):
+        """study: the phone's own switch (update 39). False keeps no text from it; True or None
+        (older apps): the study list decides."""
         info = classify_sender(sender)
         phone = clean_device(device)
-        study = self.study.includes(phone or "-")
+        study = study is not False and self.study.includes(phone or "-")
         if channel == "chat":
             # Chats carry a contact or brand name, or a phone number: never a registered ID.
             kind = "mobile" if info.kind == "mobile" else ("name" if (sender or "").strip() else "unknown")

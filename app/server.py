@@ -1,8 +1,10 @@
 """PS3 Guardian app: SMS or link -> detectors -> advisor -> API + phone page.
 
-Run from the repo root:
+On the Pi, scripts/run_pi.sh serves it on HTTPS (port 8443, a self-signed certificate the phones
+pin) and on plain HTTP (port 8000) for lab devices and the Pi itself (app/serve.py). On a laptop,
+from the repo root:
     uvicorn app.server:app --host 0.0.0.0 --port 8000
-then open http://<pi-or-laptop-ip>:8000 from any phone on the same network.
+then open http://<laptop-ip>:8000 from any phone on the same network.
 
 Backend is chosen by environment variables (see advisor/backends.py):
     ADVISOR_BACKEND=template      (default, no LLM, works anywhere)
@@ -28,6 +30,8 @@ Every request needs the pairing token in the X-Guardian-Token header (GUARDIAN_T
 Pi; scripts/run_pi.sh creates one), except the page itself (/: it asks for the token once) and
 requests from the Pi itself. Lab devices may use their own token (GUARDIAN_DEVICE_TOKEN), which
 is good only for POST /iot. Ten wrong tokens in a minute from one address block it for a minute.
+With HTTPS on (GUARDIAN_TLS=1), plain HTTP from another machine may only post lab readings; the
+page's plain address redirects to HTTPS (update 39).
 /sms logs each message for measuring (app/sms_log.py): texts only from study phones.
 """
 import hashlib
@@ -41,7 +45,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
@@ -81,6 +85,9 @@ class CheckIn(BaseModel):
     channel: str = Field("sms", pattern="^(sms|chat)$")     # chat: RCS, MMS or WhatsApp, read from a notification
     app: Optional[str] = Field(None, max_length=40, pattern="^[a-z_]+$")   # the chat app: messages, whatsapp
     device: Optional[str] = Field(None, max_length=32)      # the phone's name typed in the app, e.g. "A"
+    # The app's "Share message texts with the study" switch (update 39). False: the Pi keeps no text from
+    # this phone, even if it is a study phone; True or not sent (older apps): data/sms/study.json decides.
+    study: Optional[bool] = None
 
 
 class UrlIn(BaseModel):
@@ -103,6 +110,21 @@ class LabMode(BaseModel):
 LOOPBACK = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}      # the Pi's own scripts: curl .../health
 OPEN_PATHS = {"/"}          # the page holds no data; it asks for the token and sends it with each call
 DEVICE_PATHS = {("POST", "/iot")}       # all that a lab device's own token may do
+# With HTTPS on (GUARDIAN_TLS=1, app/serve.py), plain HTTP from another machine may only post a lab
+# device's readings: the ESP32 cannot pin a certificate, and its token is good for nothing else.
+PLAIN_HTTP_PATHS = DEVICE_PATHS
+
+
+def plain_http_refusal(method, path, ip, host, https_port):
+    """None if this plain-HTTP request may go on (TLS on), else a response: the page's address
+    redirects to HTTPS, anything else is refused before any token is read."""
+    if ip in LOOPBACK or (method, path) in PLAIN_HTTP_PATHS:
+        return None
+    host = f"[{host}]" if ":" in (host or "") else (host or "10.42.0.1")
+    url = f"https://{host}:{https_port}/"
+    if method == "GET" and path == "/":
+        return RedirectResponse(url, status_code=307)
+    return JSONResponse({"detail": f"use {url}: plain HTTP only takes lab devices' readings"}, status_code=403)
 
 
 def _same(given, token):
@@ -415,12 +437,13 @@ def risk_summary(day, week, books):
 
 def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net_alerts=None,
                lab=None, net_state=None, net_explain=None, net_explain_every_s=NET_EXPLAIN_EVERY_S,
-               net_watch=None, leases=None, lab_tests=None, file_log=None, token_guard=None):
+               net_watch=None, leases=None, lab_tests=None, file_log=None, token_guard=None, tls=None):
     """net_explain: Llama explanations of network alerts (default: on, unless NET_EXPLAIN=0);
     net_explain_every_s=None leaves out the background thread (tests drive it through /alerts).
     net_watch: where flagged messages' websites go for the network monitor (scamlinks.py);
     leases: the files with device names (tests pass their own); token_guard: a TokenGuard (tests
-    pass one with their own clock)."""
+    pass one with their own clock); tls: HTTPS is on, so plain HTTP from other machines is limited
+    to PLAIN_HTTP_PATHS (default: GUARDIAN_TLS=1, set by app/serve.py)."""
     if detector is None:
         from detectors.sms.detector import SmsDetector
         detector = SmsDetector()
@@ -435,11 +458,17 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
     jobs = JobStore()
     app = FastAPI(title="PS3 Guardian")
     guard = token_guard or TokenGuard()
+    tls = os.environ.get("GUARDIAN_TLS") == "1" if tls is None else tls
+    https_port = int(os.environ.get("GUARDIAN_HTTPS_PORT", "8443"))
 
     @app.middleware("http")
     async def pairing_token(request: Request, call_next):
-        refused = check_token(request.method, request.url.path, request.client.host if request.client else "",
-                              request.headers.get("x-guardian-token", ""), guard)
+        ip = request.client.host if request.client else ""
+        if tls and request.url.scheme == "http":
+            refused = plain_http_refusal(request.method, request.url.path, ip, request.url.hostname, https_port)
+            if refused is not None:
+                return refused
+        refused = check_token(request.method, request.url.path, ip, request.headers.get("x-guardian-token", ""), guard)
         if refused:
             return JSONResponse({"detail": refused[1]}, status_code=refused[0])
         return await call_next(request)
@@ -507,7 +536,8 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
         out = respond(finding, False, t0, t1, channel=req.channel)
         out["text_only"] = {"verdict": text_only.verdict, "score": text_only.score}
         out["log_id"] = None if req.test else (sms_log or default_log()).add(
-            req.message, req.sender, finding, text_only, channel=req.channel, app=req.app, device=req.device)
+            req.message, req.sender, finding, text_only, channel=req.channel, app=req.app, device=req.device,
+            study=req.study)
         return out
 
     @app.post("/file")
@@ -694,6 +724,7 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
              "sms_model": getattr(detector, "info", None),
              "sender_rules": sorted(active_rules()),
              "links": url_detector.info(),
+             "tls": {"on": tls, "fingerprint": os.environ.get("GUARDIAN_TLS_FINGERPRINT") if tls else None},
              "net": {"alerts_file": os.path.exists(alerts_path),
                      "alerts_mb": round(os.path.getsize(alerts_path) / 1e6, 2) if os.path.exists(alerts_path) else 0,
                      "llm": explainer.info() if explainer else None}}

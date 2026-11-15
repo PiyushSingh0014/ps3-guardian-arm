@@ -136,7 +136,7 @@ You should see the load time, the prefix size and speed, then two explanations w
 bash scripts/run_pi.sh
 ```
 
-Then open the address it prints (`http://<the Pi's IP>:8000`) on a phone on the same hotspot. The service keeps running after you stop the app with Ctrl+C. To stop the service too, run `pkill -f advisor.llm_service`.
+Then open the address it prints (`https://<the Pi's IP>:8443` since update 39; `http://<the Pi's IP>:8000` before) on a phone on the same hotspot. The service keeps running after you stop the app with Ctrl+C. To stop the service too, run `pkill -f advisor.llm_service`.
 
 **3. Before a demo, pre-explain your test messages.** Run this in a second SSH session while the service is running:
 

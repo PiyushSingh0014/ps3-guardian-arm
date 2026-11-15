@@ -66,14 +66,15 @@ Don't start `scripts/run_pi.sh` by hand any more: a second copy cannot use port 
    git push origin step3 step3:main
    sudo systemctl restart ps3-guardian
    for i in $(seq 40); do curl -sf http://127.0.0.1:8000/health > /dev/null && break; sleep 5; done
-   hostname -I; cat ~/.ps3_guardian_token
+   hostname -I; cat ~/.ps3_guardian_token; cat ~/.ps3_tls_fingerprint
    ```
 
    The loop waits up to about 3 minutes while Llama loads. `--no-edit` stops git from opening an editor for the merge message (your Pi has merge commits of its own). If an editor does open, save and close it: in nano, Ctrl+X, Y, Enter.
 
-3. The last two lines show the values the app needs:
-   - the Pi address: the first address `hostname -I` prints, as `http://<address>:8000` (on the lab Wi-Fi, `http://10.42.0.1:8000`)
+3. The last three lines show the values the app needs:
+   - the Pi address: the first address `hostname -I` prints, as `https://<address>:8443` (on the lab Wi-Fi, `https://10.42.0.1:8443`). Since update 39 the phones and the page use HTTPS (Part J).
    - the pairing token, 22 characters, created once and kept in `~/.ps3_guardian_token`. Every request to the Pi needs it, from the phones and from the page in a browser (the page asks for it once). It is never printed in the log.
+   - the fingerprint of the Pi's HTTPS certificate, 16 groups of 4 characters, made once and kept in `~/.ps3_tls_fingerprint`. Each phone compares it once, when it pairs (Part J).
 
    **Since update 36** the token is longer: after the first restart with update 36, type the new one into each phone's app (**Save**, then **Test connection**) and once into the page. Until then the phones keep their messages and send them later. The old short token now works only for the ESP32's readings ([esp32-lab-device.md](esp32-lab-device.md)).
 
@@ -81,7 +82,7 @@ Don't start `scripts/run_pi.sh` by hand any more: a second copy cannot use port 
 
 1. **Install Android Studio** (the current stable version) from developer.android.com/studio.
 
-2. **Get the project.** The repo's `android/` folder is the complete Android Studio project (package `com.example.ps3guardian`). Either clone the repo, or on GitHub choose **Code → Download ZIP** and unzip it.
+2. **Get the project.** The repo's `android/` folder is the complete Android Studio project (package `com.ps3guardian.app`; `com.example.ps3guardian` until update 39). Either clone the repo, or on GitHub choose **Code → Download ZIP** and unzip it.
 
 3. **Open it:** File → **Open** → choose the `android` folder (not the repo's top folder). Android Studio downloads Gradle and the libraries the first time; wait until the sync finishes.
 
@@ -89,12 +90,14 @@ Don't start `scripts/run_pi.sh` by hand any more: a second copy cannot use port 
 
 4. **Build → Make Project** (Ctrl+F9; called Assemble Project in some versions). It should end with BUILD SUCCESSFUL. If it doesn't, send the first error line.
 
-**Updating the app later:** get the new version of the repo (pull, or download the ZIP again), or copy its `android/app/src/main` folder over your project's `app/src/main`, and press **Run ▶**. The app keeps its settings and its list.
+**Updating the app later:** get the new version of the repo (pull, or download the ZIP again) and press **Run ▶**. The app keeps its settings and its list. Copy the whole `android` folder, not only `app/src/main`: update 39 also changed `app/build.gradle.kts`.
+
+**Update 39 installs a new app.** Its package name changed, so Android sees another app: the old one stays until you remove it, and both would send each SMS to the Pi. Before installing, open the old app and wait until no message is waiting for the Pi (the list says so), then uninstall it (long-press its icon → **Uninstall**). The new app starts empty: set it up again as in Part D.
 
 <details>
 <summary>How the project was made (only needed to make it again from scratch)</summary>
 
-New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.example.ps3guardian` (Android Studio's suggestion), Kotlin, minimum SDK API 26, Kotlin DSL. Then in `app/build.gradle.kts`: `targetSdk = 36` and `implementation("androidx.work:work-runtime-ktx:2.12.0")`; then the app's files copied into `app/src/main/` (manifest, the `.kt` files, `res/layout/activity_main.xml`, `res/xml/network_security_config.xml`). If you choose another package name, change the first line (`package ...`) of every `.kt` file to match (Edit → Find → Replace in Files).
+New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.ps3guardian.app`, Kotlin, minimum SDK API 26, Kotlin DSL. Then in `app/build.gradle.kts`: `targetSdk = 36` and `implementation("androidx.work:work-runtime-ktx:2.12.0")`; then the app's files copied into `app/src/main/` (manifest, the `.kt` files, `res/layout/activity_main.xml`, `res/xml/network_security_config.xml`). If you choose another package name, change the first line (`package ...`) of every `.kt` file to match (Edit → Find → Replace in Files).
 
 </details>
 
@@ -111,15 +114,17 @@ New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.exampl
 ## Part D: set it up
 
 1. **Connect your phone to the Pi,** in one of two ways:
-   - **The Pi is on a phone's hotspot:** your phone is that hotspot or is connected to it. Use the Pi's address there, for example `http://10.140.209.76:8000`.
-   - **The Pi is the hotspot itself** ([network-detector.md](network-detector.md), part 2): join the Wi-Fi `PS3-Guardian-Lab` and use `http://10.42.0.1:8000`. The exception is the phone that gives the Pi internet over USB: it stays off that Wi-Fi, and its app uses the USB address `setup_gateway.sh --keep` prints.
-2. **Pi address, token and phone name:** type the address and the pairing token from Part A, and a short **phone name** (for example `A`; every phone gets its own, see Part G). Tap **Save**, then **Test connection**. You should see "Connected. Advisor: llama_service."
-3. **Permissions:** tap **Allow SMS and notifications** and allow both.
+   - **The Pi is on a phone's hotspot:** your phone is that hotspot or is connected to it. Use the Pi's address there, for example `https://10.140.209.76:8443`.
+   - **The Pi is the hotspot itself** ([network-detector.md](network-detector.md), part 2): join the Wi-Fi `PS3-Guardian-Lab` and use `https://10.42.0.1:8443`. The exception is the phone that gives the Pi internet over USB: it stays off that Wi-Fi, and its app uses the USB address `setup_gateway.sh --keep` prints.
+2. **Pi address, token and phone name:** type the address and the pairing token from Part A, and a short **phone name** (for example `A`; every phone gets its own, see Part G). Tap **Save**.
+3. **Pair with the Pi** (Part J): tap **Pair with the Pi**, compare the fingerprint the app shows with `cat ~/.ps3_tls_fingerprint` on the Pi, and tap **Trust** only if they are the same. The app then tests the connection: "Connected over HTTPS to the paired Pi. Advisor: llama_service."
+4. **The study switch:** **Share message texts with the team's study** is off after installing. Switch it on only if you agreed to the study (Part G, step 4).
+5. **Permissions:** tap **Allow SMS and notifications** and allow both.
    - If SMS cannot be allowed or says "restricted setting": go to App info → **⋮** → **Allow restricted settings**.
    - Then go to Permissions → **SMS** → Allow.
-4. **Battery:** App info → Battery → **Unrestricted**, so checks still run when the phone is idle.
-5. **Test without SMS:** tap **Send a test scam**. A "DANGEROUS" alert appears, and about 30 s later Llama's explanation replaces its text. Tests are not logged on the Pi.
-6. **Test with a real SMS:** send yourself an SMS with a link from the Messages app (for example "check this http://example.com"), or ask a friend to send one. Your mobile operator usually answers with an SMS of its own, from a registered sender ID. A line appears in the app's list for each. On the Pi:
+6. **Battery:** App info → Battery → **Unrestricted**, so checks still run when the phone is idle.
+7. **Test without SMS:** tap **Send a test scam**. A "DANGEROUS" alert appears, and about 30 s later Llama's explanation replaces its text. Tests are not logged on the Pi.
+8. **Test with a real SMS:** send yourself an SMS with a link from the Messages app (for example "check this http://example.com"), or ask a friend to send one. Your mobile operator usually answers with an SMS of its own, from a registered sender ID. A line appears in the app's list for each. On the Pi:
 
    ```bash
    tail -n 2 ~/ps3-guardian/logs/sms_traffic.jsonl
@@ -177,9 +182,9 @@ Android never passes chat messages to other apps, but it shows them the notifica
 More phones give more, and more varied, messages: other banks, operators and apps. For each teammate's Android phone (iPhones don't let apps read SMS):
 
 1. **Install** the app the same way: Part C, over USB from Android Studio, never by sending the APK.
-2. **Set it up** as in Part D, with the **same Pi address and token** and a **different phone name** (for example `B`, `C`). Part F (chats) is up to them.
+2. **Set it up** as in Part D, with the **same Pi address and token**, the **same fingerprint** when pairing, and a **different phone name** (for example `B`, `C`). Part F (chats) is up to them.
 3. **Collect:** their messages wait on their phone (up to 500) until it is on the Pi's hotspot, then go to the Pi by themselves.
-4. **Agree first:** the Pi keeps sender IDs and verdicts. If they also agree to the study, add their phone name to `data/sms/study.json` on the Pi: then it also keeps texts with digits masked (business messages, and flagged personal ones); never phone numbers, chat senders' names or the text of safe personal messages. They can leave the study (remove the name) or uninstall the app at any time.
+4. **Agree first:** the Pi keeps sender IDs and verdicts. If they also agree to the study, add their phone name to `data/sms/study.json` on the Pi and they switch on **Share message texts with the team's study** in their app: only with both does the Pi also keep texts, digits masked (business messages, and flagged personal ones); never phone numbers, chat senders' names or the text of safe personal messages. They can leave the study at any time by switching it off on their phone (or by removing the name, or uninstalling the app).
 
 When labelling (Part E), each person labels their own phone's messages (`label --device B`): they know best whether a message really came from their bank.
 
@@ -196,7 +201,7 @@ When the phone can reach the Pi, the app also shows what the Pi's network monito
 - **Data.** The checks go to the Pi over the lab Wi-Fi only. Nothing leaves the lab.
 
 1. **Install** the new version from the Android Studio system: Part B, "Updating the app later", then Part C step 3. On a teammate's phone this is optional.
-2. **Check:** with the phone on `PS3-Guardian-Lab` and the Pi address `http://10.42.0.1:8000`, open the app. Under **Network alerts (the Pi's Wi-Fi)** the line says "Checked at …" and the list shows the Pi's alerts. Alerts that are already there are not notified.
+2. **Check:** with the phone on `PS3-Guardian-Lab` and the Pi address `https://10.42.0.1:8443`, open the app. Under **Network alerts (the Pi's Wi-Fi)** the line says "Checked at …" and the list shows the Pi's alerts. Alerts that are already there are not notified.
 3. **Test with the ESP32:** start a test from the Pi's page, for example "Looks up made-up names (DGA)". About 30 s later the alert is on the Pi's page; within a minute it is a notification on the phone, and Llama's text follows in the same notification.
 4. **Battery:** App info → Battery → **Unrestricted** (Part D, step 4) keeps the once-a-minute checks regular.
 
@@ -214,23 +219,45 @@ The Pi checks files that came in WhatsApp, Messages or an email: what the file r
 4. **Share** `Wedding_Invitation.pdf`: "DANGEROUS: App or program sent as a file", because "the file says it is .pdf, but it is really an Android app (APK)". Llama's explanation follows, usually within a minute.
 5. **The warning for saved contacts** (optional, with chats switched on in Part F): a teammate saved in your contacts sends you `Wedding_Invitation.apk` in WhatsApp as a document. Tell them first that it is a harmless test file. About 5 seconds after the notification, the app shows an alert. On the Pi, `tail -n 1 ~/ps3-guardian/logs/sms_traffic.jsonl` shows `"category": "app_file"`. If nothing comes, look at the notification: if it does not show the file's name, the app cannot see it.
 
+## Part J: HTTPS, pairing and the study switch (update 39)
+
+**Why.** Until update 39 the app talked to the Pi in plain HTTP: anyone on the same Wi-Fi could read the pairing token and the messages on their way (the hard review). Now the phones and the page use HTTPS on port 8443. Port 8000 stays plain HTTP only for the Pi's own scripts (`curl http://127.0.0.1:8000/health`) and for the ESP32's readings, whose token is good for nothing else ([esp32-lab-device.md](esp32-lab-device.md)).
+
+**The certificate.** The Pi makes its own certificate the first time it starts with update 39 (`~/.ps3_tls_cert.pem`, its key in `~/.ps3_tls_key.pem`, readable only by you) and keeps it. No certificate authority vouches for it, so the app pins it instead: it trusts exactly the certificate you confirmed when pairing, and nothing else, not even a valid certificate for another website. Someone else on the Wi-Fi cannot pose as the Pi.
+
+**Pairing, once per phone:**
+
+1. On the Pi: `cat ~/.ps3_tls_fingerprint`. It prints 16 groups of 4 characters, for example `9DAB 8116 9900 …`.
+2. In the app: the address `https://10.42.0.1:8443`, the token, **Save**, then **Pair with the Pi**.
+3. The app shows the fingerprint of the certificate it received. Compare all 16 groups. Same: tap **Trust**. Different: tap **Cancel**, and do not use that Wi-Fi.
+
+If the Pi ever makes a new certificate (only if its two files are removed), every phone must pair again; the app says so, and keeps its messages until then.
+
+**The page in a browser.** Open `https://10.42.0.1:8443`. The browser warns that the certificate is not trusted, because the Pi made it itself: choose **Advanced** → **Proceed** (Chrome) once per browser. You can compare the fingerprint in the browser's certificate viewer (the padlock or warning icon → certificate → SHA-256 fingerprint). `http://10.42.0.1:8000` now sends the browser to the HTTPS address.
+
+**The study switch.** **Share message texts with the team's study** is the phone owner's own say. Off (after installing): the Pi keeps each message's verdict and sender ID, never its text, even for a phone on the study list. On: the Pi keeps texts as before, if `data/sms/study.json` lists the phone too (Part G, step 4). The owner can switch it off at any time; from then on no text from that phone is kept.
+
 ## If something goes wrong
 
 | What you see | Fix |
 | --- | --- |
 | "Cannot reach the Pi" | Same hotspot? On the Pi, `curl -s http://127.0.0.1:8000/health` must print `{"ok":true,...}`; if not, `systemctl status ps3-guardian --no-pager` and `tail -n 30 logs/app.log`. The Pi's address is in `hostname -I`. |
 | `HTTP 401` | The token is wrong or old (it changed in update 36): `cat ~/.ps3_guardian_token` on the Pi, type it again, **Save** |
+| "not paired with the Pi yet" | Tap **Pair with the Pi** (Part J). |
+| "the Pi's certificate is not the one this phone paired with" | The Pi made a new certificate (its files `~/.ps3_tls_cert.pem` or `~/.ps3_tls_key.pem` were removed), or this is not your Pi. Compare again: **Pair with the Pi**, and trust it only if the fingerprint matches `cat ~/.ps3_tls_fingerprint`. Messages wait on the phone meanwhile. |
+| "The app talks to the Pi only over HTTPS" | The address must start with `https://` and end with `:8443`. |
+| `HTTP 403` with "use https://…" | Something talked plain HTTP to port 8000 from another machine: since update 39 that port takes only the ESP32's readings. Use `https://<Pi>:8443`. |
 | `HTTP 429` | Ten wrong tokens in a minute from this phone: wait a minute, then type the right one |
 | `HTTP 503` | The Pi has no token: `sudo systemctl restart ps3-guardian` |
 | "WAITING for the Pi" | Normal while the phone cannot reach the Pi; the message is sent later by itself. Many of them: check the Pi as for "Cannot reach the Pi". |
 | No alert, but the list shows the message | It was judged safe (no alert for safe messages), or notifications are off for the app |
 | Nothing at all when an SMS arrives | SMS permission (Part D, step 3) and battery Unrestricted (step 4). Chats are checked only as set up in Part F. |
-| Network alerts: "Cannot reach the Pi" | The phone must be on `PS3-Guardian-Lab`, with the Pi address `http://10.42.0.1:8000`. |
+| Network alerts: "Cannot reach the Pi" | The phone must be on `PS3-Guardian-Lab`, with the Pi address `https://10.42.0.1:8443`, paired (Part J). |
 | No notification for a network alert | Is **Show network alerts and notify me** ticked, and are notifications on for "Network alerts" (App info → Notifications)? Only alerts newer than an hour, seen for the first time, are notified. |
 | A chat is not checked | Is its app ticked, and does the line under "Allow notification access" say chats are being checked? Is the sender shown as a phone number (not in your contacts)? Are notifications on for that chat? The check runs about 5 seconds after the notification. |
 | No **PS3 Guardian: check it** when sharing | Install the update 29 version (Part I, step 1). In the share list, scroll or tap **More**. |
 | After sharing: "Could not read the file" | The file is not on the phone yet: in WhatsApp, tap the download arrow first, then share again. |
-| After sharing: "Could not reach the Pi" | As for the network alerts: the phone must be on `PS3-Guardian-Lab`, with the Pi address `http://10.42.0.1:8000`. |
+| After sharing: "Could not reach the Pi" | As for the network alerts: the phone must be on `PS3-Guardian-Lab`, with the Pi address `https://10.42.0.1:8443`, paired (Part J). |
 | After sharing: `HTTP 404` | The Pi runs an older version: apply update 29 and `sudo systemctl restart ps3-guardian`. |
 | After sharing: "Too big to check" | The Pi checks files up to 25 MB. |
 | `Unresolved reference 'R'` and "Package directive does not match the file location" | The `.kt` files were copied into a project with another package name: change their first line to that package (see "How the project was made" in Part B), then build again. |

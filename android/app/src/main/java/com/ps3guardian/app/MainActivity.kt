@@ -1,4 +1,4 @@
-package com.example.ps3guardian
+package com.ps3guardian.app
 
 import android.Manifest
 import android.content.ActivityNotFoundException
@@ -14,6 +14,7 @@ import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.NotificationManagerCompat
 import java.text.SimpleDateFormat
@@ -21,8 +22,8 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * One screen: Pi address, token and phone name, permissions, chats, two tests, the network
- * alerts from the Pi's lab Wi-Fi, and the last results.
+ * One screen: Pi address, token and phone name, pairing with the Pi's certificate, the study switch,
+ * permissions, chats, two tests, the network alerts from the Pi's lab Wi-Fi, and the last results.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -88,8 +89,13 @@ class MainActivity : AppCompatActivity() {
             if (Build.VERSION.SDK_INT >= 33) wanted += Manifest.permission.POST_NOTIFICATIONS
             askPermissions.launch(wanted.toTypedArray())
         }
+        findViewById<Button>(R.id.pair).setOnClickListener { pair() }
         findViewById<Button>(R.id.test_connection).setOnClickListener { testConnection() }
         findViewById<Button>(R.id.test_message).setOnClickListener { testMessage() }
+
+        val studyBox = findViewById<CheckBox>(R.id.study)
+        studyBox.isChecked = Settings.study(this)
+        studyBox.setOnCheckedChangeListener { _, on -> Settings.setSwitch(this, Settings.STUDY, on) }
 
         bindSwitch(R.id.chat_messages, Settings.chatKey(ChatApps.MESSAGES))
         bindSwitch(R.id.chat_whatsapp, Settings.chatKey(ChatApps.WHATSAPP))
@@ -169,13 +175,61 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** Asks the Pi for its certificate and shows the fingerprint, to compare with the Pi's own (update 39). */
+    private fun pair() {
+        save()
+        val address = Settings.piUrl(this)
+        if (!address.startsWith("https://")) {
+            status.text = HTTPS_ONLY
+            return
+        }
+        status.text = "Asking the Pi for its certificate..."
+        Thread {
+            val seen = try {
+                Tls.seen(address)
+            } catch (e: Exception) {
+                runOnUiThread { status.text = "Cannot reach the Pi: ${e.message}" }
+                null
+            }
+            if (seen != null) runOnUiThread { confirmPin(address, seen) }
+        }.start()
+    }
+
+    private fun confirmPin(address: String, seen: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Is this your Pi?")
+            .setMessage(
+                "The Pi at $address shows this certificate fingerprint:\n\n$seen\n\n" +
+                    "On the Pi, run:  cat ~/.ps3_tls_fingerprint\n\n" +
+                    "Tap Trust only if the two are the same. The app then talks to no other certificate."
+            )
+            .setPositiveButton("Trust") { _, _ ->
+                Settings.setPin(this, seen)
+                status.text = "Paired with the Pi."
+                testConnection()
+            }
+            .setNegativeButton("Cancel") { _, _ ->
+                status.text = "Not paired: the fingerprints must be the same."
+            }
+            .show()
+    }
+
     private fun testConnection() {
         save()
+        val address = Settings.piUrl(this)
+        if (!address.startsWith("https://")) {
+            status.text = HTTPS_ONLY
+            return
+        }
+        if (Settings.pin(this).isBlank()) {
+            status.text = "Tap 'Pair with the Pi' first: the app checks the Pi's certificate before it sends anything."
+            return
+        }
         status.text = "Connecting..."
         Thread {
             val message = try {
-                val health = PiClient(Settings.piUrl(this), Settings.token(this)).health()
-                "Connected. Advisor: ${health.optString("backend")}."
+                val health = PiClient.of(this).health()
+                "Connected over HTTPS to the paired Pi. Advisor: ${health.optString("backend")}."
             } catch (e: Exception) {
                 "Cannot reach the Pi: ${e.message}"
             }
@@ -221,6 +275,10 @@ class MainActivity : AppCompatActivity() {
         devList.text = if (devices.isEmpty()) "No device seen yet." else devices.joinToString("\n\n")
         val lines = Settings.netList(this)
         netAlerts.text = if (lines.isEmpty()) "No network alerts." else lines.joinToString("\n\n")
+    }
+
+    companion object {
+        private const val HTTPS_ONLY = "The app talks to the Pi only over HTTPS: use the address https://10.42.0.1:8443."
     }
 
     private fun showRecent() {

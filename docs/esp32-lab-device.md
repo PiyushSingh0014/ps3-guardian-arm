@@ -45,7 +45,7 @@ You need Arduino IDE 2 with the **esp32 by Espressif** boards package, and the l
    cat ~/.ps3_lab_wifi ~/.ps3_lab_device_token
    ```
 
-   The first line printed is the Wi-Fi password; the second is the token for `PI_TOKEN`. The lab-device token is good only for posting readings (`POST /iot`): a device that leaks it cannot read alerts or messages. Since update 36 the phones use a separate, longer pairing token; an ESP32 flashed before keeps working, because its old token became the lab-device token.
+   The first line printed is the Wi-Fi password; the second is the token for `PI_TOKEN`. The lab-device token is good only for posting readings (`POST /iot`): a device that leaks it cannot read alerts or messages. Since update 36 the phones use a separate, longer pairing token; an ESP32 flashed before keeps working, because its old token became the lab-device token. The ESP32 keeps talking plain HTTP to port 8000 (`PI_URL`), also after update 39: it cannot pin the Pi's certificate, and since update 39 that port takes nothing but these readings from other machines; the phones and the page use HTTPS ([android-companion.md](android-companion.md), Part J).
 
 4. **Wiring and pins.** On the IoT Pro Kit, the sensors are separate modules with their own pin headers. The ESP32 has two header strips beside it, labelled with GPIO numbers. A female–female jumper wire joins a sensor's signal pin to the ESP32 pin. Each sensor gets its power from its **PWR SWITCH** (the red DIP switches); set it to ON.
 

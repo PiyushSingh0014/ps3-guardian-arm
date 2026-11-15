@@ -1,4 +1,4 @@
-package com.example.ps3guardian
+package com.ps3guardian.app
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -8,8 +8,9 @@ import java.util.UUID
 
 /**
  * Kept in the app's private storage: the Pi address, pairing token and phone name typed on the
- * main screen, the chat switches, the last results, messages that arrived while the Pi could
- * not be reached, and the network alerts last fetched from the Pi.
+ * main screen, the Pi's certificate fingerprint confirmed when pairing, the study and chat switches,
+ * the last results, messages that arrived while the Pi could not be reached, and the network alerts
+ * last fetched from the Pi.
  */
 object Settings {
     private const val PREFS = "guardian"
@@ -18,7 +19,9 @@ object Settings {
     const val KEY_RECENT = "recent"
     const val KEY_PENDING = "pending"
     const val CHAT_CONTACTS = "chat_contacts"
-    const val DEFAULT_URL = "http://10.140.209.76:8000"
+    const val DEFAULT_URL = "https://10.42.0.1:8443"
+    const val STUDY = "study"
+    private const val PIN = "tls_pin"
     const val NET_ON = "net_on"
     const val KEY_NET_LIST = "net_list"
     const val KEY_DEV_LIST = "dev_list"
@@ -30,11 +33,21 @@ object Settings {
 
     fun prefs(c: Context): SharedPreferences = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    /** The Pi address; "10.140.209.76:8000" typed without http:// works too. */
+    /** The Pi address; "10.42.0.1:8443" typed without https:// works too. */
     fun piUrl(c: Context): String {
         val url = (prefs(c).getString("pi_url", null) ?: "").trim().trimEnd('/').ifBlank { DEFAULT_URL }
-        return if ("://" in url) url else "http://$url"
+        return if ("://" in url) url else "https://$url"
     }
+
+    /** The fingerprint of the Pi's certificate, confirmed by the owner when pairing ("" = not paired). */
+    fun pin(c: Context): String = (prefs(c).getString(PIN, null) ?: "").trim()
+
+    fun setPin(c: Context, pin: String) {
+        prefs(c).edit().putString(PIN, pin.trim()).apply()
+    }
+
+    /** "Share message texts with the study": off until its owner switches it on. */
+    fun study(c: Context): Boolean = prefs(c).getBoolean(STUDY, false)
 
     fun token(c: Context): String = (prefs(c).getString("token", null) ?: "").trim()
 

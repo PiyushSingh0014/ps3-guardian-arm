@@ -1,4 +1,4 @@
-package com.example.ps3guardian
+package com.ps3guardian.app
 
 import android.app.Activity
 import android.content.Intent
@@ -103,7 +103,7 @@ class ShareActivity : Activity() {
             val data = contentResolver.openInputStream(uri)?.use { readUpTo(it, PiClient.MAX_FILE + 1) }
             if (data == null) return show("Could not read the file", "The app it came from did not hand it over.")
             if (data.size > PiClient.MAX_FILE) return show("Too big to check", "The Pi checks files up to 25 MB.")
-            val client = PiClient(Settings.piUrl(this), Settings.token(this))
+            val client = PiClient.of(this)
             answer(client.checkFile(name, data), client)
         } catch (e: PiClient.Rejected) {
             show("Not checked", e.message ?: "")
@@ -117,7 +117,7 @@ class ShareActivity : Activity() {
 
     private fun checkText(text: String) {
         try {
-            val client = PiClient(Settings.piUrl(this), Settings.token(this))
+            val client = PiClient.of(this)
             answer(client.checkText(text.take(PiClient.MAX_MESSAGE), "en"), client)
         } catch (e: PiClient.Rejected) {
             show("Not checked", e.message ?: "")

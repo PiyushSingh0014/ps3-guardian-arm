@@ -1,4 +1,4 @@
-package com.example.ps3guardian
+package com.ps3guardian.app
 
 import android.content.BroadcastReceiver
 import android.content.Context
