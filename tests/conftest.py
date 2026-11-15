@@ -20,7 +20,8 @@ STUDY = os.path.join(tempfile.mkdtemp(prefix="ps3-test-study-"), "study.json")
 with open(STUDY, "w", encoding="utf-8") as f:
     json.dump({"phones": ["*"]}, f)
 os.environ.update(GUARDIAN_SMS_MODEL=SAMPLE_MODEL, GUARDIAN_ALLOW_SAMPLE_MODEL="1", GUARDIAN_TOKEN=TOKEN,
-                  GUARDIAN_STUDY=STUDY, GUARDIAN_SENDER_RULES=os.path.join(os.path.dirname(STUDY), "no_rules.json"))
+                  GUARDIAN_STUDY=STUDY, GUARDIAN_SENDER_RULES=os.path.join(os.path.dirname(STUDY), "no_rules.json"),
+                  GUARDIAN_BLOCKLIST=os.path.join(os.path.dirname(STUDY), "blocklist.json"))
 os.environ.pop("GUARDIAN_DEVICE_TOKEN", None)
 
 

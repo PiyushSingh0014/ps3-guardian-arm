@@ -10,6 +10,9 @@
 
 Names are chosen by whoever registered them, so they stay out of the reasons (which go
 to Llama) and appear only, made unclickable, in the alert's details.
+
+Live, the first two also block the website on the Pi's Wi-Fi for 7 days (app/dns_block.py), and
+say so; when a device looks up a website that is already blocked, the alert says it did not open.
 """
 import os
 
@@ -30,10 +33,11 @@ class NameChecks:
     tunnel_window_ms, tunnel_names, tunnel_len = 10 * 60_000, 25, 18
     cache_max = 20_000
 
-    def __init__(self, url_detector=None, dga_model=None, top_sites=None, watch=None):
+    def __init__(self, url_detector=None, dga_model=None, top_sites=None, watch=None, blocks=None):
         self.url = url_detector
         self.dga = dga_model
         self.watch = watch               # ScamLinks: websites from flagged messages
+        self.blocks = blocks             # app.dns_block.BlockList: live only
         self.top = set(top_sites or ()) | (set(url_detector.top_sites) if url_detector is not None else set())
         self.dga_seen = _Recent(self.dga_window_ms)
         self.subs = _Recent(self.tunnel_window_ms)
@@ -69,16 +73,29 @@ class NameChecks:
                   if self.watch is not None and link.registered and is_private(r.src) else None)
         if opened:
             at = time.strftime("%H:%M", time.localtime(opened.get("at_ms", 0) / 1000))
-            hits.append(Hit("scam_link_opened", r.src, link.registered, 0.95,
-                            [f"{r.src} opened a website from a scam message: the message was flagged at {at} "
-                             f"({opened.get('where') or 'a message'})"],
-                            {"name": name, "message_at": at, "message_kind": opened.get("category", "")}))
+            where = opened.get("where") or "a message"
+            before = self._blocked(link.registered)
+            why = ([f"{r.src} tried to open a website from a scam message (flagged at {at}, {where}); "
+                    "the Pi's DNS refused it, so it did not open"] if before else
+                   [f"{r.src} opened a website from a scam message: the message was flagged at {at} ({where})"])
+            facts = {"name": name, "message_at": at, "message_kind": opened.get("category", "")}
+            if not before and self._block(link.registered, f"a device opened it after a scam message ({where})"):
+                why.append("the Pi has now blocked this website on its Wi-Fi")
+            facts["blocked"] = bool(before) or len(why) > 1
+            hits.append(Hit("scam_link_opened", r.src, link.registered, 0.95, why, facts))
         elif verdict is not None and (verdict.decisive or verdict.listed):
-            why = (f"{r.src} looked up a website that is on the public list of phishing sites" if verdict.listed
+            why = [f"{r.src} looked up a website that is on the public list of phishing sites" if verdict.listed
                    else f"{r.src} looked up a fake website: {verdict.reasons[0]}" if verdict.reasons
-                   else f"{r.src} looked up a dangerous website")
-            hits.append(Hit("phishing_lookup", r.src, link.registered, 0.95 if verdict.listed else 0.9, [why],
-                            {"name": name, "brand": verdict.brand} if verdict.brand else {"name": name}))
+                   else f"{r.src} looked up a dangerous website"]
+            facts = {"name": name, "brand": verdict.brand} if verdict.brand else {"name": name}
+            before = self._blocked(link.registered)
+            if before:
+                why.append("the Pi's DNS refused it, so it did not open")
+            elif self._block(link.registered, "on the public phishing list" if verdict.listed
+                             else "a brand's name on someone else's website"):
+                why.append("the Pi has now blocked this website on its Wi-Fi")
+            facts["blocked"] = len(why) > 1
+            hits.append(Hit("phishing_lookup", r.src, link.registered, 0.95 if verdict.listed else 0.9, why, facts))
         if not r.is_dns:
             return hits
         if dga is not None and dga >= self.dga_at:
@@ -100,6 +117,26 @@ class NameChecks:
                                  "out, or to control malware, through DNS"],
                                 {"names": len(d), "avg_len": round(avg)}))
         return hits
+
+
+    def _blocked(self, site):
+        if self.blocks is None or not site:
+            return None
+        try:
+            return self.blocks.is_blocked(site)
+        except OSError:
+            return None
+
+    def _block(self, site, why):
+        """Block the website on the Pi's Wi-Fi; True if it is newly blocked."""
+        if self.blocks is None or not site:
+            return False
+        try:
+            added, _ = self.blocks.block([site], why=f"a device looked it up: {why}", source="network")
+        except OSError as e:
+            print(f"[net] could not write the DNS block list: {e}", flush=True)
+            return False
+        return bool(added)
 
 
 def load_dga_model(path=DGA_MODEL):

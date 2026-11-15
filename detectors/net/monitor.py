@@ -28,6 +28,7 @@ from detectors.net.flows import read_cic_csv, read_flows             # noqa: E40
 from detectors.net.scamlinks import WATCH                             # noqa: E402
 
 ALERTS = os.path.join(ROOT, "logs", "net_alerts.jsonl")
+BLOCK_LIST = os.path.join(ROOT, "data", "net", "blocklist.json")      # the Pi's DNS block list
 DAYS = os.path.join(ROOT, "data", "net", "days.json")    # watched time, flows, alerts per day
 SAVE_EVERY_S = 600
 STATUS_EVERY_S = 900                         # live only: "[net] 19:30 1234 flows so far ..."
@@ -257,7 +258,8 @@ def main():
     if a.iface:
         gateway = iface_address(a.iface)
         engine = NetEngine(gateway=gateway, learn_ms=int(a.learn_hours * 3600_000), state_path=default_state_path(),
-                           watch_path=os.environ.get("NET_WATCH", WATCH))     # links from flagged messages
+                           watch_path=os.environ.get("NET_WATCH", WATCH),     # links from flagged messages
+                           block_path=os.environ.get("GUARDIAN_BLOCKLIST", BLOCK_LIST))   # app/dns_block.py
         print(f"[net] watching {a.iface} (this Pi is {gateway or 'unknown'}); alerts -> {a.out or ALERTS}", flush=True)
         n = run(read_flows(a.iface), engine, a.out or ALERTS, not a.quiet, iface=a.iface, days=DAYS)
     elif a.pcap:

@@ -62,7 +62,7 @@ class NetEngine:
     cooldown_ms = 10 * 60_000
 
     def __init__(self, url_detector="auto", dga_model="auto", gateway=None, learn_ms=2 * 3600_000,
-                 state_path=None, leases=LEASES, beacons=True, watch_path=None):
+                 state_path=None, leases=LEASES, beacons=True, watch_path=None, block_path=None):
         if url_detector == "auto":
             from detectors.url.detector import UrlDetector
             url_detector = UrlDetector()
@@ -71,7 +71,12 @@ class NetEngine:
         self.url = url_detector
         self.rules = default_rules()
         self.beacon = Beacon() if beacons else None
-        self.names = NameChecks(url_detector, dga_model, watch=ScamLinks(watch_path) if watch_path else None)
+        blocks = None
+        if block_path:                               # live only: block what devices must not open
+            from app.dns_block import BlockList
+            blocks = BlockList(block_path)
+        self.names = NameChecks(url_detector, dga_model, watch=ScamLinks(watch_path) if watch_path else None,
+                                blocks=blocks)
         self.base = Baselines(learn_ms=learn_ms, gateway=gateway, path=state_path)
         self.gateway = gateway
         self.recent = {}
