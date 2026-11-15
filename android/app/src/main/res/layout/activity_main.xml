@@ -27,13 +27,13 @@
             android:id="@+id/pi_url"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="http://10.140.209.76:8000"
+            android:hint="https://10.42.0.1:8443"
             android:inputType="textUri" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Pairing token (printed when the Pi app starts)" />
+            android:text="Pairing token (on the Pi: cat ~/.ps3_guardian_token)" />
 
         <EditText
             android:id="@+id/token"
@@ -53,6 +53,18 @@
             android:inputType="text"
             android:maxLength="32" />
 
+        <CheckBox
+            android:id="@+id/study"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp"
+            android:text="Share message texts with the team's study" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Off: the Pi keeps each message's verdict and its sender ID (only 'mobile number' for a person), never the text. On: it also keeps the text of messages from businesses and of flagged messages, digits hidden, so the team can label them; the Pi must also have this phone on its study list. You can switch it off at any time." />
+
         <Button
             android:id="@+id/save"
             android:layout_width="match_parent"
@@ -64,6 +76,12 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Allow SMS and notifications" />
+
+        <Button
+            android:id="@+id/pair"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Pair with the Pi" />
 
         <Button
             android:id="@+id/test_connection"

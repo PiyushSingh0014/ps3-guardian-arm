@@ -119,10 +119,10 @@ case "${1:-}" in
     p="$(phone_con || true)"
     say "Kept. The Pi is now a hotspot, also after a restart."
     say "  Phones, the laptop and the ESP32 join \"$SSID\" (password in $PASS_FILE)."
-    say "  Companion app on a phone that joined it: Pi address http://$ADDR:8000, same pairing token."
+    say "  Companion app on a phone that joined it: Pi address https://$ADDR:8443, same pairing token."
     if [ -n "$t" ]; then
       say "  Internet comes from the phone on USB ($t, the Pi is $(addr_of "$t") there). That phone must not"
-      say "  join \"$SSID\". If it runs the app too, its Pi address is http://$(addr_of "$t"):8000"
+      say "  join \"$SSID\". If it runs the app too, its Pi address is https://$(addr_of "$t"):8443"
     else
       say "  No phone on USB now: devices on \"$SSID\" have no internet until one is plugged in and tethering."
     fi

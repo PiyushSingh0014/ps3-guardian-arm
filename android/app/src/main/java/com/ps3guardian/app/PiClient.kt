@@ -1,13 +1,20 @@
-package com.example.ps3guardian
+package com.ps3guardian.app
 
+import android.content.Context
 import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URLEncoder
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLException
 
-/** The calls the app makes to the Pi (app/server.py). Blocking: use a background thread. */
-class PiClient(private val baseUrl: String, private val token: String) {
+/**
+ * The calls the app makes to the Pi (app/server.py). Blocking: use a background thread.
+ * Over https:// (the Pi's port 8443) the connection trusts only the certificate this phone paired
+ * with ([pin], see Tls.kt), and the pairing token is sent only over such a connection.
+ */
+class PiClient(private val baseUrl: String, private val token: String, private val pin: String = "") {
 
     /** The Pi refused the request itself (bad or too long a message), not the connection or the token. */
     class Rejected(message: String) : IOException(message)
@@ -17,13 +24,14 @@ class PiClient(private val baseUrl: String, private val token: String) {
     /** channel "sms", or "chat" with the app it came from; device is this phone's name for the log. */
     fun checkSms(
         message: String, sender: String, language: String, test: Boolean = false,
-        channel: String = "sms", app: String? = null, device: String = ""
+        channel: String = "sms", app: String? = null, device: String = "", study: Boolean = false
     ): JSONObject {
         val body = JSONObject()
             .put("message", message)
             .put("language", language)
             .put("test", test)
             .put("channel", channel)
+            .put("study", study)                 // the "Share message texts with the study" switch
         if (sender.isNotBlank()) body.put("sender", sender)
         if (app != null) body.put("app", app)
         if (device.isNotBlank()) body.put("device", device.take(32))
@@ -51,6 +59,7 @@ class PiClient(private val baseUrl: String, private val token: String) {
     private fun request(method: String, path: String, body: JSONObject?, raw: ByteArray? = null,
                         readMs: Int = 6_000): JSONObject {
         val conn = URI(baseUrl + path).toURL().openConnection() as HttpURLConnection
+        if (conn is HttpsURLConnection) Tls.pin(conn, Tls.PinTrust(pin), pin)
         try {
             conn.requestMethod = method
             // Android gives an SMS receiver about 10 s; the Pi answers in well under 1 s.
@@ -73,12 +82,20 @@ class PiClient(private val baseUrl: String, private val token: String) {
             if (code in REFUSED) throw Rejected("HTTP $code ${text.take(120)}")
             if (code !in 200..299) throw IOException("HTTP $code ${text.take(120)}")
             return JSONObject(text)
+        } catch (e: SSLException) {
+            // Still an IOException: a message waits on the phone until the Pi can be reached.
+            if (!Tls.notPinned(e)) throw e
+            throw IOException(if (pin.isBlank()) "not paired with the Pi yet: tap 'Pair with the Pi'"
+                              else "the Pi's certificate is not the one this phone paired with: tap 'Pair with the Pi'")
         } finally {
             conn.disconnect()
         }
     }
 
     companion object {
+        /** A client with this phone's settings: the Pi address, the pairing token and the pinned certificate. */
+        fun of(c: Context) = PiClient(Settings.piUrl(c), Settings.token(c), Settings.pin(c))
+
         const val MAX_MESSAGE = 2000        // the Pi accepts up to 2000 characters
         const val MAX_FILE = 25 * 1024 * 1024   // and files up to 25 MB
         // Bad request, too large, invalid fields. A wrong token (401) or a stopped app is

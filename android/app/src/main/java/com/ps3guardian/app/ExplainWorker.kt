@@ -1,4 +1,4 @@
-package com.example.ps3guardian
+package com.ps3guardian.app
 
 import android.content.Context
 import androidx.work.Constraints
@@ -18,7 +18,7 @@ class ExplainWorker(context: Context, params: WorkerParameters) : Worker(context
     override fun doWork(): Result {
         val job = inputData.getString(KEY_JOB) ?: return Result.success()
         val notificationId = inputData.getInt(KEY_NOTIFICATION, 0)
-        val client = PiClient(Settings.piUrl(applicationContext), Settings.token(applicationContext))
+        val client = PiClient.of(applicationContext)
         repeat(36) {                                         // at most 3 minutes
             val reply = try {
                 client.explain(job)

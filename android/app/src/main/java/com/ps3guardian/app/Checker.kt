@@ -1,4 +1,4 @@
-package com.example.ps3guardian
+package com.ps3guardian.app
 
 import android.content.Context
 import java.text.SimpleDateFormat
@@ -55,11 +55,11 @@ object Checker {
     /** True when the Pi answered (or refused this message for good); false when it could not be reached. */
     private fun check(context: Context, m: Msg, test: Boolean): Boolean {
         try {
-            val client = PiClient(Settings.piUrl(context), Settings.token(context))
+            val client = PiClient.of(context)
             val language = if (DEVANAGARI.containsMatchIn(m.text)) "hi" else "en"
             val res = client.checkSms(
                 m.text.take(PiClient.MAX_MESSAGE), m.sender.take(64), language, test,
-                channel = m.channel, app = m.app, device = Settings.device(context)
+                channel = m.channel, app = m.app, device = Settings.device(context), study = Settings.study(context)
             )
             val finding = res.getJSONObject("finding")
             val advice = res.getJSONObject("advice")

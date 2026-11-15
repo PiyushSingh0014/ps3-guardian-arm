@@ -7,7 +7,7 @@
 #   is it running?                          systemctl status ps3-guardian --no-pager
 #   log (appended, not overwritten):        tail -n 30 logs/app.log
 #   stop starting at boot:                  sudo systemctl disable --now ps3-guardian
-# Don't also start scripts/run_pi.sh by hand: a second copy cannot use port 8000.
+# Don't also start scripts/run_pi.sh by hand: a second copy cannot use ports 8000 and 8443.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -43,7 +43,7 @@ StandardError=inherit
 WantedBy=multi-user.target
 EOF
 
-pkill -f "uvicorn app.server" || true          # a copy started by hand would hold port 8000
+pkill -f "uvicorn app.server|app.serve" || true   # a copy started by hand would hold ports 8000 and 8443
 sudo systemctl daemon-reload
 sudo systemctl enable --now ps3-guardian
 echo "Installed. Llama takes 1-2 minutes to load; then: curl -s http://127.0.0.1:8000/health"

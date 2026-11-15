@@ -193,7 +193,7 @@ The internet phone can be a second phone that does nothing else. Ours is a Motor
 
    If you don't run `--keep` within 10 minutes, the Pi switches back to your phone's hotspot by itself, and you can SSH in as before.
 
-5. Switch off your phone's hotspot and join `PS3-Guardian-Lab` with it. In the companion app, set the Pi address to `http://10.42.0.1:8000` (same pairing token) and tap **Test connection**.
+5. Switch off your phone's hotspot and join `PS3-Guardian-Lab` with it. In the companion app, set the Pi address to `https://10.42.0.1:8443` (same pairing token), pair if it asks ([android-companion.md](android-companion.md), Part J) and tap **Test connection**.
 
 If one phone does both jobs (internet over USB and the app), it stays off the lab Wi-Fi. Its app uses the USB address that `--keep` prints.
 

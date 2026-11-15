@@ -1,4 +1,4 @@
-package com.example.ps3guardian
+package com.ps3guardian.app
 
 import android.content.Context
 import org.json.JSONArray
@@ -15,7 +15,7 @@ object Devices {
     /** Asks the Pi once and keeps the list. False if the Pi could not be reached. */
     fun check(c: Context): Boolean {
         val reply = try {
-            PiClient(Settings.piUrl(c), Settings.token(c)).devices()
+            PiClient.of(c).devices()
         } catch (e: Exception) {
             return false
         }

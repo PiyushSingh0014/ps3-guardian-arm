@@ -40,7 +40,6 @@ fi
 grep "^\[llm\]" logs/llm_service.log 2>/dev/null || true
 
 IP="$(hostname -I | awk '{print $1}')"
-echo "App: open http://$IP:8000 on a phone on the same network"
 
 # Pairing tokens, created once and kept in files (never printed in the log):
 #   ~/.ps3_guardian_token     the phones and the page; every request needs it (128 bits)
@@ -58,6 +57,25 @@ fi
 [ -s "$DEVICE_TOKEN_FILE" ] || new_token "$DEVICE_TOKEN_FILE"
 export GUARDIAN_TOKEN="${GUARDIAN_TOKEN:-$(tr -d '[:space:]' < "$TOKEN_FILE")}"
 export GUARDIAN_DEVICE_TOKEN="${GUARDIAN_DEVICE_TOKEN:-$(tr -d '[:space:]' < "$DEVICE_TOKEN_FILE")}"
-echo "Phones and page: Pi address http://$IP:8000; pairing token: cat $TOKEN_FILE"
+echo "Phones and page: the pairing token is in $TOKEN_FILE (cat it)"
 
-ADVISOR_BACKEND=service exec uvicorn app.server:app --host 0.0.0.0 --port 8000
+# HTTPS (update 39): a self-signed certificate, made once and kept. A phone pins it when it pairs: its
+# owner compares the fingerprint the app shows with the one printed here (and in ~/.ps3_tls_fingerprint).
+# The phones and the page use https://<Pi>:8443. Plain HTTP on port 8000 stays for the Pi itself
+# (curl http://127.0.0.1:8000/health) and for lab devices' readings (POST /iot), which cannot pin.
+CERT="$HOME/.ps3_tls_cert.pem"
+KEY="$HOME/.ps3_tls_key.pem"
+if [ ! -s "$CERT" ] || [ ! -s "$KEY" ]; then
+  command -v openssl > /dev/null || { echo "openssl is missing: sudo apt install openssl"; exit 1; }
+  (umask 077; openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 3650 \
+    -subj "/CN=ps3-guardian" -addext "subjectAltName=IP:10.42.0.1,DNS:ps3-guardian.local" \
+    -keyout "$KEY" -out "$CERT" 2> /dev/null)
+  chmod 600 "$KEY"
+  echo "Made a new HTTPS certificate: pair the phones again (the app shows its fingerprint)."
+fi
+FINGERPRINT="$(python -m app.serve --fingerprint "$CERT")"
+echo "$FINGERPRINT" > "$HOME/.ps3_tls_fingerprint"
+echo "App: https://$IP:8443 for the phones and the page; certificate fingerprint: $FINGERPRINT"
+echo "Lab devices post readings to http://$IP:8000/iot"
+
+ADVISOR_BACKEND=service exec python -m app.serve --cert "$CERT" --key "$KEY"
