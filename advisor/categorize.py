@@ -6,21 +6,26 @@ Order matters: the most severe patterns are checked first.
 """
 import re
 
+# Module-level so that scripts/export_phone_guard.py can copy them to the phone app.
+DIGITAL_ARREST_RE = re.compile(r"\b(digital arrest|cbi|narcotics|police|arrest warrant|"
+                               r"customs officer|court case|money laundering)\b", re.I)
+DELIVERY_RE = re.compile(r"\b(parcel|courier|shipment|delivery|customs|redeliver)\b", re.I)
+JOB_RE = re.compile(r"\b(work from home|part[- ]time|job offer|daily earning|earn rs|selected for a)\b", re.I)
+UTILITY_RE = re.compile(r"\b(electricity|power supply|light bill|disconnect\w*)\b", re.I)
+
 _RULES = [
     ("apk_malware_link",
      lambda m, s: s.has_apk),
     ("digital_arrest_scam",
-     lambda m, s: re.search(r"\b(digital arrest|cbi|narcotics|police|arrest warrant|"
-                            r"customs officer|court case|money laundering)\b", m, re.I)),
+     lambda m, s: DIGITAL_ARREST_RE.search(m)),
     ("delivery_fee_scam",
-     lambda m, s: re.search(r"\b(parcel|courier|shipment|delivery|customs|redeliver)\b", m, re.I)),
+     lambda m, s: DELIVERY_RE.search(m)),
     ("job_task_scam",
-     lambda m, s: re.search(r"\b(work from home|part[- ]time|job offer|daily earning|"
-                            r"earn rs|selected for a)\b", m, re.I)),
+     lambda m, s: JOB_RE.search(m)),
     ("lottery_reward_scam",
      lambda m, s: s.reward_bait),
     ("utility_disconnection_scam",
-     lambda m, s: re.search(r"\b(electricity|power supply|light bill|disconnect\w*)\b", m, re.I)),
+     lambda m, s: UTILITY_RE.search(m)),
     ("otp_theft",
      lambda m, s: s.asks_secret and not s.bank_context),
     ("bank_kyc_scam",

@@ -115,16 +115,23 @@ class ShareActivity : Activity() {
         }
     }
 
+    /** Phone Guard's verdict at once; then the Pi's, with Llama's explanation, if the Pi can be reached. */
     private fun checkText(text: String) {
+        val local = PhoneGuard.check(this, text.take(PiClient.MAX_MESSAGE), null)
+        if (local != null) {
+            val ms = if (local.millis < 1) "under 1 ms" else "%.0f ms".format(Locale.US, local.millis)
+            show(local.headline, local.adviceText() + "\n\nChecked on this phone in $ms.")
+        }
         try {
             val client = PiClient.of(this)
             answer(client.checkText(text.take(PiClient.MAX_MESSAGE), "en"), client)
         } catch (e: PiClient.Rejected) {
-            show("Not checked", e.message ?: "")
+            if (local == null) show("Not checked", e.message ?: "")
         } catch (e: InterruptedException) {
             // the screen was closed
         } catch (e: Exception) {
-            show("Could not reach the Pi", e.message ?: "")
+            if (local == null) show("Could not reach the Pi", e.message ?: "")
+            else ui { llm.text = "The Pi could not be reached, so this verdict is the phone's alone (no Llama explanation)." }
         }
     }
 

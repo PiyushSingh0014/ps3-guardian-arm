@@ -5,10 +5,18 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** One message to check: an SMS, or a chat message (RCS, MMS, WhatsApp) read from a notification. */
-class Msg(val channel: String, val app: String?, val sender: String, val text: String, val received: Long)
+/**
+ * One message to check: an SMS, or a chat message (RCS, MMS, WhatsApp) read from a notification.
+ * phoneVerdict and notifyId: what Phone Guard decided on this phone, and its alert, if it showed one.
+ */
+class Msg(val channel: String, val app: String?, val sender: String, val text: String, val received: Long,
+          var phoneVerdict: String? = null, var notifyId: Int = 0)
 
-/** Sends messages to the Pi and shows the answer. Blocking: call it from a background thread. */
+/**
+ * Checks each message on the phone first (Phone Guard: no network needed), then sends it to the Pi,
+ * which adds Llama's explanation and its phishing list when the phone is on its Wi-Fi. Blocking:
+ * call it from a background thread.
+ */
 object Checker {
     private val DEVANAGARI = Regex("[\\u0900-\\u097F]")
     private const val LATE_MS = 2 * 60 * 1000L          // checked more than 2 minutes after it arrived
@@ -23,6 +31,7 @@ object Checker {
         onMessage(context, Msg("chat", app, sender, text, System.currentTimeMillis()))
 
     private fun onMessage(context: Context, m: Msg) {
+        onPhone(context, m)
         if (check(context, m, test = false)) {
             FlushWorker.flushSoon(context)              // the Pi answers: send anything still waiting
         } else {
@@ -32,9 +41,23 @@ object Checker {
         }
     }
 
-    /** The "Send a test scam" button: never kept for later, and the Pi does not log it. */
+    /** The "Send a test scam" button: checked on the phone, then by the Pi; never kept for later, and the Pi does not log it. */
     fun test(context: Context, sender: String, text: String) {
-        check(context, Msg("sms", null, sender, text, System.currentTimeMillis()), test = true)
+        val m = Msg("sms", null, sender, text, System.currentTimeMillis())
+        onPhone(context, m)
+        check(context, m, test = true)
+    }
+
+    /** Phone Guard: the verdict on this phone, at once, and an alert if the message is not safe. */
+    private fun onPhone(context: Context, m: Msg) {
+        val r = PhoneGuard.check(context, m.text.take(PiClient.MAX_MESSAGE), m.sender.take(64)) ?: return
+        m.phoneVerdict = r.verdict
+        val ms = if (r.millis < 1) "under 1 ms" else "%.0f ms".format(Locale.US, r.millis)
+        Settings.addRecent(context, line(m, "${r.verdict.uppercase(Locale.US)} (${"%.2f".format(Locale.US, r.score)}) on this phone, $ms"))
+        if (r.verdict != "safe") {
+            val where = if (m.app != null) "${ChatApps.label(m.app)}: " else ""
+            m.notifyId = Notifier.show(context, where + r.headline, r.adviceText() + "\n(Checked on this phone.)")
+        }
     }
 
     /** Sends the waiting messages, oldest first, until the Pi stops answering. */
@@ -67,16 +90,22 @@ object Checker {
             val score = finding.optDouble("score", 0.0)
             val label = verdict.uppercase(Locale.US)
             val late = System.currentTimeMillis() - m.received > LATE_MS
-            val status = "$label (${"%.2f".format(Locale.US, score)})" + (if (late) ", checked later" else "")
+            val status = "Pi: $label (${"%.2f".format(Locale.US, score)})" + (if (late) ", checked later" else "")
             Settings.addRecent(context, line(m, status))
 
             if (verdict != "safe") {
                 val where = if (m.app != null) "${ChatApps.label(m.app)}: " else ""
                 val title = where + advice.optString("headline").ifBlank { label }
                 val body = (if (late) "Received ${stamp(m.received)}. " else "") + Notifier.adviceText(advice)
-                val id = Notifier.show(context, title, body)
+                val warned = m.phoneVerdict != null && m.phoneVerdict != "safe"
+                val id: Int? = when {
+                    // the phone's alert is still on screen: the Pi's advice replaces it, Llama's text follows
+                    m.notifyId != 0 && Notifier.isShowing(context, m.notifyId) -> Notifier.show(context, title, body, m.notifyId)
+                    warned -> null                         // the phone warned already, and the alert was seen
+                    else -> Notifier.show(context, title, body)
+                }
                 val explain = res.optJSONObject("explain")
-                if (explain != null) ExplainWorker.enqueue(context, explain.getString("id"), id, title)
+                if (id != null && explain != null) ExplainWorker.enqueue(context, explain.getString("id"), id, title)
             }
             return true
         } catch (e: PiClient.Rejected) {
@@ -84,7 +113,7 @@ object Checker {
             Settings.addRecent(context, line(m, "NOT CHECKED: ${e.message}"))
             return true
         } catch (e: Exception) {
-            if (test) Settings.addRecent(context, line(m, "NOT CHECKED: ${e.message}"))
+            if (test) Settings.addRecent(context, line(m, "the Pi did not answer: ${e.message}"))
             return false
         }
     }

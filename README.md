@@ -5,6 +5,8 @@
 
 PS3 Guardian is a security assistant for Indian homes that runs entirely on Arm edge hardware: a **Raspberry Pi 4** and an **Android phone**. It checks **SMS and chat messages**, **links**, **files that arrive in chats** and the **network traffic of every device on the home Wi-Fi**. Small, fast checkers give a verdict in milliseconds: safe, suspicious or dangerous. Then **Llama 3.2 1B**, deployed on the Pi's Arm CPU with **ExecuTorch**, explains each alert in plain English, a fixed playbook tells the user what to do, and the Pi's DNS stops scam websites from opening on its Wi-Fi. No message, file or traffic record is sent to any cloud service.
 
+It has two parts. **Phone Guard**, on the Android phone, checks the owner's SMS, chats and links on the phone itself, anywhere, even with no network. The **Home Hub**, on the Pi, protects every device on the home Wi-Fi: it watches their traffic, checks files, blocks scam websites, and runs Llama to explain alerts. At home the two work together.
+
 ---
 
 ## Contents
@@ -32,12 +34,12 @@ PS3 Guardian is a security assistant for Indian homes that runs entirely on Arm 
 | **Hardware** | Raspberry Pi 4 Model B, 4 GB (4× Arm Cortex-A72, 64-bit Linux), CPU only, no accelerator; a Samsung Galaxy S25 and teammates' Android phones; an ESP32 on an IoT Pro Kit as a lab IoT device |
 | **Llama** | Llama 3.2 1B Instruct, Meta's SpinQuant INT4 checkpoint, exported with ExecuTorch (XNNPACK, 4-bit weights, 8-bit activations), ≈1.0 GB `.pte`, run by our own C++ engine on the Pi's Arm CPU |
 | **What it checks** | SMS with their real sender IDs; WhatsApp and RCS chats from unknown numbers; links; PDF, Office, APK, zip and web files; the traffic of every device on the Pi's Wi-Fi |
-| **What the user gets** | A verdict at once, the reasons, the steps to take (1930, cybercrime.gov.in), Llama's two-sentence explanation 20–30 s later, and scam websites blocked on the Pi's Wi-Fi |
-| **Speed on the Pi 4** | SMS verdict ≈30 ms; link ≈1 ms; file ≈20 ms; network alert within about 30 s to 10 min, by kind; a new Llama explanation 18–31 s, a repeated one instant |
-| **Measured** | **SMS:** F1 0.950 on held-out public messages; on 227 real Indian messages 96 of 100 scams caught, but 59–64% of normal messages flagged with the text and the senders we had (4% with ideal registered sender IDs is a projection, not a measurement); on the team's real traffic, 13% of SMS from registered sender IDs flagged, mostly marketing. **Links:** 81% of brand-new phishing sites caught with no lists; 1.1% of popular websites called dangerous. **Network:** all 10 network-level attacks in CIC-IDS2017 detected; on IoT-23's real IoT malware, 2 of 5 infected devices flagged, with no false alarm in 28.8 h of three real smart-home devices. **Files:** 21 of 21 test files right, no false alarm on 521 ordinary PDFs. **Llama:** of the sentences users see, 72% supported by the evidence and 12% wrong (one grader) |
+| **What the user gets** | A verdict at once, from the phone itself, with the reasons and the steps to take (1930, cybercrime.gov.in); at home, Llama's two-sentence explanation 20–30 s later, and scam websites blocked on the Pi's Wi-Fi |
+| **Speed** | On the phone: a message in about a millisecond (0.7 ms on a laptop-class CPU; the app shows its own time). On the Pi 4: SMS verdict ≈30 ms; link ≈1 ms; file ≈20 ms; network alert within about 30 s to 10 min, by kind; a new Llama explanation 18–31 s, a repeated one instant |
+| **Measured** | **SMS:** F1 0.950 on held-out public messages; on 227 real Indian messages 96 of 100 scams caught, but 59–64% of normal messages flagged with the text and the senders we had (4% with ideal registered sender IDs is a projection, not a measurement); on the team's real traffic, 13% of SMS from registered sender IDs flagged, mostly marketing. **Links:** 81% of brand-new phishing sites caught with no lists; 1.1% of popular websites called dangerous. **Network:** all 10 network-level attacks in CIC-IDS2017 detected; on IoT-23's real IoT malware, 2 of 5 infected devices flagged, with no false alarm in 28.8 h of three real smart-home devices. **Files:** 21 of 21 test files right, no false alarm on 521 ordinary PDFs. **Phone Guard:** the same verdict as the Pi on all 16,272 test messages. **Llama:** of the sentences users see, 72% supported by the evidence and 12% wrong (one grader) |
 | **Security** | HTTPS to the Pi with a certificate each phone pins when pairing; a 128-bit pairing token on every request; message texts kept only for phones whose owner switched the study on |
-| **Cloud use** | None. The phone talks to the Pi over the home Wi-Fi; the internet is needed only for the devices' own browsing and for refreshing the phishing list |
-| **Code** | 62 Python files (≈11,500 lines), a 16-file Kotlin Android app (≈1,600 lines), a C++ Llama engine, an ESP32 sketch; 353 automated tests as pytest counts them (252 test functions, some run with several inputs) |
+| **Cloud use** | None. The phone decides on its own and talks to the Pi over the home Wi-Fi; the internet is needed only for the devices' own browsing and for refreshing the phishing list |
+| **Code** | 64 Python files (≈11,900 lines), a 25-file Kotlin Android app (≈3,200 lines, Phone Guard included), a C++ Llama engine, an ESP32 sketch; 358 automated tests as pytest counts them (257 test functions, some run with several inputs) |
 
 ---
 
@@ -52,7 +54,7 @@ PS3 Guardian is a security assistant for Indian homes that runs entirely on Arm 
 | Detecting scam SMS and fraudulent communications | SMS checker with the real sender ID read by the phone app; chats from unknown numbers; files that arrive in chats | [5.3](#53-sms-and-chat-checker), [5.5](#55-file-checker) |
 | Explaining threats to non-expert users in plain language | Llama 3.2 1B writes two sentences, checked against the evidence before anyone sees them | [5.8](#58-advisor-playbooks-and-llama) |
 | Recommending remediation actions | 25 playbooks: steps for every kind of alert, always shown word for word; and the Pi's DNS blocks scam websites on its Wi-Fi | [5.8](#58-advisor-playbooks-and-llama), [5.7](#57-messages-meet-network-traffic-and-dns-blocking) |
-| Processing data locally without cloud services | Everything runs on the Pi and the phone; they talk over HTTPS on the home Wi-Fi | [8](#8-privacy-safety-and-responsible-design) |
+| Processing data locally without cloud services | Everything runs on the phone and the Pi; the phone's verdicts need no network at all, and the two talk over HTTPS on the home Wi-Fi | [8](#8-privacy-safety-and-responsible-design) |
 | Llama via ExecuTorch on-device (required) | Llama 3.2 1B SpinQuant INT4, ExecuTorch release 1.5, XNNPACK, on the Pi 4's Arm CPU | [5.8](#58-advisor-playbooks-and-llama) |
 | Deliverables: source code, application, demo video, technical report | Source code and tests in this repository; the Android app and the Pi's web page; video and report for 23 November | [10](#10-roadmap) |
 
@@ -67,19 +69,20 @@ PS3 Guardian is a security assistant for Indian homes that runs entirely on Arm 
 ### Design principles
 
 1. **Small checkers decide, Llama explains.** Rules and small models give the verdict in milliseconds. A 1B language model is slow on a Pi 4, can be wrong, and could be talked into "safe" by a scammer's text, so it never decides. It only explains, and its sentences are checked against the evidence it was given.
-2. **Nothing leaves the home network.** The phone sends to the Pi over the Pi's own Wi-Fi; the Pi needs no outside service for any check.
-3. **Indian scams first.** TRAI sender IDs, `.bank.in` and `.gov.in`, Indian brands, KYC, UPI, OTP and APK scams, the 1930 helpline.
-4. **Answer at once, explain after.** The playbook's advice appears immediately; Llama's explanation replaces it in the same alert 20–30 s later.
-5. **Protect, not only detect.** The Pi's DNS refuses the websites of dangerous messages and the phishing sites devices look up, with an undo on the page.
-6. **Measure everything on real hardware and real data,** and report the numbers, including the bad ones.
-7. **Defensive only.** No attack tools; the lab device's test modes are harmless imitations, and public malware traffic is replayed from files, never sent.
+2. **Nothing leaves the home network.** The phone decides on its own and sends to the Pi over the Pi's own Wi-Fi; neither needs an outside service for any check.
+3. **Two parts that also work apart.** Phone Guard protects its owner anywhere; the Home Hub protects every device at home. The phone runs the Pi's own checks, copied from the same Python code, so they agree.
+4. **Indian scams first.** TRAI sender IDs, `.bank.in` and `.gov.in`, Indian brands, KYC, UPI, OTP and APK scams, the 1930 helpline.
+5. **Answer at once, explain after.** The phone's verdict and the playbook's advice appear immediately; Llama's explanation replaces it in the same alert 20–30 s later.
+6. **Protect, not only detect.** The Pi's DNS refuses the websites of dangerous messages and the phishing sites devices look up, with an undo on the page.
+7. **Measure everything on real hardware and real data,** and report the numbers, including the bad ones.
+8. **Defensive only.** No attack tools; the lab device's test modes are harmless imitations, and public malware traffic is replayed from files, never sent.
 
 ### Architecture
 
 ```mermaid
 flowchart TB
   subgraph IN["Where data comes in"]
-    PH["Phone app (Android)<br/>SMS with sender ID, chats, shared files"]
+    PH["Phone app (Android)<br/>Phone Guard: SMS, chats and links<br/>checked on the phone"]
     PG["Web page on the Pi<br/>a message, a link or a file"]
     DV["Devices on the Pi's Wi-Fi<br/>laptop, phones, ESP32"]
   end
@@ -135,11 +138,12 @@ sequenceDiagram
   participant C as SMS checker
   participant L as Llama (ExecuTorch)
   N->>A: SMS arrives (not over the internet)
-  A->>P: text + real sender ID + token, over HTTPS (pinned certificate)
+  Note over A: Phone Guard: verdict and advice on the phone (about 1 ms), alert at once
+  A->>P: at home: text + real sender ID + token, over HTTPS (pinned certificate)
   P->>C: check
   C-->>P: verdict and reasons (about 30 ms)
-  P-->>A: playbook advice at once
-  Note over A: alert with headline, why, steps
+  P-->>A: the Pi's verdict (with its phishing list)
+  Note over A: the same alert, now with the Pi's advice
   Note over P: a dangerous message's websites are blocked on the Pi's Wi-Fi
   P->>L: explain (flagged messages only)
   L-->>P: 2 sentences, checked (20–30 s)
@@ -147,7 +151,7 @@ sequenceDiagram
   P-->>A: Llama's text, shown in the same alert
 ```
 
-If the Pi cannot be reached, the phone keeps the message (up to 500) and sends it when it can. If the message is flagged, the websites of its links go on the watch list for 24 hours: if any device on the Wi-Fi then opens one, the network monitor raises "Link from a scam message opened" and the website is blocked.
+If the Pi cannot be reached, the phone's own verdict and alert stand, and the message waits on the phone (up to 500) until the Pi can add Llama's explanation and its phishing list. If the message is flagged, the websites of its links go on the watch list for 24 hours: if any device on the Wi-Fi then opens one, the network monitor raises "Link from a scam message opened" and the website is blocked.
 
 ---
 
@@ -156,7 +160,7 @@ If the Pi cannot be reached, the phone keeps the message (up to 500) and sends i
 | Device | Role |
 | --- | --- |
 | **Raspberry Pi 4 Model B, 4 GB** | The hub. Raspberry Pi OS Lite 64-bit (Debian 13), Python 3.13, booted from a 128 GB USB 3.2 drive. Runs two services: `ps3-guardian` (the app server and the Llama service) and `ps3-netmon` (the network monitor). It is also the Wi-Fi hotspot `PS3-Guardian-Lab` (10.42.0.1) and its DNS server |
-| **Samsung Galaxy S25 and teammates' Android phones** | Run the companion app: read SMS and chats, share files, show alerts and network alerts |
+| **Samsung Galaxy S25 and teammates' Android phones** | Run the companion app with Phone Guard: check SMS, chats and links on the phone, show alerts and network alerts, share files to the Pi |
 | **ESP32 DevKit on the IobiT IoT Pro Kit** | A small IoT device on the lab Wi-Fi: sends DHT11 and BMP180 readings every 15 s; harmless test modes imitate an infected device |
 | **A second phone on the Pi's USB port** | Gives the Pi internet by USB tethering, only so the devices on the lab Wi-Fi can browse |
 | **Laptop** | Opens the Pi's page; used to export the model, build the C++ engine (WSL2) and build the Android app |
@@ -184,6 +188,7 @@ A complete Android Studio project in Kotlin (`android/`, package `com.ps3guardia
 
 | Part | What it does |
 | --- | --- |
+| Phone Guard (`guard/*.kt`, `PhoneGuard.kt`) | The Pi's message and link checks, in Kotlin: text cleaning, the SMS model, the India and sender rules, the link checker with the link model, the scam types and the playbooks' steps, from 3.4 MB of data copied from the Pi by `scripts/export_phone_guard.py` ([docs/phone-guard.md](docs/phone-guard.md)). Every message is judged here first, with no network |
 | SMS receiver (`SmsReceiver.kt`) | Reads every incoming SMS with its **real sender ID** (`JD-HDFCBK-S` or a 10-digit number) and sends it to the Pi. Typed sender names are unreliable; the real ID is what separates a bank alert from a scam |
 | HTTPS, pinned (`PiClient.kt`, `Tls.kt`) | The app talks to the Pi only over HTTPS, and trusts exactly one certificate: the one its owner confirmed when pairing, by comparing its fingerprint with the one the Pi prints. No plain HTTP at all |
 | Waiting list (`Checker.kt`, `FlushWorker.kt`) | Keeps up to 500 messages while the Pi is out of reach and sends them later (every 15 minutes, when the app opens, and after any answered SMS) |
@@ -325,8 +330,9 @@ Nothing is attacked: the names do not exist, and the beacon fetches IANA's examp
 | 14 November | SMS model v2 tested on the team's labelled messages, twice: it did not pass the rule set in advance, so the app keeps v1. A hard external review of the whole project |
 | 14–15 November | After the review: a pairing token on every request and study phones; sender rules measured on the Pi; Llama's sentences held to their evidence and 100 answers graded by hand; HTTPS with a pinned certificate, the phone's study switch and a proper package name; DNS blocking on the hotspot; the IoT-23 replay |
 | 16 November | DNS blocking set up and tested on the Pi; IoT-23's real IoT malware replayed on the Pi |
+| 21 November | Phone Guard: the message and link checks on the phone itself, checked to decide as the Pi does |
 
-The work reached the Pi in 42 numbered updates. Each update was a tested git bundle, pulled on the Pi and pushed to GitHub. Every update ran the full test suite first, and every result in this document comes from a script in the repository. Per-part status: [docs/status.md](docs/status.md).
+The work reached the Pi in 43 numbered updates. Each update was a tested git bundle, pulled on the Pi and pushed to GitHub. Every update ran the full test suite first, and every result in this document comes from a script in the repository. Per-part status: [docs/status.md](docs/status.md).
 
 ### Problems we solved along the way
 
@@ -341,10 +347,11 @@ The work reached the Pi in 42 numbered updates. Each update was a tested git bun
 9. **To see every device's traffic, the Pi had to be the Wi-Fi.** At first the Pi was just another device on a phone's hotspot. Fix: the Pi makes its own Wi-Fi, with a phone on its USB port for internet.
 10. **The phone and the Pi talked in plain HTTP,** so anyone on the Wi-Fi could read the token and the messages. Fix: HTTPS with the Pi's own certificate, pinned by the app when its owner compares the fingerprint. The ESP32, which cannot pin, keeps plain HTTP only for its readings.
 11. **The Pi detected but did not protect.** "Link from a scam message opened" came after the page had loaded. Fix: the Pi's DNS refuses dangerous websites on its Wi-Fi, with an undo on the page and a set-up that removes itself unless confirmed.
+12. **Away from the Pi's Wi-Fi the phone could only wait.** Fix: Phone Guard. The Pi's checks were copied to Kotlin, with their data exported from the same Python code, and a test on the Pi fails if the two drift apart. Python and Kotlin read regular expressions differently (Python's `\b` and `\w` know Hindi letters, Java's do not), so the phone translates each pattern; 16,272 test messages then got the same verdict from both.
 
 ### Tools
 
-Python 3.13, scikit-learn, NumPy, FastAPI, uvicorn, NFStream 6.6, tldextract; ExecuTorch release 1.5 with XNNPACK, the Arm GNU toolchain 14.3, WSL2; Kotlin, Android Studio, WorkManager; Arduino IDE 2 with the ESP32 core; dnsmasq and systemd on the Pi; pytest (353 tests, with a fake Llama so tests need no model).
+Python 3.13, scikit-learn, NumPy, FastAPI, uvicorn, NFStream 6.6, tldextract; ExecuTorch release 1.5 with XNNPACK, the Arm GNU toolchain 14.3, WSL2; Kotlin, Android Studio, WorkManager; Arduino IDE 2 with the ESP32 core; dnsmasq and systemd on the Pi; pytest (358 tests, with a fake Llama so tests need no model).
 
 ---
 
@@ -433,6 +440,17 @@ Agreement between the two: 78% (Cohen's kappa 0.52); before the second look, 69%
 
 **The whole Pi** (23 minutes of monitoring, one message explained): idle about 1% CPU; network monitor 0.1% on average; app 193 MB; Llama 1,248 MB; at least 1,848 MB of memory always free; 40–42 °C idle, 62 °C while Llama writes.
 
+### Phone Guard ([docs/phone-guard.md](docs/phone-guard.md))
+
+The phone's Kotlin code against the Pi's Python code, on a computer, both without the phishing list:
+
+| Test messages | How many | Same verdict | The same in every detail (score, scam type, reasons, links) |
+| --- | --- | --- | --- |
+| India test set, with 9 different senders each | 2,043 | 2,043 | 2,043 |
+| Public messages | 6,053 | 6,053 | 6,053 |
+| Hard cases (hidden and disguised links, Hindi, emoji, HTML entities) | 176 | 176 | 168 (one garbled-text message the phone does not repair) |
+| Links: phishing, popular and held-out test domains | 8,000 | 8,000 | 8,000 |
+
 ### Files ([eval/results_files.md](eval/results_files.md))
 
 | Test | Result |
@@ -467,7 +485,7 @@ Agreement between the two: 78% (Cohen's kappa 0.52); before the second look, 69%
 
 ## 9. Limitations
 
-- **The phone needs the Pi.** Live verdicts need the phone on the Pi's Wi-Fi; away from it, messages wait on the phone (up to 500) and are checked later.
+- **Away from home the phone is on its own:** its verdicts and steps are the Pi's, but without Llama's explanation, the 392,000-site phishing list and the file checker, which stay on the Pi. Messages wait on the phone (up to 500) for those.
 - **The SMS text model learned from public data.** With text alone it flags many normal Indian messages. The real sender ID fixes much of that, but on the team's phones 13% of SMS from registered sender IDs are still flagged, and the exact false-alarm rate waits for the flagged messages to be labelled.
 - **A scam from a registered sender ID is the open door.** The sender rules close part of it; v1 still let through 3 of the 4 such scams on the team's phones. TRAI's full header list, with each header's owner, is the next step.
 - **Llama is slow on a Pi 4** (18–31 s per new explanation), and about one sentence in eight that users see was judged wrong by our one grader. The verdict and the steps never wait for Llama or depend on it.
@@ -490,12 +508,12 @@ Agreement between the two: 78% (Cohen's kappa 0.52); before the second look, 69%
 
 **Phase 2 (PoC, until 5 February 2027)**
 
-- **Everything on the phone as well:**
-  - the checkers inside the app;
-  - Llama on the phone through ExecuTorch for Android;
+- **More on the phone** (Phone Guard already checks messages and links there):
+  - Llama on the phone through ExecuTorch for Android, the same model file as the Pi's;
+  - the phishing list copied to the phone whenever it is home, and files checked on the phone;
   - the phone's own connections checked, and blocked, through a local VPN on the phone.
 
-  The phone then protects its user anywhere, while the Pi keeps protecting the home network and its IoT devices.
+  The phone then protects its user anywhere as fully as at home, while the Pi keeps protecting the home network and its IoT devices.
 - A second job for Llama: a daily safety digest from the day's alert kinds and counts.
 - Sender IDs checked against TRAI's header list, with each header's owner.
 - More scam types and playbooks: trading apps, loan apps, fake customer-care numbers, sextortion calls, SIM swap, UPI collect requests.
@@ -516,13 +534,13 @@ Agreement between the two: 78% (Cohen's kappa 0.52); before the second look, 69%
 | `detectors/net/` | Network monitor: flows, rules, DNS checks, DGA model, each device's normal, the watch list, the monitor service, the CIC-IDS2017 evaluation and the IoT-23 replay |
 | `advisor/` | Findings, scam types, playbooks, prompts, Llama engines and service, answer checker, the grading tool |
 | `app/` | FastAPI app server and page, HTTPS serving (`serve.py`), DNS blocking (`dns_block.py`), SMS log, lab devices |
-| `android/` | The Android Studio project (Kotlin) |
+| `android/` | The Android Studio project (Kotlin), with Phone Guard in `app/src/main/java/.../guard/` and its data in `app/src/main/assets/guard/`; `guard-check/` runs it on a computer |
 | `esp32/` | The ESP32 lab device sketch, and a simulation used by the tests |
 | `deploy/` | Llama export notes, the C++ engine (`advisor_server`) and its Pi 4 build, benchmarks, prompts |
-| `scripts/` | Start-up and services, the hotspot and DNS-blocking set-ups, list and dataset downloads, measuring tools (`sms_traffic.py`, `net_traffic.py`, `pi_usage.py`, `check_files.py`), harmless test files |
+| `scripts/` | Start-up and services, the hotspot and DNS-blocking set-ups, list and dataset downloads, measuring tools (`sms_traffic.py`, `net_traffic.py`, `pi_usage.py`, `check_files.py`), harmless test files, Phone Guard's export and check (`export_phone_guard.py`, `check_phone_guard.py`) |
 | `eval/` | Measured results |
 | `docs/` | Guides for each part, and the status of each part ([docs/status.md](docs/status.md)) |
-| `tests/` | 353 pytest tests |
+| `tests/` | 358 pytest tests |
 
 **On a laptop** (no Pi or model needed):
 

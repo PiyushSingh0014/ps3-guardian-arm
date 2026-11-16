@@ -75,6 +75,16 @@ class MainActivity : AppCompatActivity() {
         devList = findViewById(R.id.dev_list)
         netAlerts = findViewById(R.id.net_alerts)
         recent = findViewById(R.id.recent)
+        val guardStatus = findViewById<TextView>(R.id.guard_status)
+        PhoneGuard.warm(this) {
+            val g = PhoneGuard.get(this)
+            runOnUiThread {
+                guardStatus.text = if (g != null) {
+                    "Phone Guard is on: SMS, chats and links are checked on this phone, with no network needed. " +
+                        "On the Pi's Wi-Fi, the Pi adds Llama's explanation and its phishing list."
+                } else "Phone Guard could not start (${PhoneGuard.error}): messages wait for the Pi."
+            }
+        }
         url.setText(Settings.piUrl(this))
         token.setText(Settings.token(this))
         device.setText(Settings.device(this))
@@ -247,7 +257,7 @@ class MainActivity : AppCompatActivity() {
                 "Dear customer your SBI account will be blocked today. Update KYC: http://sbi-kyc.example/update"
             )
             runOnUiThread {
-                status.text = "Test done: see the alert and the list below."
+                status.text = "Test done: the phone's verdict, then the Pi's if it answered. See the alert and the list below."
                 showRecent()
             }
         }.start()
