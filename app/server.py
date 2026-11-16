@@ -53,6 +53,7 @@ from advisor.advise import Advisor
 from advisor.backends import TemplateBackend, backend_from_env
 from advisor.findings import Finding
 from advisor.playbooks import get_playbook
+from app.dns_block import BlockList, protected_reason, valid_name
 from app.lab_devices import MODES, LabDevices, clean_readings
 from detectors.net.engine import LEASES as NET_LEASES, read_lease_names
 from detectors.net.flows import is_device
@@ -102,6 +103,11 @@ class LabReport(BaseModel):
     mode: str = Field("normal", pattern="^[a-z]{1,16}$")
 
 
+class BlockIn(BaseModel):
+    """POST /blocked and /blocked/undo: a website name, as typed on the page."""
+    name: str = Field(..., min_length=1, max_length=260)
+
+
 class LabMode(BaseModel):
     device: str = Field(..., pattern=r"^[A-Za-z0-9_-]{1,32}$")
     mode: str = Field(..., pattern="^[a-z]{1,16}$")
@@ -110,6 +116,8 @@ class LabMode(BaseModel):
 LOOPBACK = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}      # the Pi's own scripts: curl .../health
 OPEN_PATHS = {"/"}          # the page holds no data; it asks for the token and sends it with each call
 DEVICE_PATHS = {("POST", "/iot")}       # all that a lab device's own token may do
+# Network alerts whose other side is a website worth blocking on the Pi's Wi-Fi.
+BLOCKABLE = {"phishing_lookup", "scam_link_opened", "dns_tunnel", "malware_beacon"}
 # With HTTPS on (GUARDIAN_TLS=1, app/serve.py), plain HTTP from another machine may only post a lab
 # device's readings: the ESP32 cannot pin a certificate, and its token is good for nothing else.
 PLAIN_HTTP_PATHS = DEVICE_PATHS
@@ -437,13 +445,15 @@ def risk_summary(day, week, books):
 
 def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net_alerts=None,
                lab=None, net_state=None, net_explain=None, net_explain_every_s=NET_EXPLAIN_EVERY_S,
-               net_watch=None, leases=None, lab_tests=None, file_log=None, token_guard=None, tls=None):
+               net_watch=None, leases=None, lab_tests=None, file_log=None, token_guard=None, tls=None,
+               dns_block=None):
     """net_explain: Llama explanations of network alerts (default: on, unless NET_EXPLAIN=0);
     net_explain_every_s=None leaves out the background thread (tests drive it through /alerts).
     net_watch: where flagged messages' websites go for the network monitor (scamlinks.py);
     leases: the files with device names (tests pass their own); token_guard: a TokenGuard (tests
     pass one with their own clock); tls: HTTPS is on, so plain HTTP from other machines is limited
-    to PLAIN_HTTP_PATHS (default: GUARDIAN_TLS=1, set by app/serve.py)."""
+    to PLAIN_HTTP_PATHS (default: GUARDIAN_TLS=1, set by app/serve.py); dns_block: the block list
+    (app/dns_block.py; default data/net/blocklist.json, GUARDIAN_BLOCKLIST overrides)."""
     if detector is None:
         from detectors.sms.detector import SmsDetector
         detector = SmsDetector()
@@ -475,15 +485,26 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
 
     watch = ScamLinks(net_watch or os.environ.get("NET_WATCH", WATCH))
 
+    blocks = dns_block if dns_block is not None else BlockList()
+    if blocks.protected is None:              # never official, popular or shared sites (dns_block.py)
+        blocks.protected = lambda n: protected_reason(url_detector, n)
+
     def watch_links(finding, channel):
-        """A flagged message's websites, so the network monitor can tell when one is opened."""
-        if finding.verdict == "safe" or get_playbook(advisor.books, finding.category).severity == "low":
+        """A flagged message's websites, so the network monitor can tell when one is opened. A
+        dangerous message's websites are also blocked on the Pi's Wi-Fi for 7 days (dns_block.py)."""
+        book = get_playbook(advisor.books, finding.category)
+        if finding.verdict == "safe" or book.severity == "low":
             return
+        sites, where = sites_from(finding), where_from(channel, finding.entities.get("sender_type"))
         try:
-            watch.add(sites_from(finding), finding.verdict, finding.category,
-                      where_from(channel, finding.entities.get("sender_type")))
+            watch.add(sites, finding.verdict, finding.category, where)
         except OSError as e:                      # never fail a message check over this
             print(f"[app] could not write {watch.path}: {e}", flush=True)
+        if finding.verdict == "dangerous" and sites:
+            try:
+                blocks.block(sites, why=f"{book.title}, in {where}", source="message")
+            except OSError as e:
+                print(f"[app] could not write the DNS block list: {e}", flush=True)
 
     def respond(finding, wait, t0, t1, channel="check"):
         watch_links(finding, channel)
@@ -599,9 +620,33 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
         out = []
         for item, explained in zip(items, views):
             finding = Finding(**item["finding"])
-            out.append({"id": alert_key(item)[:16], "time": item.get("time"), "finding": _public_finding(finding),
-                        "advice": advisor.quick(finding).to_dict(), "explain": explained})
+            view = {"id": alert_key(item)[:16], "time": item.get("time"), "finding": _public_finding(finding),
+                    "advice": advisor.quick(finding).to_dict(), "explain": explained}
+            name = valid_name(str((finding.entities or {}).get("peer") or "").replace("[.]", "."))
+            if name and finding.category in BLOCKABLE:                # a website the page can block
+                view["block"] = {"name": name, "blocked": blocks.is_blocked(name) is not None}
+            out.append(view)
         return {"alerts": out}
+
+    @app.get("/blocked")
+    def blocked():
+        """Websites the Pi's DNS refuses for the devices on its Wi-Fi, newest first."""
+        return blocks.listing()
+
+    @app.post("/blocked")
+    def block(req: BlockIn):
+        """Block a website by hand, until it is unblocked."""
+        added, refused = blocks.block([req.name], why="blocked by hand on the page", source="page", days=None)
+        if refused and not added:
+            raise HTTPException(status_code=422, detail=next(iter(refused.values())))
+        return blocks.listing()
+
+    @app.post("/blocked/undo")
+    def unblock(req: BlockIn):
+        """Unblock a website; it is not blocked automatically again."""
+        if not blocks.unblock(req.name):
+            raise HTTPException(status_code=404, detail=f"{req.name} is not blocked")
+        return blocks.listing()
 
     lab = lab if lab is not None else LabDevices()
     lab_tests_path = lab_tests or os.environ.get("LAB_TESTS", LAB_TESTS)
@@ -725,6 +770,7 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
              "sender_rules": sorted(active_rules()),
              "links": url_detector.info(),
              "tls": {"on": tls, "fingerprint": os.environ.get("GUARDIAN_TLS_FINGERPRINT") if tls else None},
+             "dns_block": blocks.status(),
              "net": {"alerts_file": os.path.exists(alerts_path),
                      "alerts_mb": round(os.path.getsize(alerts_path) / 1e6, 2) if os.path.exists(alerts_path) else 0,
                      "llm": explainer.info() if explainer else None}}
@@ -788,6 +834,10 @@ code{font-size:14px}
 <div class="card"><p class="muted" id="devnote">No lab device has reported yet.</p><div id="devices"></div></div>
 <h1>Network alerts</h1>
 <div class="card"><p class="muted" id="netnote">No network alerts yet.</p><div id="alerts"></div></div>
+<h1>Blocked websites</h1>
+<div class="card"><p class="muted" id="blocknote">Loading...</p><div id="blocked"></div>
+<div class="row"><input id="blockname" aria-label="A website to block" placeholder="A website to block, e.g. sbi-kyc-update.xyz">
+<button id="blockgo">Block</button></div></div>
 <script>
 const $=id=>document.getElementById(id);
 let poll=null,needToken=false,memToken='';
@@ -808,7 +858,7 @@ async function api(path,opts){
 $('tokgo').onclick=()=>{
   const t=$('tok').value.trim();if(!t)return;
   memToken=t;try{localStorage.setItem('ps3-token',t);}catch(e){}
-  needToken=false;$('pair').hidden=true;$('tok').value='';loadAlerts();loadRisk();loadDevices();
+  needToken=false;$('pair').hidden=true;$('tok').value='';loadAlerts();loadRisk();loadDevices();loadBlocked();
 };
 function show(a){
   $('what').textContent=a.what;$('why').textContent=a.why;
@@ -848,6 +898,12 @@ function alertItem(a){
   if(x){parts.push(line(x.status==='pending'?'Llama is writing a plain-language explanation on this device...'
     :x.status==='queued'?'Llama will explain this alert when it is free.':llmNote(x.advice,x.seconds),true));}
   parts.push(line('First step: '+(a.advice.steps[0]||''),true));
+  if(a.block){
+    if(a.block.blocked){parts.push(line("Blocked on this Wi-Fi: the Pi's DNS refuses "+a.block.name+'.',true));}
+    else{const w=document.createElement('div');w.className='btns';const b=document.createElement('button');
+      b.textContent='Block '+a.block.name+' on this Wi-Fi';b.onclick=()=>changeBlock('/blocked',a.block.name);
+      w.append(b);parts.push(w);}
+  }
   div.append(...parts);return div;
 }
 async function loadAlerts(){
@@ -859,6 +915,36 @@ async function loadAlerts(){
   }catch(e){$('netnote').textContent='Could not load network alerts: '+e;}
 }
 loadAlerts();setInterval(loadAlerts,10000);
+const SOURCE={message:'from a dangerous message',network:'a device looked it up',page:'blocked by hand',test:'test'};
+function blockedItem(e){
+  const div=document.createElement('div');div.className='item';
+  const h=line(e.name);h.style.fontWeight='600';
+  const w=document.createElement('div');w.className='btns';
+  const b=document.createElement('button');b.textContent='Unblock';b.onclick=()=>changeBlock('/blocked/undo',e.name);w.append(b);
+  div.append(h,line((SOURCE[e.source]||e.source)+' | since '+e.since+(e.until?', until '+e.until:', until unblocked')
+    +(e.why?' | '+e.why:''),true),w);
+  return div;
+}
+async function loadBlocked(){
+  if(needToken)return;
+  try{
+    const r=await api('/blocked');const d=await r.json();
+    $('blocked').replaceChildren(...d.blocked.map(blockedItem));
+    $('blocknote').textContent=d.note||((d.blocked.length?"The Pi's DNS refuses these websites, and every name under them, for every device on its Wi-Fi."
+      :'No website is blocked. Websites from dangerous messages are blocked here by themselves, for 7 days.')
+      +(d.applied===false?' The newest change is being applied.':''));
+  }catch(e){$('blocknote').textContent='Could not load the blocked websites: '+e;}
+}
+async function changeBlock(path,name){
+  try{
+    const r=await api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})});
+    const d=await r.json();
+    if(!r.ok){$('blocknote').textContent=typeof d.detail==='string'?d.detail:'Not changed: HTTP '+r.status;return;}
+    loadBlocked();loadAlerts();
+  }catch(e){$('blocknote').textContent='Not changed: '+e;}
+}
+$('blockgo').onclick=()=>{const n=$('blockname').value.trim();if(n){changeBlock('/blocked',n);$('blockname').value='';}};
+loadBlocked();setInterval(loadBlocked,10000);
 const RISK={at_risk:'At risk',check:'Check',ok:'OK'};
 function riskItem(d){
   const div=document.createElement('div');div.className='item';
