@@ -2,7 +2,8 @@
 
     python -m detectors.net.replay ~/iot23/CTU-IoT-Malware-Capture-34-1 ~/iot23/CTU-Honeypot-Capture-4-1
     python -m detectors.net.replay --pcap ~/iot23/CTU-IoT-Malware-Capture-34-1    # the capture, through NFStream
-    python -m detectors.net.replay --report eval/results_iot23.md ~/iot23/*
+    python -m detectors.net.replay ~/iot23/* --report ~/iot23/results.md
+    python -m detectors.net.replay ~/iot23/* --learn-hours 0      # no learning time: what it hides
 
 IoT-23 (Garcia, Parmisano and Erquiaga, Stratosphere Laboratory, 2020; CC BY 4.0,
 doi:10.5281/zenodo.4743746): 20 captures of a Raspberry Pi infected with real IoT malware (Mirai,
@@ -53,6 +54,10 @@ FITS = {"PortScan": {"network_scan", "port_scan"}, "DDoS": {"dos_flood"},
         "Attack": {"brute_force", "network_scan", "port_scan", "risky_port", "dos_flood"},
         "Okiru": {"network_scan", "port_scan"}, "Mirai": {"network_scan", "risky_port", "malware_beacon"},
         "Torii": {"malware_beacon", "risky_port"}, "FileDownload": {"device_anomaly"}}
+# Other names for the last column: CTU-IoT-Malware-Capture-34-1's header calls it "det_label".
+FIELD_ALIASES = {"det_label": "detailed-label", "detailed_label": "detailed-label", "detailedlabel": "detailed-label"}
+PROTO_NAME = {6: "tcp", 17: "udp", 1: "icmp"}
+MAX_REMOTE = 10_000                   # internet addresses counted per behaviour (scans reach millions)
 
 
 def _int(v):
@@ -63,8 +68,10 @@ def _int(v):
 
 
 def zeek_rows(path):
-    """Rows of a Zeek conn.log (or IoT-23's conn.log.labeled) as dicts. In IoT-23's files the last
-    three columns (tunnel_parents, label, detailed-label) are separated by spaces, not tabs."""
+    """Rows of a Zeek conn.log (or IoT-23's conn.log.labeled) as dicts. In most IoT-23 files the last
+    three columns (tunnel_parents, label, detailed-label) are separated by spaces, not tabs, and
+    some headers name the last one differently (FIELD_ALIASES). No Zeek conn field holds a space,
+    so a last part with spaces in it is always several columns."""
     fields = list(ZEEK_FIELDS)
     with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
@@ -73,11 +80,15 @@ def zeek_rows(path):
                 continue
             if line.startswith("#"):
                 if line.startswith("#fields"):
-                    fields = line.split()[1:]
+                    fields = [FIELD_ALIASES.get(n, n) for n in line.split()[1:]]
                 continue
             parts = line.split("\t")
-            if len(parts) < len(fields):
+            while len(parts) > 1 and parts[-1] == "":                  # a stray tab at the end
+                parts.pop()
+            if len(parts[-1].split()) > 1:
                 parts = parts[:-1] + parts[-1].split()
+            if len(parts) == len(fields) + 2 and "label" not in fields:      # labels after a plain Zeek header
+                fields = fields + ["label", "detailed-label"]
             yield dict(zip(fields, parts))
 
 
@@ -111,18 +122,27 @@ def read_zeek(path):
             yield r
 
 
-def behaviours(flows):
-    """Malicious label -> its addresses (the private ones that showed it), flow count and main period.
-    One pass, little memory: some IoT-23 logs hold tens of millions of flows."""
+def behaviours(flows, counts=None):
+    """Malicious label -> its addresses (the private ones that showed it), flow count, main period
+    and what its traffic looks like (main port, internet addresses, share unanswered, how often).
+    One pass, little memory: some IoT-23 logs hold tens of millions of flows. counts: a Counter
+    that gets the number of benign and malicious flows."""
     from array import array
     out = {}
     for r in flows:
+        if counts is not None:
+            counts["benign" if r.label == "Benign" else "malicious" if r.label else "unlabelled"] += 1
         if not r.label or r.label == "Benign":
             continue
-        b = out.setdefault(r.label, {"addrs": set(), "starts": array("q"), "flows": 0})
+        b = out.setdefault(r.label, {"addrs": set(), "starts": array("q"), "flows": 0, "ports": Counter(),
+                                     "remote": set(), "unanswered": 0})
         b["addrs"].update(a for a in (r.src, r.dst) if is_private(a))
         b["starts"].append(r.start_ms)
         b["flows"] += 1
+        b["ports"][(r.dport, r.proto)] += 1
+        if len(b["remote"]) < MAX_REMOTE:
+            b["remote"].update(a for a in (r.src, r.dst) if a and not is_private(a))
+        b["unanswered"] += not r.answered
     for b in out.values():
         starts = b.pop("starts")
         try:
@@ -133,12 +153,37 @@ def behaviours(flows):
             t = sorted(starts)
             pick = lambda q: t[int(q * (len(t) - 1))]               # noqa: E731
         b["first_flow"], b["first"], b["last"] = pick(0.0), pick(0.05), pick(0.95)
+        n = b["flows"]
+        b["every_s"] = (pick(1.0) - pick(0.0)) / 1000 / (n - 1) if n > 1 else None
+        (port, proto), k = b.pop("ports").most_common(1)[0]
+        b["port"], b["port_share"] = f"{port}/{PROTO_NAME.get(proto, proto)}", k / n
+        b["remote"] = len(b["remote"])
     return out
 
 
 def fits(label, category):
+    """Does an alert of this kind fit the label? None when the label names no behaviour ("Malicious")."""
     words = [w for w in FITS if w in label]
+    if not words:
+        return None
     return any(category in FITS[w] for w in words)
+
+
+def _every(seconds):
+    if seconds is None:
+        return "once"
+    if seconds < 1:
+        return f"{1 / seconds:.0f} a second" if seconds > 0 else "all at once"
+    if seconds < 90:
+        return f"every {seconds:.0f} s"
+    return f"every {seconds / 60:.0f} min" if seconds < 5400 else f"every {seconds / 3600:.1f} h"
+
+
+def traffic(b):
+    """What a behaviour's flows look like, in one line."""
+    remote = f"{b['remote']:,}{'+' if b['remote'] >= MAX_REMOTE else ''}"
+    return (f"port {b['port']} ({b['port_share']:.0%}), {remote} internet address"
+            f"{'' if b['remote'] == 1 else 'es'}, {b['unanswered'] / b['flows']:.0%} unanswered, {_every(b['every_s'])}")
 
 
 def score(alerts, labels):
@@ -148,10 +193,11 @@ def score(alerts, labels):
     for lab, b in sorted(labels.items(), key=lambda kv: kv[1]["first_flow"]):
         hit = [f for f in alerts if f.entities.get("device") in b["addrs"]
                and b["first"] - GRACE_MS <= f.entities.get("time_ms", 0) <= b["last"] + GRACE_MS]
+        known = fits(lab, "") is not None
         good = [f for f in hit if fits(lab, f.category)]
         first = min((f.entities["time_ms"] for f in (good or hit)), default=None)
-        rows.append({"label": lab, "flows": b["flows"], "detected": bool(hit), "fitting": bool(good),
-                     "kinds": Counter(f.category for f in hit),
+        rows.append({"label": lab, "flows": b["flows"], "detected": bool(hit), "fitting": bool(good) if known else None,
+                     "kinds": Counter(f.category for f in hit), "traffic": traffic(b) if "port" in b else "",
                      "after_s": None if first is None else max(0, round((first - b["first_flow"]) / 1000))})
     in_any = [f for f in alerts if any(f.entities.get("device") in b["addrs"] and
                                        b["first"] - GRACE_MS <= f.entities.get("time_ms", 0) <= b["last"] + GRACE_MS
@@ -161,23 +207,52 @@ def score(alerts, labels):
     return rows, false, outside
 
 
-def find_files(folder):
-    """(labelled conn log, capture file or None) in an IoT-23 scenario folder."""
+def scenarios(folder):
+    """[(name, labelled log, capture file or None)] in a folder: one per labelled log. Most IoT-23
+    folders hold one; the Somfy door lock's (CTU-Honeypot-Capture-7-1) holds six, Somfy-01 to Somfy-06."""
+    folder = os.path.normpath(folder)
     logs = sorted(glob.glob(os.path.join(folder, "**", "conn.log.labeled"), recursive=True)) or \
         sorted(glob.glob(os.path.join(folder, "**", "conn.log"), recursive=True))
-    pcaps = sorted(glob.glob(os.path.join(folder, "*.pcap")) + glob.glob(os.path.join(folder, "*.pcapng")))
-    return (logs[0] if logs else None), (pcaps[0] if pcaps else None)
+    out = []
+    for log in logs:
+        d = os.path.dirname(log)
+        if os.path.basename(d) == "bro":
+            d = os.path.dirname(d)
+        name = os.path.relpath(d, os.path.dirname(folder)).replace(os.sep, "/")
+        pcaps = sorted(glob.glob(os.path.join(d, "*.pcap")) + glob.glob(os.path.join(d, "*.pcapng")))
+        out.append((name, log, pcaps[0] if pcaps else None))
+    return out
+
+
+def find_files(folder):
+    """(labelled conn log, capture file or None): the first capture in an IoT-23 scenario folder."""
+    found = scenarios(folder)
+    return (found[0][1], found[0][2]) if found else (None, None)
 
 
 def replay(folder, use_pcap=False, learn_hours=2.0, engine=None, say=print):
-    """Replay one scenario folder; returns a dict for the report."""
-    from detectors.net.engine import NetEngine
-    log, pcap = find_files(folder)
-    if log is None:
+    """Replay the (first) capture in one scenario folder; returns a dict for the report."""
+    found = scenarios(folder)
+    if not found:
         raise FileNotFoundError(f"{folder}: no conn.log.labeled (bash scripts/get_iot23.sh downloads it)")
+    return replay_log(*found[0], use_pcap=use_pcap, learn_hours=learn_hours, engine=engine, say=say)
+
+
+def _result(row, long=False):
+    if not row["detected"]:
+        return "missed"
+    note = {True: "", False: " (not the fitting kind)" if long else " (other kind)",
+            None: " (the label names no kind)"}[row["fitting"]]
+    return f"detected after {row['after_s']} s{note}" if long else f"detected{note}, after {row['after_s']} s"
+
+
+def replay_log(name, log, pcap=None, use_pcap=False, learn_hours=2.0, engine=None, say=print):
+    """Replay one labelled log (or its capture, with use_pcap) through a fresh engine."""
+    from detectors.net.engine import NetEngine
     if use_pcap and pcap is None:
-        raise FileNotFoundError(f"{folder}: no .pcap file (bash scripts/get_iot23.sh --pcap ...)")
-    labels = behaviours(read_zeek(log))                   # first pass: the labels only
+        raise FileNotFoundError(f"{name}: no .pcap file (bash scripts/get_iot23.sh --pcap ...)")
+    counts = Counter()
+    labels = behaviours(read_zeek(log), counts)           # first pass: the labels only
     if engine is None:
         engine = NetEngine(learn_ms=int(learn_hours * 3600_000), leases=None, state_path=None,
                            url_detector="auto" if use_pcap else None, dga_model="auto" if use_pcap else None)
@@ -193,43 +268,59 @@ def replay(folder, use_pcap=False, learn_hours=2.0, engine=None, say=print):
         t1 = r.end_ms if t1 is None else max(t1, r.end_ms)
         alerts += engine.feed(r)
     rows, false, outside = score(alerts, labels)
-    name = os.path.basename(os.path.normpath(folder))
     hours = (t1 - t0) / 3_600_000 if n else 0.0
-    say(f"\n{name}: {n:,} flows over {hours:.1f} h ({'capture, NFStream' if use_pcap else 'Zeek log'}), "
-        f"{len(alerts)} alerts")
+    say(f"\n{name}: {n:,} flows ({counts['malicious']:,} labelled malicious) over {hours:.1f} h "
+        f"({'capture, NFStream' if use_pcap else 'Zeek log'}), {len(alerts)} alerts")
     for row in rows:
         kinds = ", ".join(f"{k} {v}" for k, v in row["kinds"].most_common(3)) or "none"
-        say(f"  {row['label']:40s} {row['flows']:9,} flows  "
-            + (f"detected after {row['after_s']} s" + ("" if row["fitting"] else " (not the fitting kind)")
-               if row["detected"] else "missed") + f"  [{kinds}]")
+        say(f"  {row['label']:40s} {row['flows']:9,} flows  {_result(row, long=True)}  [{kinds}]")
+        if row["traffic"]:
+            say(f"      {row['traffic']}")
     say(f"  false alarms: {len(false)} ({len(false) / hours:.2f} an hour)" if hours else f"  false alarms: {len(false)}")
     if false:
         say("    " + ", ".join(f"{k} {v}" for k, v in Counter(f.category for f in false).most_common(5)))
     if outside:
         say(f"  alerts about an infected address outside its labelled periods: {len(outside)}")
-    return {"name": name, "flows": n, "hours": hours, "alerts": len(alerts), "rows": rows, "false": len(false),
-            "false_kinds": Counter(f.category for f in false), "outside": len(outside),
-            "mode": "capture" if use_pcap else "zeek", "benign": not labels}
+    return {"name": name, "flows": n, "malicious_flows": counts["malicious"], "hours": hours, "alerts": len(alerts),
+            "rows": rows, "false": len(false), "false_kinds": Counter(f.category for f in false),
+            "outside": len(outside), "mode": "capture" if use_pcap else "zeek", "benign": not labels,
+            "learn_hours": learn_hours}
 
 
 def report_md(results):
-    """A Markdown summary for eval/results_iot23.md."""
-    lines = ["| Capture | Flows | Hours | Behaviour (IoT-23 label) | Labelled flows | Result | Alert kinds |",
-             "| --- | --- | --- | --- | --- | --- | --- |"]
+    """A Markdown summary for eval/results_net.md."""
+    lines = ["| Capture | Flows | Hours | Behaviour (IoT-23 label) | Labelled flows | Result | Alert kinds | Its traffic |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- |"]
     for res in results:
         head = f"| {res['name']} | {res['flows']:,} | {res['hours']:.1f} |"
+        false_kinds = ", ".join(f"{k} {v}" for k, v in res["false_kinds"].most_common(3)) or "–"
         if not res["rows"]:
-            lines.append(f"{head} benign | – | {res['false']} false alarms | "
-                         f"{', '.join(f'{k} {v}' for k, v in res['false_kinds'].most_common(3)) or '–'} |")
+            lines.append(f"{head} benign | – | {res['false']} false alarms | {false_kinds} | |")
             continue
         for i, row in enumerate(res["rows"]):
-            result = ("detected" + ("" if row["fitting"] else " (other kind)") + f", after {row['after_s']} s"
-                      if row["detected"] else "missed")
             kinds = ", ".join(f"{k} {v}" for k, v in row["kinds"].most_common(3)) or "–"
-            lines.append((head if i == 0 else "| | | |") + f" {row['label']} | {row['flows']:,} | {result} | {kinds} |")
-        lines.append(f"| | | | false alarms | – | {res['false']} | "
-                     f"{', '.join(f'{k} {v}' for k, v in res['false_kinds'].most_common(3)) or '–'} |")
+            lines.append((head if i == 0 else "| | | |")
+                         + f" {row['label']} | {row['flows']:,} | {_result(row)} | {kinds} | {row['traffic']} |")
+        lines.append(f"| | | | false alarms | – | {res['false']} | {false_kinds} | |")
     return "\n".join(lines) + "\n"
+
+
+def summary(results):
+    """Totals over all captures, as lines."""
+    benign = [r for r in results if r["benign"]]
+    malware = [r for r in results if not r["benign"]]
+    out = []
+    if benign:
+        hours, false = sum(r["hours"] for r in benign), sum(r["false"] for r in benign)
+        out.append(f"smart-home captures: {len(benign)}, {hours:.1f} h, {false} false alarms"
+                   + (f" ({false / hours:.2f} an hour)" if hours else ""))
+    if malware:
+        rows = [row for r in malware for row in r["rows"]]
+        out.append(f"malware captures: {len(malware)}; labelled behaviours detected: "
+                   f"{sum(row['detected'] for row in rows)} of {len(rows)} "
+                   f"({sum(row['fitting'] is True for row in rows)} by the fitting kind); "
+                   f"false alarms: {sum(r['false'] for r in malware)}")
+    return out
 
 
 def main(argv=None):
@@ -241,10 +332,20 @@ def main(argv=None):
     a = ap.parse_args(argv)
     results = []
     for folder in a.folders:
-        try:
-            results.append(replay(folder, a.pcap, a.learn_hours))
-        except FileNotFoundError as e:
-            print(f"skipped: {e}")
+        if not os.path.isdir(folder):                    # e.g. a report written into ~/iot23
+            continue
+        found = scenarios(folder)
+        if not found:
+            print(f"skipped: {folder}: no conn.log.labeled (bash scripts/get_iot23.sh downloads it)")
+        for name, log, pcap in found:
+            try:
+                results.append(replay_log(name, log, pcap, a.pcap, a.learn_hours))
+            except FileNotFoundError as e:
+                print(f"skipped: {e}")
+    if results:
+        print(f"\nSummary (learning time {a.learn_hours:g} h per device):")
+        for line in summary(results):
+            print("  " + line)
     if a.report and results:
         with open(a.report, "w", encoding="utf-8") as f:
             f.write(report_md(results))

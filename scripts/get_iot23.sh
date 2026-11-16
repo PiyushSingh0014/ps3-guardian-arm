@@ -9,6 +9,8 @@
 #
 # Files go to ~/iot23/<scenario>/ (outside the repo: data, not code). Only the dataset's public
 # files are read; nothing is run from them. The sizes are checked before anything is downloaded.
+# Most scenarios keep their log in bro/; the Somfy door lock (hp-7-1) keeps six captures in
+# Somfy-01/ ... Somfy-06/, each with its own bro/, and they are downloaded the same way.
 set -euo pipefail
 
 BASE="${IOT23_BASE:-https://mcfp.felk.cvut.cz/publicDatasets/IoT-23-Dataset/IndividualScenarios}"
@@ -32,6 +34,12 @@ size_mb() {                       # the file's size in MB from the server, or "?
   b="$(curl -sIL --max-time 30 "$1" | tr -d '\r' | awk 'tolower($1)=="content-length:"{v=$2} END{print v}')"
   if [ -n "$b" ]; then echo $(( (b + 1048575) / 1048576 )); else echo "?"; fi
 }
+status() {                        # the HTTP status of a URL after redirects (000: no answer)
+  curl -sIL --max-time 30 -o /dev/null -w '%{http_code}' "$1" 2> /dev/null || true
+}
+subfolders() {                    # the folders listed at a folder URL (ending in /), bro/ aside
+  curl -fsL --max-time 60 "$1" 2> /dev/null | grep -o 'href="[^"/?.][^"?]*/"' | cut -d'"' -f2 | grep -vx 'bro/' || true
+}
 fetch() {                         # url, file: download if it fits under MAX_MB
   local mb
   mb="$(size_mb "$1")"
@@ -54,17 +62,36 @@ command -v curl > /dev/null || { say "curl is needed: sudo apt install curl"; ex
 for s in "${ARGS[@]}"; do
   n="$(name_of "$s")"
   say "$n"
-  mkdir -p "$DEST/$n/bro"
-  fetch "$BASE/$n/bro/conn.log.labeled" "$DEST/$n/bro/conn.log.labeled" || say "  could not download its labelled log"
-  curl -fsL --max-time 60 -o "$DEST/$n/README.md" "$BASE/$n/README.md" || true
-  if [ "$PCAP" = 1 ]; then
-    p="$(curl -fsL --max-time 60 "$BASE/$n/" | grep -o 'href="[^"/]*\.pcap"' | head -n1 | cut -d'"' -f2 || true)"
-    if [ -n "$p" ]; then
-      fetch "$BASE/$n/$p" "$DEST/$n/$p" || say "  could not download $p"
-    else
-      say "  no .pcap file found in its folder"
+  url="$BASE/$n/"
+  if [ "$(status "${url}bro/conn.log.labeled")" = 200 ]; then
+    dirs=("")
+  else
+    mapfile -t dirs < <(subfolders "$url")
+    if [ "${#dirs[@]}" -eq 0 ]; then
+      say "  no labelled log found in its folder (is the name right? the list: $BASE/)"
+      continue
     fi
   fi
+  for d in "${dirs[@]}"; do
+    [ -z "$d" ] || say "  ${d%/}"
+    if [ -n "$d" ] && [ "$(status "${url}${d}bro/conn.log.labeled")" != 200 ]; then
+      say "    no labelled log in it"
+      continue
+    fi
+    dd="$DEST/$n/${d%/}"
+    dd="${dd%/}"
+    mkdir -p "$dd/bro"
+    fetch "${url}${d}bro/conn.log.labeled" "$dd/bro/conn.log.labeled" || say "  could not download its labelled log"
+    if [ "$PCAP" = 1 ]; then
+      p="$(curl -fsL --max-time 60 "${url}${d}" | grep -o 'href="[^"/]*\.pcap"' | head -n1 | cut -d'"' -f2 || true)"
+      if [ -n "$p" ]; then
+        fetch "${url}${d}$p" "$dd/$p" || say "  could not download $p"
+      else
+        say "  no .pcap file found in its folder"
+      fi
+    fi
+  done
+  [ ! -d "$DEST/$n" ] || curl -fsL --max-time 60 -o "$DEST/$n/README.md" "${url}README.md" || true
 done
 say ""
 say "Next: cd ~/ps3-guardian && source ~/ps3-venv/bin/activate && python -m detectors.net.replay $DEST/*"

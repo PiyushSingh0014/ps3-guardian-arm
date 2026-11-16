@@ -105,3 +105,90 @@ def test_the_flows_stream_from_the_file(tmp_path):
     folder = scenario(tmp_path, "s", mirai_log())
     flows = read_zeek(os.path.join(folder, "bro", "conn.log.labeled"))
     assert next(flows).label == "Benign"                    # a generator: big logs are never held whole
+
+
+# --- update 41: what the Pi's first run showed -------------------------------------------------------
+
+def test_other_header_names_and_separators_keep_the_detailed_label(tmp_path):
+    rows = [row(0, "45.1.1.7", 23, "Malicious   PartOfAHorizontalPortScan", state="S0", history="S", opk=1, rpk=0)]
+    det = HEADER.replace("label   detailed-label\n", "label\tdet_label\n")          # 34-1's header
+    tabs = det + rows[0].replace("   ", "\t")
+    plain = HEADER.replace("\ttunnel_parents   label   detailed-label\n", "\ttunnel_parents\n") + rows[0]
+    stray_tab = HEADER + rows[0].replace("\n", "\t\n")
+    for text in (det + rows[0], tabs, plain, stray_tab):
+        (r,) = zeek_rows_from(text)
+        assert (r["label"], r["detailed-label"], r["id.resp_p"]) == ("Malicious", "PartOfAHorizontalPortScan", "23")
+
+
+def test_a_label_without_a_kind_is_reported_as_such(tmp_path):
+    text = HEADER + "".join(row(1200 + i * 0.01, "203.0.113.9", 80, "Malicious   -", state="S0", history="S",
+                                opk=1, rpk=0, ob=0, rb=0, dur="-") for i in range(400))
+    said = []
+    res = replay.replay(scenario(tmp_path, "CTU-IoT-Malware-Capture-98-1", text), say=said.append)
+    (r,) = res["rows"]
+    assert r["label"] == "Malicious" and r["detected"] and r["fitting"] is None
+    assert any("(the label names no kind)" in s for s in said)
+    assert "detected (the label names no kind), after" in replay.report_md([res])
+
+
+def test_each_behaviour_says_what_its_traffic_looks_like(tmp_path):
+    res = replay.replay(scenario(tmp_path, "CTU-IoT-Malware-Capture-99-1", mirai_log()), say=lambda _: None)
+    by = {r["label"]: r for r in res["rows"]}
+    assert by["C&C-HeartBeat"]["traffic"] == "port 6667/tcp (100%), 1 internet address, 0% unanswered, every 60 s"
+    assert by["PartOfAHorizontalPortScan"]["traffic"] == "port 23/tcp (100%), 60 internet addresses, 100% unanswered, 2 a second"
+    assert "| port 6667/tcp (100%)" in replay.report_md([res])
+
+
+def test_folders_with_several_captures_and_stray_files(tmp_path, capsys):
+    for sub in ("Somfy-01", "Somfy-02"):                                  # IoT-23's door lock (7-1) has six
+        d = tmp_path / "CTU-Honeypot-Capture-7-1" / sub / "bro"
+        d.mkdir(parents=True)
+        (d / "conn.log.labeled").write_text(HEADER + "".join(
+            row(i * 30, "52.94.3.20", 443, src="192.168.1.150", service="ssl") for i in range(5)))
+    (tmp_path / "CTU-Honeypot-Capture-7-1" / "bro").mkdir()             # left empty by an earlier download
+    (tmp_path / "results.md").write_text("an earlier report\n")
+    folders = [str(p) for p in sorted(tmp_path.iterdir())]
+    assert replay.main(folders) == 0
+    out = capsys.readouterr().out
+    assert "CTU-Honeypot-Capture-7-1/Somfy-01: 5 flows (0 labelled malicious)" in out
+    assert "CTU-Honeypot-Capture-7-1/Somfy-02" in out and "results.md" not in out
+    assert "smart-home captures: 2, 0.1 h, 0 false alarms" in out
+
+
+def test_get_iot23_finds_logs_in_subfolders_and_skips_missing_ones(tmp_path):
+    import functools
+    import http.server
+    import shutil
+    import subprocess
+    import threading
+    import pytest
+    if not shutil.which("curl") or not shutil.which("bash"):
+        pytest.skip("needs bash and curl")
+    site = tmp_path / "site" / "IndividualScenarios"
+    (site / "CTU-IoT-Malware-Capture-99-1" / "bro").mkdir(parents=True)
+    (site / "CTU-IoT-Malware-Capture-99-1" / "bro" / "conn.log.labeled").write_text(mirai_log())
+    for sub in ("Somfy-01", "Somfy-02"):
+        (site / "CTU-Honeypot-Capture-7-1" / sub / "bro").mkdir(parents=True)
+        (site / "CTU-Honeypot-Capture-7-1" / sub / "bro" / "conn.log.labeled").write_text(HEADER)
+    (site / "CTU-Honeypot-Capture-7-1" / "README.md").write_text("Somfy door lock\n")
+
+    class Quiet(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=str(tmp_path / "site")))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    env = {k: v for k, v in os.environ.items() if "proxy" not in k.lower()}
+    env.update(IOT23_BASE=f"http://127.0.0.1:{server.server_address[1]}/IndividualScenarios",
+               IOT23_DIR=str(tmp_path / "out"))
+    try:
+        r = subprocess.run(["bash", os.path.join(replay.ROOT, "scripts", "get_iot23.sh"), "99-1", "hp-7-1", "77-1"],
+                           env=env, capture_output=True, text=True, timeout=120)
+    finally:
+        server.shutdown()
+    assert r.returncode == 0, r.stdout + r.stderr
+    out = tmp_path / "out"
+    assert (out / "CTU-IoT-Malware-Capture-99-1" / "bro" / "conn.log.labeled").read_text() == mirai_log()
+    for sub in ("Somfy-01", "Somfy-02"):
+        assert (out / "CTU-Honeypot-Capture-7-1" / sub / "bro" / "conn.log.labeled").exists()
+    assert not (out / "CTU-Honeypot-Capture-7-1" / "bro").exists()
+    assert "no labelled log found" in r.stdout and not (out / "CTU-IoT-Malware-Capture-77-1" / "bro").exists()

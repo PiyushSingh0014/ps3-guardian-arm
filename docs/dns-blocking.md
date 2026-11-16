@@ -61,6 +61,8 @@ cd ~/ps3-guardian && bash scripts/setup_dns_block.sh --status
 bash scripts/setup_dns_block.sh --keep
 ```
 
+**Tested on the Pi (16 November 2026):** the set-up restarted the hotspot (the SSH session over it stopped, as expected). `--status` then showed the path unit active and the self-test passed: the Pi's DNS answered `example.org` (NOERROR), refused it while it was blocked (NXDOMAIN) and answered it again after it was unblocked. `--keep` was run, so blocking stays on after restarts.
+
 **Safety net:** without `--keep` within 10 minutes, the setting is removed by itself and the hotspot restarts with plain DNS, as `setup_gateway.sh` does for the hotspot. To remove everything later: `bash scripts/setup_dns_block.sh --undo`.
 
 ## Try it
