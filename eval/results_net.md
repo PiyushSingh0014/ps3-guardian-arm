@@ -1,6 +1,6 @@
 # Network detector: results
 
-Measured 2026-10-26 with `detectors/net/eval_net.py` on CIC-IDS2017, and with `detectors/net/train_dga.py` for the DGA model. How the detector works is in [docs/network-detector.md](../docs/network-detector.md).
+Measured 2026-10-26 with `detectors/net/eval_net.py` on CIC-IDS2017, and with `detectors/net/train_dga.py` for the DGA model; on IoT-23 with `detectors/net/replay.py` on the Pi (16 November 2026). How the detector works is in [docs/network-detector.md](../docs/network-detector.md).
 
 ## CIC-IDS2017: five days of a company network with labelled attacks
 
@@ -83,6 +83,46 @@ Update 27 came from the lab Wi-Fi, not from this data, and the five days only ch
 
 - **A sweep needs most of the machines tried on that port to stay silent.** Monday's port-443 "scans" fell from 18 to 10.
 - **"Unusual device" is only for small home devices** (at most 50 servers while learning). The company PCs used far more, so its 6 false alarms are gone. None of the attacks needed it: FTP-Patator was also caught as password guessing, Infiltration as a port scan.
+
+## IoT-23: real IoT malware (16 November 2026)
+
+[IoT-23](https://www.stratosphereips.org/datasets-iot23) (Garcia, Parmisano and Erquiaga, Stratosphere Laboratory, 2020; CC BY 4.0, doi:10.5281/zenodo.4743746) holds captures of a Raspberry Pi infected with real IoT malware and of real smart-home devices, each labelled flow by flow by the dataset's authors. The rules were not tuned on it: it is the independent test the hard review asked for.
+
+**How it was run** (on the Pi, [docs/iot23-replay.md](../docs/iot23-replay.md)): `scripts/get_iot23.sh` downloaded the labelled Zeek connection logs of five malware captures and three smart-home captures, and `python -m detectors.net.replay ~/iot23/*` fed each log, in order, to a fresh copy of the live monitor's engine, with the same rules and the same 2 hours of learning per device. Nothing was sent on any network. A behaviour counts as detected when an alert names its infected address during its labelled period (5th to 95th percentile of its flows, give or take 5 minutes), as for CIC-IDS2017.
+
+| Capture | What it is | Flows (labelled malicious) | Hours | Behaviour (IoT-23 label) | Its flows | Result | Alerts | Its traffic |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Honeypot-Capture-4-1 | Philips Hue lamp | 452 (0) | 21.9 | – | – | no false alarm | – | |
+| Honeypot-Capture-5-1 | Amazon Echo | 1,374 (0) | 5.5 | – | – | no false alarm | – | |
+| Honeypot-Capture-7-1, Somfy-01 | Somfy door lock | 130 (0) | 1.4 | – | – | no false alarm | – | |
+| Malware-Capture-34-1 | Mirai | 23,145 (21,222) | 24.0 | C&C | 6,706 | **detected**, first alert in the period after 30 min | risky port 71, flood 1 | port 6667 (IRC), 1 address, 76% unanswered, every 13 s |
+| | | | | DDoS | 14,394 | **detected** at once | flood 1, risky port 1 | port 80, 3 addresses, all unanswered, 2 a second |
+| | | | | PartOfAHorizontalPortScan | 122 | missed | – | port 63798, 2 addresses, all unanswered, every 4 min |
+| Malware-Capture-44-1 | Mirai | 237 (26) | 1.9 | C&C | 14 | **detected** after 71 s | risky port 1 | port 80 (93%), 1 address, 93% unanswered, every 12 s |
+| | | | | C&C-FileDownload | 11 | **detected** after 73 s (the same alert) | risky port 1 | port 80, 1 address, answered, every 18 s |
+| | | | | DDoS | 1 | missed | – | one UDP flow |
+| Malware-Capture-8-1 | Hakai | 10,403 (8,222) | 24.0 | C&C | 8,222 | missed | – | port 50, 2 addresses, all unanswered, every 10 s |
+| Malware-Capture-20-1 | Torii | 3,209 (16) | 24.0 | C&C-Torii | 16 | missed | – | port 443, 1 address, 81% unanswered, every 46 min |
+| Malware-Capture-42-1 | a trojan | 4,426 (6) | 8.4 | C&C-FileDownload, FileDownload | 3 + 3 | missed | – | port 80, 1 address, answered, every 19 s |
+
+"Its traffic" is the replay's own summary of each behaviour's flows: the main port and its share, the internet addresses reached, how many flows got no answer, and how often a flow started.
+
+- **No false alarm:** none in 28.8 hours of the three smart-home devices, and on the malware captures no alert named a device that was not infected.
+- **Detected: 2 of the 5 infected devices, 4 of the 10 labelled behaviours**, each by the alert kind that fits it. Both Mirai devices were caught: 34-1's controller on IRC (the risky-port rule) and its DDoS (a flood), which hold 21,100 of its 21,222 malicious flows; 44-1's controller and download within about a minute, by one risky-port alert. 8 more alerts about 34-1's infected device fell outside its labelled periods and are counted neither way.
+- **Missed: 3 of the 5 infected devices raised no alert at all.** Their traffic lines show why:
+  - **Quiet controllers on web ports.** Torii tried its controller 16 times in 24 hours on port 443, about every 46 minutes; the trojan made 6 web downloads on port 80. By their shape these are ordinary web connections. Seeing them needs the content, which the monitor never reads, or a list of known controller addresses.
+  - **A controller that never answered.** Hakai tried two addresses on port 50 8,222 times, and its controller never replied: about one try every 20 seconds per address. The beacon rule needs check-ins at least 30 s apart, and port 50 is not on the risky-port list. A rule for many unanswered tries to the same internet address could catch it. It is left for Phase 2: written now, it would be designed on this very test.
+  - **Too little to call.** Mirai 34-1's "horizontal scan" is 122 tries, nearly all of one port, at 2 addresses, one every 4 minutes; the sweep rule needs 15 machines within a minute. 44-1's "DDoS" is one flow.
+
+**The learning time, switched off** (`--learn-hours 0`): the same 4 behaviours were detected and nothing more, but the smart-home devices got 30 false alarms in 28.8 hours (1.04 an hour): the Hue lamp 23 "calling home at fixed times" (beacon), the Echo 6 beacons and one "unusual device", the Somfy lock none. So the 2 hours in which a device's servers are learned as normal are what keep regular cloud check-ins quiet, and here they hid none of the infections. The review's concern stays: a device infected while it is being learned would have its controller learned as normal; these captures did not happen to test it.
+
+**Compared with CIC-IDS2017** (all 10 network-level attacks detected): those attacks were loud, floods, scans and password guessing on a company network. Once installed, IoT malware is often quiet. The monitor catches the loud part and controllers on telltale ports, not quiet controllers on web ports.
+
+**Limits of this test:**
+
+- **Zeek logs carry no names,** so the checks on looked-up names (phishing websites, DGA names, DNS tunnels) were not exercised. `--pcap` reads the captures themselves, names included; they are large and were left for later.
+- **Five of IoT-23's 20 malware captures,** chosen small enough to download to the Pi, and three smart-home captures (for the Somfy lock, only its first capture, Somfy-01).
+- **The labels are the dataset's,** made by its authors. One reading fault of ours came up and was fixed before these numbers: 34-1's log names its last column `det_label`, and the first run read all of its malicious flows as one behaviour (update 41).
 
 ## DGA model: does a domain name look machine-made?
 
@@ -207,4 +247,8 @@ The Pi is the hotspot `PS3-Guardian-Lab`. On it: a laptop, a Galaxy S25 and the 
 python detectors/net/eval_net.py --data "TrafficLabelling "
 # DGA model (about 3 minutes): the data file is in github.com/ExtraHop/DGA-Detection-Training-Dataset (Git LFS)
 python detectors/net/train_dga.py --data dga-training-data-encoded.json.gz
+# IoT-23 (on the Pi; a few minutes): the labelled logs of the captures above, then the replay
+bash scripts/get_iot23.sh
+python -m detectors.net.replay ~/iot23/* --report ~/iot23/results.md
+python -m detectors.net.replay ~/iot23/* --learn-hours 0
 ```

@@ -34,7 +34,7 @@ PS3 Guardian is a security assistant for Indian homes that runs entirely on Arm 
 | **What it checks** | SMS with their real sender IDs; WhatsApp and RCS chats from unknown numbers; links; PDF, Office, APK, zip and web files; the traffic of every device on the Pi's Wi-Fi |
 | **What the user gets** | A verdict at once, the reasons, the steps to take (1930, cybercrime.gov.in), Llama's two-sentence explanation 20–30 s later, and scam websites blocked on the Pi's Wi-Fi |
 | **Speed on the Pi 4** | SMS verdict ≈30 ms; link ≈1 ms; file ≈20 ms; network alert within about 30 s to 10 min, by kind; a new Llama explanation 18–31 s, a repeated one instant |
-| **Measured** | **SMS:** F1 0.950 on held-out public messages; on 227 real Indian messages 96 of 100 scams caught, but 59–64% of normal messages flagged with the text and the senders we had (4% with ideal registered sender IDs is a projection, not a measurement); on the team's real traffic, 13% of SMS from registered sender IDs flagged, mostly marketing. **Links:** 81% of brand-new phishing sites caught with no lists; 1.1% of popular websites called dangerous. **Network:** all 10 network-level attacks in CIC-IDS2017 detected. **Files:** 21 of 21 test files right, no false alarm on 521 ordinary PDFs. **Llama:** of the sentences users see, 72% supported by the evidence and 12% wrong (one grader) |
+| **Measured** | **SMS:** F1 0.950 on held-out public messages; on 227 real Indian messages 96 of 100 scams caught, but 59–64% of normal messages flagged with the text and the senders we had (4% with ideal registered sender IDs is a projection, not a measurement); on the team's real traffic, 13% of SMS from registered sender IDs flagged, mostly marketing. **Links:** 81% of brand-new phishing sites caught with no lists; 1.1% of popular websites called dangerous. **Network:** all 10 network-level attacks in CIC-IDS2017 detected; on IoT-23's real IoT malware, 2 of 5 infected devices flagged, with no false alarm in 28.8 h of three real smart-home devices. **Files:** 21 of 21 test files right, no false alarm on 521 ordinary PDFs. **Llama:** of the sentences users see, 72% supported by the evidence and 12% wrong (one grader) |
 | **Security** | HTTPS to the Pi with a certificate each phone pins when pairing; a 128-bit pairing token on every request; message texts kept only for phones whose owner switched the study on |
 | **Cloud use** | None. The phone talks to the Pi over the home Wi-Fi; the internet is needed only for the devices' own browsing and for refreshing the phishing list |
 | **Code** | 62 Python files (≈11,500 lines), a 16-file Kotlin Android app (≈1,600 lines), a C++ Llama engine, an ESP32 sketch; 353 automated tests as pytest counts them (252 test functions, some run with several inputs) |
@@ -324,8 +324,9 @@ Nothing is attacked: the names do not exist, and the beacon fetches IANA's examp
 | 7–13 November | The file checker, after our mentor asked about documents arriving in WhatsApp; measured on the team's everyday files and 521 ordinary PDFs |
 | 14 November | SMS model v2 tested on the team's labelled messages, twice: it did not pass the rule set in advance, so the app keeps v1. A hard external review of the whole project |
 | 14–15 November | After the review: a pairing token on every request and study phones; sender rules measured on the Pi; Llama's sentences held to their evidence and 100 answers graded by hand; HTTPS with a pinned certificate, the phone's study switch and a proper package name; DNS blocking on the hotspot; the IoT-23 replay |
+| 16 November | DNS blocking set up and tested on the Pi; IoT-23's real IoT malware replayed on the Pi |
 
-The work reached the Pi in 40 numbered updates. Each update was a tested git bundle, pulled on the Pi and pushed to GitHub. Every update ran the full test suite first, and every result in this document comes from a script in the repository. Per-part status: [docs/status.md](docs/status.md).
+The work reached the Pi in 42 numbered updates. Each update was a tested git bundle, pulled on the Pi and pushed to GitHub. Every update ran the full test suite first, and every result in this document comes from a script in the repository. Per-part status: [docs/status.md](docs/status.md).
 
 ### Problems we solved along the way
 
@@ -396,7 +397,16 @@ ROC AUC of the link model alone: 0.920.
 | A busy hour (30 websites, YouTube, Windows Update) with the earlier rules | 5 false alarms in 36 minutes, all fixed |
 | The same activities after the fixes | **No false alarm in 20,960 flows** (1.1 hours with traffic, including 14,716 flows in 15 minutes) |
 
-**IoT-23** (real IoT malware captured by the Stratosphere Laboratory): the replay tool is ready (update 40, [docs/iot23-replay.md](docs/iot23-replay.md)); its results will be added here.
+**IoT-23** (real IoT malware and real smart-home devices, labelled by the Stratosphere Laboratory; the rules were not tuned on it), replayed on the Pi from the labelled logs ([eval/results_net.md](eval/results_net.md#iot-23-real-iot-malware-16-november-2026)):
+
+| Test | Result |
+| --- | --- |
+| Three smart-home devices: a Philips Hue lamp, an Amazon Echo, a Somfy door lock (28.8 h) | **No false alarm** |
+| Five infected devices: two Mirai, Hakai, Torii, a trojan | **2 of 5 flagged** (4 of 10 labelled behaviours): both Mirai devices, by risky-port alerts on their controller traffic (IRC for one of them) and a flood; one of them within about a minute |
+| Missed | Torii's 16 tries in a day and the trojan's 6 downloads, on ordinary web ports; Hakai's 8,222 tries at a controller that never answered, on port 50 |
+| The same without the 2 hours of learning per device | Nothing more caught; 30 false alarms on the smart-home devices (1 an hour) |
+
+The monitor catches loud behaviour and controllers on telltale ports, not quiet controllers on web ports: those need the content or lists of known controller addresses.
 
 ### Llama on the Pi 4 ([eval/results_pi4.md](eval/results_pi4.md) and [docs/llama-grading.md](docs/llama-grading.md))
 
@@ -461,13 +471,13 @@ Agreement between the two: 78% (Cohen's kappa 0.52); before the second look, 69%
 - **The SMS text model learned from public data.** With text alone it flags many normal Indian messages. The real sender ID fixes much of that, but on the team's phones 13% of SMS from registered sender IDs are still flagged, and the exact false-alarm rate waits for the flagged messages to be labelled.
 - **A scam from a registered sender ID is the open door.** The sender rules close part of it; v1 still let through 3 of the 4 such scams on the team's phones. TRAI's full header list, with each header's owner, is the next step.
 - **Llama is slow on a Pi 4** (18–31 s per new explanation), and about one sentence in eight that users see was judged wrong by our one grader. The verdict and the steps never wait for Llama or depend on it.
-- **The network monitor reads no content,** so web attacks and exploits like Heartbleed pass unseen. Encrypted DNS and Encrypted Client Hello hide the names its look-up checks need. A device's first 2 hours define its normal, so a device that joins already infected is learned as normal.
+- **The network monitor reads no content,** so web attacks and exploits like Heartbleed pass unseen, and so does quiet malware that talks to its controller on web ports: in IoT-23, 3 of 5 infected devices raised no alert. Encrypted DNS and Encrypted Client Hello hide the names its look-up checks need. A device's first 2 hours define its normal, so a device that joins already infected is learned as normal.
 - **"Malware behaviour" is seen on the network and in files, not on the device itself.**
 - **The monitor and the DNS block see only devices on the Pi's own hotspot.** A real home would have to put the Pi in front of its router, or use it as the home's DNS server. Devices with their own DNS (Android's Private DNS set to a provider, a browser's own secure DNS) are not blocked.
 - **Installing the app:** Play Protect blocks side-loaded apps with SMS permissions, so it is installed from Android Studio. A real user would need a Play Store release under Google's SMS permission rules.
 - **The link model alone** calls about 8 in 100 popular websites suspicious, so documents with many links get more warnings.
 - **Files:** encrypted PDFs can only be read from outside; QR codes and scam text without links are not judged; a new exploit with none of the known signs would pass.
-- **Not measured yet:** false alarms over a whole day of normal use on the lab Wi-Fi, the IoT-23 replay, and a second person grading Llama's sentences.
+- **Not measured yet:** false alarms over a whole day of normal use on the lab Wi-Fi, the checks on looked-up names on IoT-23's captures themselves (the replay used their logs), and a second person grading Llama's sentences.
 
 ---
 
@@ -476,7 +486,6 @@ Agreement between the two: 78% (Cohen's kappa 0.52); before the second look, 69%
 **Phase 1 (submission 23 November 2026)**
 
 - Technical report and demo video, including a test with the internet unplugged.
-- The IoT-23 replay results (DNS blocking was set up and tested on the Pi on 16 November).
 - More of the team's messages labelled, for the exact false-alarm rate.
 
 **Phase 2 (PoC, until 5 February 2027)**
@@ -490,7 +499,7 @@ Agreement between the two: 78% (Cohen's kappa 0.52); before the second look, 69%
 - A second job for Llama: a daily safety digest from the day's alert kinds and counts.
 - Sender IDs checked against TRAI's header list, with each header's owner.
 - More scam types and playbooks: trading apps, loan apps, fake customer-care numbers, sextortion calls, SIM swap, UPI collect requests.
-- A learned network classifier next to the rules, trained on more than one dataset; a whole-day false-alarm measurement; a one-tap quarantine of a device; DNS for devices that bypass the Pi.
+- A learned network classifier next to the rules, trained on more than one dataset; a rule for many unanswered tries at one internet address and lists of known controller addresses (the IoT-23 misses); a whole-day false-alarm measurement; a one-tap quarantine of a device; DNS for devices that bypass the Pi.
 - Llama's sentences graded by a second person and judged by non-expert users.
 - Encrypted PDFs, with a crypto library.
 - A Raspberry Pi 5, if available, for faster explanations.
