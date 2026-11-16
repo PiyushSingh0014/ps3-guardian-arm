@@ -13,7 +13,7 @@ The Pi watches every connection of every device on its own Wi-Fi and raises an a
 
 Alerts appear on the Pi's page under **Network alerts**, with the same kind of advice as SMS alerts, and as notifications in the phone app ([android-companion.md](android-companion.md), Part H). Above them, **Devices on this Wi-Fi** lists every device with a risk level. It reads connection summaries (flows), never the content of the traffic.
 
-Results on CIC-IDS2017: [eval/results_net.md](../eval/results_net.md). To see it catch a device live, use the ESP32 lab device and its harmless test modes: [esp32-lab-device.md](esp32-lab-device.md).
+Results on CIC-IDS2017 and on IoT-23's real IoT malware: [eval/results_net.md](../eval/results_net.md). To see it catch a device live, use the ESP32 lab device and its harmless test modes: [esp32-lab-device.md](esp32-lab-device.md).
 
 ## How it works
 
@@ -286,6 +286,7 @@ python detectors/net/eval_net.py --data "TrafficLabelling "          # the full 
 ## What it cannot do
 
 - **Attacks inside normal-looking web traffic** (SQL injection, XSS, Heartbleed in CIC-IDS2017): seeing them needs the content of the packets. It reads only connection summaries.
+- **Quiet malware on web ports.** In IoT-23, Torii's 16 tries at its controller in a day and a trojan's 6 downloads looked like ordinary web connections, and Hakai's 8,222 unanswered tries on port 50 matched no rule: 3 of 5 infected devices raised no alert ([eval/results_net.md](../eval/results_net.md#iot-23-real-iot-malware-16-november-2026)).
 - **Encrypted DNS** (DNS over HTTPS) hides look-ups from the DNS checks; the server-name (TLS) check still sees the website.
 - **Beacons** can also be normal apps that call home on a timer. They are only "suspicious", and come after the device's learning period.
 - **Beacons over one open connection are not seen.** Only new connections count, because apps that keep a connection open ping it at a fixed rhythm too ([eval/results_net.md](../eval/results_net.md)). Malware that checks in over a connection it keeps open would need a separate "long connection" check.

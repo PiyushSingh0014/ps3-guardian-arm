@@ -46,4 +46,11 @@ As for CIC-IDS2017:
 - **The first 2 hours of a device are its normal** (as live). A device infected from the first minute, as in many captures, has its controller learned as normal: beacons to it are not reported. The review named this weakness; the replay measures it.
 - **The labels are the dataset's,** made by its authors from their knowledge of each capture. Their files differ a little: 34-1's header calls the last column `det_label`, and most files separate the last three columns with spaces instead of tabs. The reader accepts both (tests cover each form).
 
-Paste the output into the chat: the results go into [eval/results_net.md](../eval/results_net.md).
+## Results (16 November 2026)
+
+Full table and reading: [eval/results_net.md](../eval/results_net.md#iot-23-real-iot-malware-16-november-2026).
+
+- **No false alarm** in 28.8 hours of three real smart-home devices (a Philips Hue lamp, an Amazon Echo, a Somfy door lock).
+- **2 of 5 infected devices flagged**, 4 of 10 labelled behaviours: both Mirai devices (risky-port alerts on their controller traffic, IRC for 34-1, and a flood).
+- **Missed:** Torii and a trojan, whose few connections to their controllers are ordinary web connections by their shape, and Hakai, whose 8,222 tries at its controller on port 50 were never answered.
+- **Without the learning time,** nothing more was caught and the smart-home devices got 30 false alarms.
