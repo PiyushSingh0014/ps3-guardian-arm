@@ -37,7 +37,7 @@ PS3 Guardian is a security assistant for Indian homes that runs entirely on Arm 
 | **Measured** | **SMS:** F1 0.950 on held-out public messages; on 227 real Indian messages 96 of 100 scams caught, but 59–64% of normal messages flagged with the text and the senders we had (4% with ideal registered sender IDs is a projection, not a measurement); on the team's real traffic, 13% of SMS from registered sender IDs flagged, mostly marketing. **Links:** 81% of brand-new phishing sites caught with no lists; 1.1% of popular websites called dangerous. **Network:** all 10 network-level attacks in CIC-IDS2017 detected. **Files:** 21 of 21 test files right, no false alarm on 521 ordinary PDFs. **Llama:** of the sentences users see, 72% supported by the evidence and 12% wrong (one grader) |
 | **Security** | HTTPS to the Pi with a certificate each phone pins when pairing; a 128-bit pairing token on every request; message texts kept only for phones whose owner switched the study on |
 | **Cloud use** | None. The phone talks to the Pi over the home Wi-Fi; the internet is needed only for the devices' own browsing and for refreshing the phishing list |
-| **Code** | 62 Python files (≈11,400 lines), a 16-file Kotlin Android app (≈1,600 lines), a C++ Llama engine, an ESP32 sketch; 348 automated tests as pytest counts them (247 test functions, some run with several inputs) |
+| **Code** | 62 Python files (≈11,500 lines), a 16-file Kotlin Android app (≈1,600 lines), a C++ Llama engine, an ESP32 sketch; 353 automated tests as pytest counts them (252 test functions, some run with several inputs) |
 
 ---
 
@@ -273,7 +273,7 @@ Limits for the Pi's sake: 25 MB per file, 50 MB unpacked (against zip bombs).
 
 When a message is flagged, the app server puts its websites on a **watch list** for 24 hours (`scamlinks.py`). If a device on the Wi-Fi then looks one up, the monitor raises **"Link from a scam message opened"**, naming the device and when the message was flagged. This catches links the link checker alone rates safe: real Indian scams use short domains that look like genuine bulk-SMS link domains, and the sender and text gave them away.
 
-**DNS blocking** (`app/dns_block.py`, update 40). The Pi is the DNS server of its hotspot, so it can refuse to look a website up; then the page does not open on any device on the Wi-Fi. Blocked automatically for 7 days: the websites of a dangerous message, a phishing site a device looked up, and a website from a flagged message that a device opened. Websites blocked by hand on the page stay blocked until unblocked. Official, popular and shared sites are never blocked. The app and the monitor only write a list; systemd runs a small root helper whenever it changes, which keeps only valid names and makes the hotspot's dnsmasq answer NXDOMAIN for each name and every name under it. **Unblock** on the page undoes a block, and that website is not blocked automatically again ([docs/dns-blocking.md](docs/dns-blocking.md)).
+**DNS blocking** (`app/dns_block.py`, update 40). The Pi is the DNS server of its hotspot, so it can refuse to look a website up; then the page does not open on any device on the Wi-Fi. Blocked automatically for 7 days: the websites of a dangerous message, a phishing site a device looked up, and a website from a flagged message that a device opened. Websites blocked by hand on the page stay blocked until unblocked. Official, popular and shared sites are never blocked. The app and the monitor only write a list; systemd runs a small root helper whenever it changes, which keeps only valid names and makes the hotspot's dnsmasq answer NXDOMAIN for each name and every name under it. **Unblock** on the page undoes a block, and that website is not blocked automatically again. Set up on the Pi on 16 November: its self-test saw the Pi's DNS refuse a blocked website and answer it again once unblocked ([docs/dns-blocking.md](docs/dns-blocking.md)).
 
 Every device on the lab Wi-Fi also gets a **risk level** from its alerts of the last 24 hours (AT RISK, CHECK, OK), on the page and in the app.
 
@@ -343,7 +343,7 @@ The work reached the Pi in 40 numbered updates. Each update was a tested git bun
 
 ### Tools
 
-Python 3.13, scikit-learn, NumPy, FastAPI, uvicorn, NFStream 6.6, tldextract; ExecuTorch release 1.5 with XNNPACK, the Arm GNU toolchain 14.3, WSL2; Kotlin, Android Studio, WorkManager; Arduino IDE 2 with the ESP32 core; dnsmasq and systemd on the Pi; pytest (348 tests, with a fake Llama so tests need no model).
+Python 3.13, scikit-learn, NumPy, FastAPI, uvicorn, NFStream 6.6, tldextract; ExecuTorch release 1.5 with XNNPACK, the Arm GNU toolchain 14.3, WSL2; Kotlin, Android Studio, WorkManager; Arduino IDE 2 with the ESP32 core; dnsmasq and systemd on the Pi; pytest (353 tests, with a fake Llama so tests need no model).
 
 ---
 
@@ -476,7 +476,7 @@ Agreement between the two: 78% (Cohen's kappa 0.52); before the second look, 69%
 **Phase 1 (submission 23 November 2026)**
 
 - Technical report and demo video, including a test with the internet unplugged.
-- The IoT-23 replay results; DNS blocking set up and tested on the Pi.
+- The IoT-23 replay results (DNS blocking was set up and tested on the Pi on 16 November).
 - More of the team's messages labelled, for the exact false-alarm rate.
 
 **Phase 2 (PoC, until 5 February 2027)**
@@ -513,7 +513,7 @@ Agreement between the two: 78% (Cohen's kappa 0.52); before the second look, 69%
 | `scripts/` | Start-up and services, the hotspot and DNS-blocking set-ups, list and dataset downloads, measuring tools (`sms_traffic.py`, `net_traffic.py`, `pi_usage.py`, `check_files.py`), harmless test files |
 | `eval/` | Measured results |
 | `docs/` | Guides for each part, and the status of each part ([docs/status.md](docs/status.md)) |
-| `tests/` | 348 pytest tests |
+| `tests/` | 353 pytest tests |
 
 **On a laptop** (no Pi or model needed):
 

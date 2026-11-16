@@ -15,19 +15,23 @@ cd ~/ps3-guardian
 bash scripts/get_iot23.sh
 ```
 
-It downloads the labelled logs of a default set, into `~/iot23/` (outside the repo): Mirai (34-1, 44-1), Torii (20-1), a trojan (42-1), Hakai (8-1), and the three smart-home devices (`hp-4-1`, `hp-5-1`, `hp-7-1`). It checks each file's size first and skips anything over 400 MB (`MAX_MB=1000 bash scripts/get_iot23.sh ...` allows more). Other scenarios: `bash scripts/get_iot23.sh 1-1 3-1`. The capture itself, for the full monitor path: `bash scripts/get_iot23.sh --pcap 34-1` (about 120 MB for 34-1).
+It downloads the labelled logs of a default set, into `~/iot23/` (outside the repo): Mirai (34-1, 44-1), Torii (20-1), a trojan (42-1), Hakai (8-1), and the three smart-home devices (`hp-4-1`, `hp-5-1`, `hp-7-1`). The Somfy door lock (`hp-7-1`) keeps six captures in subfolders, `Somfy-01` to `Somfy-06`; each is downloaded and replayed as a capture of its own. It checks each file's size first and skips anything over 400 MB (`MAX_MB=1000 bash scripts/get_iot23.sh ...` allows more). Other scenarios: `bash scripts/get_iot23.sh 1-1 3-1`. The capture itself, for the full monitor path: `bash scripts/get_iot23.sh --pcap 34-1` (about 120 MB for 34-1).
 
 ## Run
 
 ```bash
 source ~/ps3-venv/bin/activate
-python -m detectors.net.replay ~/iot23/*
+python -m detectors.net.replay ~/iot23/* --report ~/iot23/results.md
+python -m detectors.net.replay ~/iot23/* --learn-hours 0
 python -m detectors.net.replay --pcap ~/iot23/CTU-IoT-Malware-Capture-34-1
 ```
 
+- The first line is the monitor as it runs live. Under each labelled behaviour, a second line says what its traffic looks like: its main port, how many internet addresses it reached, how much of it went unanswered and how often a flow started. For a missed behaviour, that line usually shows why. At the end, a summary gives the false alarms on the smart-home captures and how many labelled behaviours were detected.
+- **`--learn-hours 0`** switches off the 2 hours in which each device's servers are learned as normal. It shows what that learning hides (a controller contacted from the first minute) and what it prevents (false "calling home" alarms from smart-home devices that check in with their cloud).
+
 - **By default** each line of the labelled Zeek log becomes a flow: addresses, ports, packets, payload bytes, and the SYN and reset flags from Zeek's history string. The flows go through the same engine as the live monitor ([detectors/net/replay.py](../detectors/net/replay.py)), with a fresh state, no watch list and no DNS blocking. Zeek's connection log names no websites, so the checks on looked-up names (phishing sites, DGA names, DNS tunnels) do not run.
 - **`--pcap`** reads the capture itself through NFStream, exactly as live, names included; the Zeek log then gives only the labels.
-- Nothing is sent on any network, and nothing reaches the app's alert list. `--report eval/results_iot23.md` also writes a Markdown table.
+- Nothing is sent on any network, and nothing reaches the app's alert list. `--report FILE` also writes a Markdown table; keep it outside the repo (`~/iot23/results.md`).
 
 ## How it is scored
 
@@ -40,6 +44,6 @@ As for CIC-IDS2017:
 
 - **IoT-23's network is not the lab Wi-Fi.** Each capture holds one infected device and its traffic to the internet; there are no phones or laptops to cause false alarms, except in the three benign captures.
 - **The first 2 hours of a device are its normal** (as live). A device infected from the first minute, as in many captures, has its controller learned as normal: beacons to it are not reported. The review named this weakness; the replay measures it.
-- **The labels are the dataset's,** made by its authors from their knowledge of each capture.
+- **The labels are the dataset's,** made by its authors from their knowledge of each capture. Their files differ a little: 34-1's header calls the last column `det_label`, and most files separate the last three columns with spaces instead of tabs. The reader accepts both (tests cover each form).
 
 Paste the output into the chat: the results go into [eval/results_net.md](../eval/results_net.md).
