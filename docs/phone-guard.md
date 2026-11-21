@@ -80,6 +80,7 @@ Checked on a computer: the phone's Kotlin code (run on the JVM by `android/guard
 
 - **Llama on the phone needs one copy from the Pi** (about 1 GB, on the Pi's Wi-Fi). Uninstalling the app deletes it; updating the app keeps it. Network alerts are explained only on the Pi: they are about the home network.
 - **Llama's speed on the phone is not measured yet,** and its words can differ a little from the Pi's (see above).
+- **The phone runs the Pi's model, Llama 3.2 1B,** although the S25 has room for Llama 3.2 3B (about 3.7 GB while running, too much for the Pi 4). Phase 2: 3B on the phone, if its graded answers on the same 100 cases are better at an acceptable speed. It stays on the phone's Arm CPU, through ExecuTorch.
 - **No phishing list on the phone:** a reported phishing site that the rules and the link model miss is caught only by the Pi, when the phone is home. Phase 2: copy the list to the phone when it is home.
 - **Files** shared to the app are checked only by the Pi.
 - **Mojibake** is not repaired on the phone (see above).

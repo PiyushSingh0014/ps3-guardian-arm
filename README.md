@@ -513,6 +513,7 @@ Llama on the phone gets the Pi's prompt: the same whole prompt, in English and i
 **Phase 2 (PoC, until 5 February 2027)**
 
 - **More on the phone** (Phone Guard already checks messages and links there, and explains its alerts with Llama away from home):
+  - Llama 3.2 3B on the phone instead of 1B, still through ExecuTorch on the phone's Arm CPU: the S25 has the memory for it (about 3.7 GB while running), the Pi 4 does not. Chosen the way SMS model v2 was judged, with a rule fixed in advance: the 3B's answers to the same 100 graded cases must put fewer wrong sentences in front of users, at an acceptable time per explanation on the S25;
   - the phishing list copied to the phone whenever it is home, and files checked on the phone;
   - the phone's own connections checked, and blocked, through a local VPN on the phone.
 
