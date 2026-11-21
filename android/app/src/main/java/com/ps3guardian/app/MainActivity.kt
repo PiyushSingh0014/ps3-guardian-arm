@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -36,7 +37,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var devList: TextView
     private lateinit var netAlerts: TextView
     private lateinit var recent: TextView
+    private lateinit var llamaStatus: TextView
     private val handler = Handler(Looper.getMainLooper())
+
+    // While Llama is being copied from the Pi, show how far it got every second.
+    private val llamaLoop = object : Runnable {
+        override fun run() {
+            showLlama()
+            if (PhoneLlama.copying) handler.postDelayed(this, 1_000L)
+        }
+    }
 
     // While the screen is open, ask the Pi for network alerts and its device list every 10 s.
     private val netLoop = object : Runnable {
@@ -75,13 +85,15 @@ class MainActivity : AppCompatActivity() {
         devList = findViewById(R.id.dev_list)
         netAlerts = findViewById(R.id.net_alerts)
         recent = findViewById(R.id.recent)
+        llamaStatus = findViewById(R.id.llama_status)
         val guardStatus = findViewById<TextView>(R.id.guard_status)
         PhoneGuard.warm(this) {
             val g = PhoneGuard.get(this)
             runOnUiThread {
                 guardStatus.text = if (g != null) {
                     "Phone Guard is on: SMS, chats and links are checked on this phone, with no network needed. " +
-                        "On the Pi's Wi-Fi, the Pi adds Llama's explanation and its phishing list."
+                        "On the Pi's Wi-Fi, the Pi adds its phishing list and Llama's explanation; away from it, " +
+                        "Llama on this phone explains alerts, once it is copied here."
                 } else "Phone Guard could not start (${PhoneGuard.error}): messages wait for the Pi."
             }
         }
@@ -102,6 +114,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.pair).setOnClickListener { pair() }
         findViewById<Button>(R.id.test_connection).setOnClickListener { testConnection() }
         findViewById<Button>(R.id.test_message).setOnClickListener { testMessage() }
+        findViewById<Button>(R.id.get_llama).setOnClickListener { getLlama() }
 
         val studyBox = findViewById<CheckBox>(R.id.study)
         studyBox.isChecked = Settings.study(this)
@@ -136,10 +149,12 @@ class MainActivity : AppCompatActivity() {
         showChatStatus()                     // notification access may have just been allowed
         FlushWorker.flushSoon(this)          // send messages that waited for the Pi, if it can be reached now
         handler.post(netLoop)
+        handler.post(llamaLoop)
     }
 
     override fun onPause() {
         handler.removeCallbacks(netLoop)
+        handler.removeCallbacks(llamaLoop)
         Settings.prefs(this).unregisterOnSharedPreferenceChangeListener(refresh)
         super.onPause()
     }
@@ -247,6 +262,50 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    /** Copies Llama 3.2 1B from the Pi (update 44), after asking: it is about 1 GB. */
+    private fun getLlama() {
+        save()
+        if (PhoneLlama.copying) return
+        if (!Settings.piUrl(this).startsWith("https://") || Settings.pin(this).isBlank()) {
+            llamaStatus.text = "Pair with the Pi first (on its Wi-Fi): the model comes from the paired Pi only."
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Copy Llama from the Pi?")
+            .setMessage(
+                "Llama 3.2 1B (about 1 GB) is copied from your Pi to this phone, over the Pi's Wi-Fi, in a few " +
+                    "minutes. Keep the phone on PS3-Guardian-Lab and this screen open until it is done.\n\n" +
+                    "Then, when the Pi cannot be reached, Llama explains alerts on this phone. If the copy stops, " +
+                    "tap the button again: it goes on from where it stopped."
+            )
+            .setPositiveButton("Copy") { _, _ ->
+                PhoneLlama.startCopy(this)
+                handler.removeCallbacks(llamaLoop)
+                handler.post(llamaLoop)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showLlama() {
+        val copying = PhoneLlama.copying
+        if (copying) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val last = PhoneLlama.copyResult?.let { "$it\n" } ?: ""
+        llamaStatus.text = when {
+            copying && PhoneLlama.toCopy == 0L -> "Asking the Pi for Llama..."
+            copying -> {
+                val pct = (PhoneLlama.copied * 100 / PhoneLlama.toCopy).toInt()
+                "Copying Llama from the Pi: ${PhoneLlama.megabytes(PhoneLlama.copied)} of " +
+                    "${PhoneLlama.megabytes(PhoneLlama.toCopy)} ($pct%). Keep this screen open."
+            }
+            PhoneLlama.ready(this) -> last + "Llama 3.2 1B is on this phone (${PhoneLlama.megabytes(PhoneLlama.size(this))}): " +
+                "when the Pi cannot be reached, it explains alerts here."
+            else -> last + "Llama is not on this phone yet: away from the Pi, alerts get the playbook's advice " +
+                "without Llama's explanation. On the Pi's Wi-Fi, tap 'Get Llama from the Pi'."
+        }
+    }
+
     /** A fake scam from a phone number: checks the token too. The Pi does not log tests. */
     private fun testMessage() {
         save()
@@ -257,7 +316,8 @@ class MainActivity : AppCompatActivity() {
                 "Dear customer your SBI account will be blocked today. Update KYC: http://sbi-kyc.example/update"
             )
             runOnUiThread {
-                status.text = "Test done: the phone's verdict, then the Pi's if it answered. See the alert and the list below."
+                status.text = "Test done: the phone's verdict, then the Pi's if it answered. See the alert and the list below." +
+                    (if (PhoneLlama.ready(this)) " If the Pi did not answer, Llama on this phone updates the alert in a few seconds." else "")
                 showRecent()
             }
         }.start()

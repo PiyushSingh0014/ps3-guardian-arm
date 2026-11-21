@@ -10,6 +10,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import com.ps3guardian.app.guard.GuardResult
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -115,8 +116,12 @@ class ShareActivity : Activity() {
         }
     }
 
-    /** Phone Guard's verdict at once; then the Pi's, with Llama's explanation, if the Pi can be reached. */
+    /**
+     * Phone Guard's verdict at once; then the Pi's, with Llama's explanation, if the Pi can be reached;
+     * if it cannot, Llama on this phone explains it, when Llama is here (update 44).
+     */
     private fun checkText(text: String) {
+        val language = Checker.languageOf(text)
         val local = PhoneGuard.check(this, text.take(PiClient.MAX_MESSAGE), null)
         if (local != null) {
             val ms = if (local.millis < 1) "under 1 ms" else "%.0f ms".format(Locale.US, local.millis)
@@ -124,15 +129,50 @@ class ShareActivity : Activity() {
         }
         try {
             val client = PiClient.of(this)
-            answer(client.checkText(text.take(PiClient.MAX_MESSAGE), "en"), client)
+            answer(client.checkText(text.take(PiClient.MAX_MESSAGE), language), client)
         } catch (e: PiClient.Rejected) {
             if (local == null) show("Not checked", e.message ?: "")
         } catch (e: InterruptedException) {
             // the screen was closed
         } catch (e: Exception) {
             if (local == null) show("Could not reach the Pi", e.message ?: "")
-            else ui { llm.text = "The Pi could not be reached, so this verdict is the phone's alone (no Llama explanation)." }
+            else explainHere(local, language)
         }
+    }
+
+    /** The Pi could not be reached: Llama on this phone writes the explanation, if it is here. */
+    private fun explainHere(local: GuardResult, language: String) {
+        val guard = PhoneGuard.get(this)
+        val prompt = guard?.llama?.prompt(local, language)
+        if (guard == null || prompt == null) {               // safe, or nothing to explain
+            ui { llm.text = "The Pi could not be reached, so this verdict is the phone's alone." }
+            return
+        }
+        if (!PhoneLlama.ready(this)) {
+            ui { llm.text = "The Pi could not be reached, so this verdict is the phone's alone (no Llama explanation: " +
+                "Llama is not on this phone yet)." }
+            return
+        }
+        ui { llm.text = "The Pi could not be reached. Llama is writing a plain-language explanation on this phone..." }
+        val a = PhoneLlama.answer(this, prompt)
+        if (!open) return
+        if (a == null) {
+            ui { llm.text = "Llama on this phone could not answer (${PhoneLlama.error}): the advice above is the playbook's." }
+            return
+        }
+        val checked = guard.llama.check(a.text, local.verdict, language, prompt.evidence)
+        val took = "%.1f s".format(Locale.US, a.seconds)
+        if (!checked.ok) {
+            ui { llm.text = "Llama's answer did not pass the checks, so the advice above is the playbook's ($took)." }
+            return
+        }
+        val sb = StringBuilder()
+        for (part in listOf(checked.what.ifEmpty { local.what }, checked.why.ifEmpty { local.why })) {
+            if (part.isNotBlank()) sb.append(part).append(' ')
+        }
+        for (step in local.steps) sb.append("\n• ").append(step)
+        show(local.headline, sb.toString().trim())
+        ui { llm.text = "Explained by Llama 3.2 on this phone, in $took (the Pi could not be reached)." }
     }
 
     /** The Pi's answer now, then Llama's explanation when it is ready (20-30 s). */

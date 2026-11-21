@@ -9,6 +9,10 @@ ET_DIR="${ET_DIR:-$HOME/executorch-deployment}"
 VENV="${VENV:-$HOME/ps3-venv}"
 THREADS="${LLAMA_THREADS:-4}"
 SERVER_BIN="${LLAMA_SERVER_BIN:-$ET_DIR/advisor_server}"
+# The Llama model and its tokenizer: read by the Llama service, and sent to a paired phone that asks
+# for them (GET /llama, update 44), so that Phone Guard can explain alerts away from the Pi's Wi-Fi.
+export LLAMA_PTE="${LLAMA_PTE:-$ET_DIR/llama3_2.pte}"
+export LLAMA_TOKENIZER="${LLAMA_TOKENIZER:-$ET_DIR/tokenizer.model}"
 
 # shellcheck disable=SC1091
 source "$VENV/bin/activate"
@@ -25,7 +29,7 @@ fi
 if ! curl -sf http://127.0.0.1:8765/health > /dev/null; then
   echo "Starting the Llama service (model load + reading the fixed prompt takes 1-2 minutes) ..."
   nohup python -m advisor.llm_service \
-    --pte "$ET_DIR/llama3_2.pte" --tokenizer "$ET_DIR/tokenizer.model" \
+    --pte "$LLAMA_PTE" --tokenizer "$LLAMA_TOKENIZER" \
     --threads "$THREADS" "${ENGINE_ARGS[@]}" > logs/llm_service.log 2>&1 &
   until curl -sf http://127.0.0.1:8765/health > /dev/null; do
     if ! pgrep -f advisor.llm_service > /dev/null; then

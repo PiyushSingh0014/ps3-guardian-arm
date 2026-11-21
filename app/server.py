@@ -33,6 +33,8 @@ is good only for POST /iot. Ten wrong tokens in a minute from one address block 
 With HTTPS on (GUARDIAN_TLS=1), plain HTTP from another machine may only post lab readings; the
 page's plain address redirects to HTTPS (update 39).
 /sms logs each message for measuring (app/sms_log.py): texts only from study phones.
+GET /llama and /llama/{name} give a paired phone the Pi's Llama files, so that Phone Guard can
+explain alerts away from the Pi's Wi-Fi too (app/llama_files.py, update 44).
 """
 import hashlib
 import json
@@ -45,7 +47,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
@@ -53,6 +55,7 @@ from advisor.advise import Advisor
 from advisor.backends import TemplateBackend, backend_from_env
 from advisor.findings import Finding
 from advisor.playbooks import get_playbook
+from app import llama_files
 from app.dns_block import BlockList, protected_reason, valid_name
 from app.lab_devices import MODES, LabDevices, clean_readings
 from detectors.net.engine import LEASES as NET_LEASES, read_lease_names
@@ -599,6 +602,24 @@ def create_app(detector=None, advisor=None, sms_log=None, url_detector=None, net
         if "finished" in job:
             out["seconds"] = round(job["finished"] - job["created"], 1)
         return out
+
+    hashes = llama_files.Hashes()
+
+    @app.get("/llama")
+    def llama_list():
+        """The Llama files a paired phone may copy for Phone Guard (app/llama_files.py)."""
+        out = llama_files.listing(hashes)
+        if out is None:
+            raise HTTPException(status_code=404, detail="no Llama files on this Pi: set LLAMA_PTE and "
+                                                        "LLAMA_TOKENIZER (scripts/run_pi.sh does)")
+        return out
+
+    @app.get("/llama/{name}")
+    def llama_file(name: str):
+        path = llama_files.path_of(name)
+        if path is None:
+            raise HTTPException(status_code=404, detail="no such Llama file on this Pi")
+        return FileResponse(path, media_type="application/octet-stream", filename=name)
 
     alerts_path = net_alerts or os.environ.get("NET_ALERTS", NET_ALERTS)
     if net_explain is None:

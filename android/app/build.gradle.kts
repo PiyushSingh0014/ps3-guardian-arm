@@ -12,8 +12,8 @@ android {
         applicationId = "com.ps3guardian.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "2.1"
+        versionCode = 4
+        versionName = "2.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -30,6 +30,12 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    packaging {
+        jniLibs {
+            // ExecuTorch and fbjni may both carry the C++ runtime: one copy is enough.
+            pickFirsts += "**/libc++_shared.so"
+        }
+    }
 }
 
 dependencies {
@@ -39,6 +45,9 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.material)
     implementation("androidx.work:work-runtime-ktx:2.12.0")
+    // Llama on the phone (update 44): ExecuTorch's runtime and LLM runner, the release the Pi's model
+    // was exported with (1.5.1). It brings fbjni and SoLoader's native loader with it.
+    implementation("org.pytorch:executorch-android:1.5.1")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)

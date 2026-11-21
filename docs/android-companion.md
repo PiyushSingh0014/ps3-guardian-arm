@@ -245,6 +245,15 @@ The app now checks every SMS and chat on the phone itself, with the Pi's own rul
 2. Under the title the app says **Phone Guard is on**.
 3. **Test:** switch Wi-Fi off and tap **Send a test scam**. The alert comes at once, ending "(Checked on this phone.)"; the list shows "DANGEROUS (…) on this phone, N ms", then "the Pi did not answer". Switch Wi-Fi back on: messages kept meanwhile go to the Pi.
 
+## Part L: Llama on the phone (update 44)
+
+Away from the Pi, the phone's alerts can get Llama's two-sentence explanation too: the app copies the Pi's own Llama 3.2 1B (about 1 GB) once and runs it with ExecuTorch on the phone, with the Pi's prompt and the Pi's checks on the answer. At home the Pi still explains. Details and how it was checked: [phone-guard.md](phone-guard.md#llama-on-the-phone-update-44).
+
+1. **The Pi:** apply update 44 and restart (`sudo systemctl restart ps3-guardian`). It gives its model files only to paired phones, over HTTPS with the token.
+2. **The app:** copy the whole new `android` folder (Part B) and press **Run ▶** (version 2.2). The first build downloads ExecuTorch's library from Maven Central, so the Android Studio computer needs the internet once.
+3. **Copy Llama:** with the phone on `PS3-Guardian-Lab` and paired (Part J), tap **Get Llama from the Pi (about 1 GB)**, then **Copy**. Keep the screen open (it stays on by itself while copying) for a few minutes. It ends with "Llama 3.2 1B is now on this phone (… MB), checked against the Pi's." Each file is checked against the Pi's SHA-256 before it is used.
+4. **Test:** Wi-Fi off, tap **Send a test scam**. The alert comes at once; a few seconds later its text becomes Llama's, ending "(Explained by Llama 3.2 on this phone, in N s.)". The list shows "Llama on this phone explained it in N s": note that time for the report.
+
 ## If something goes wrong
 
 | What you see | Fix |
@@ -257,8 +266,15 @@ The app now checks every SMS and chat on the phone itself, with the Pi's own rul
 | `HTTP 403` with "use https://…" | Something talked plain HTTP to port 8000 from another machine: since update 39 that port takes only the ESP32's readings. Use `https://<Pi>:8443`. |
 | `HTTP 429` | Ten wrong tokens in a minute from this phone: wait a minute, then type the right one |
 | `HTTP 503` | The Pi has no token: `sudo systemctl restart ps3-guardian` |
-| "WAITING for the Pi" | Normal while the phone cannot reach the Pi: the phone has already judged the message (the line above it), and sends it to the Pi later for Llama's explanation and the phishing list. Many of them: check the Pi as for "Cannot reach the Pi". |
+| "WAITING for the Pi" | Normal while the phone cannot reach the Pi: the phone has already judged the message (the line above it), Llama on the phone explains it if it was copied there (Part L), and the phone sends it to the Pi later for the phishing list and the Pi's own explanation. Many of them: check the Pi as for "Cannot reach the Pi". |
 | "Phone Guard could not start" | The app was built without its `assets/guard` folder: copy the whole `android` folder again (Part B) and **Run ▶**. Until then messages wait for the Pi, as before update 43. |
+| "The Pi has no Llama files to give" | "it runs an older version": apply update 44 on the Pi and `sudo systemctl restart ps3-guardian`. Otherwise its model files are not where `scripts/run_pi.sh` looks: on the Pi, `ls -l ~/executorch-deployment/llama3_2.pte ~/executorch-deployment/tokenizer.model`, then restart. |
+| "The copy stopped: …" | The phone left the Pi's Wi-Fi or the screen was closed. Tap **Get Llama from the Pi** again: it goes on from where it stopped. |
+| "not enough free space on the phone" | Llama needs about 1.2 GB free: delete some photos or videos, then try again. |
+| "Llama on this phone could not answer: …" | Send that line. The alert keeps the playbook's advice meanwhile. |
+| "Llama on this phone (N s): answer not used, …" | Normal now and then: Llama's answer failed the Pi's checks, so the playbook's advice stays, as on the Pi. |
+| Build error "Could not resolve org.pytorch:executorch-android:1.5.1" | The Android Studio computer needs the internet for the first build after update 44 (Maven Central). |
+| Build error "2 files found with path 'lib/arm64-v8a/…'" | Send the first error line: that library's name goes into `pickFirsts` in `app/build.gradle.kts`, next to `libc++_shared.so`. |
 | No alert, but the list shows the message | It was judged safe (no alert for safe messages), or notifications are off for the app |
 | Nothing at all when an SMS arrives | SMS permission (Part D, step 3) and battery Unrestricted (step 4). Chats are checked only as set up in Part F. |
 | Network alerts: "Cannot reach the Pi" | The phone must be on `PS3-Guardian-Lab`, with the Pi address `https://10.42.0.1:8443`, paired (Part J). |

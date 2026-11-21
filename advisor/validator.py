@@ -115,7 +115,7 @@ def ungrounded(sentence, evidence, language="en"):
     if _DOMAIN_CLAIM_RE.search(sent):
         return "says where the link goes, or that .bank.in or .gov.in sites are not real"
     if language == "en":
-        for word in {w.lower() for w in _ABSOLUTE_RE.findall(sent)}:
+        for word in dict.fromkeys(w.lower() for w in _ABSOLUTE_RE.findall(sent)):   # in order: the same reason each run
             if not _says_absolute(word, ev):
                 return f'says "{word}", which the evidence does not'
         if _RULE_RE.search(sent) and not _FACT_RULE_RE.search(_fact(ev)):
