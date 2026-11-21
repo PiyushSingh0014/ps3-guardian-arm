@@ -45,7 +45,11 @@ SENDER_RULES_ON = ["cap", "brand"]          # measured on the Pi on 15 November 
 
 
 def pattern(rx):
-    """[source, ignore case] of a compiled Python pattern."""
+    """[source, ignore case] of a compiled Python pattern. Other flags (re.M, re.S, re.X) would be lost on
+    the phone, so they stop the export."""
+    other = rx.flags & ~(re.I | re.U)
+    if other:
+        raise ValueError(f"pattern {rx.pattern[:40]!r} has flags the phone does not copy: {re.RegexFlag(other)!r}")
     return [rx.pattern, bool(rx.flags & re.I)]
 
 
@@ -142,7 +146,31 @@ def links_data(top, link_meta):
 def playbooks_data():
     books = load_playbooks()
     return {"max_steps": MAX_STEPS, "safe": SAFE_ADVICE, "books": {
-        k: {"title": b.title, "severity": b.severity, "summary": b.summary, "steps": b.steps} for k, b in books.items()}}
+        k: {"title": b.title, "severity": b.severity, "summary": b.summary, "steps": b.steps,
+            "pretends": b.pretends, "wants": b.wants, "fact": b.fact} for k, b in books.items()}}
+
+
+def llama_data():
+    """llama.json (update 44): the Pi's Llama prompt for messages (advisor/prompt.py) and its answer
+    checker (advisor/validator.py), so Llama on the phone is asked and held to the evidence as on the Pi."""
+    from advisor import advise, findings, prompt, validator
+    v = validator
+    return {
+        "system": prompt.SYSTEM, "lang_names": prompt.LANG_NAMES, "result_text": prompt.RESULT_TEXT,
+        "examples": prompt.EXAMPLES, "max_signs": prompt.MAX_SIGNS, "max_new_tokens": prompt.MAX_NEW_TOKENS,
+        "include_bos": prompt.INCLUDE_BOS_TOKEN, "special_token": prompt._SPECIAL_TOKEN_RE.pattern,
+        "kind_label": findings._KIND_LABEL, "skip_severities": sorted(advise.SKIP_LLM_SEVERITIES),
+        "preferred": {k: list(x) for k, x in sms_brands._PREFERRED.items()},
+        "allowed_domains": sorted(v.ALLOWED_DOMAINS), "allowed_numbers": sorted(v.ALLOWED_NUMBERS),
+        "max_sentences": v.MAX_SENTENCES, "max_words": v.MAX_WORDS,
+        "patterns": {name: pattern(getattr(v, name)) for name in (
+            "_CONTRADICTION_RE", "_URL_RE", "_PHONE_RE", "_SPECIAL_RE", "_SPLIT_RE", "_ABBREV_RE", "_PREAMBLE_RE",
+            "_DEVANAGARI_RE", "_NUMBER_RE", "_ABSOLUTE_RE", "_NO_EVER_RE", "_DOMAIN_CLAIM_RE", "_RULE_RE",
+            "_FACT_RULE_RE")},
+        "hedges": [[*pattern(rx), repl] for rx, repl in v._HEDGES],
+        "glossary": [[*pattern(rx), repl] for rx, repl in v._GLOSSARY],
+        "organisations": [[name, *pattern(rx)] for name, rx in v.ORGANISATIONS],
+    }
 
 
 def text_data():
@@ -181,6 +209,7 @@ def main(argv=None):
     write_json("links.json", links_data(top, link_meta))
     write_json("playbooks.json", playbooks_data())
     write_json("text.json", text_data())
+    write_json("llama.json", llama_data())
     write_json("meta.json", {"sms_model": {k: model[k] for k in ("messages", "data", "date")},
                              "vocabulary": len(model["vocab"]), "link_model": link_meta, "top_sites": len(top),
                              "sender_rules": SENDER_RULES_ON, "playbooks": len(playbooks_data()["books"])})

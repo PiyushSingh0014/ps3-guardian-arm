@@ -25,7 +25,8 @@ ROUTES = [("GET", "/health", {}), ("POST", "/check", {"json": {"message": "ok se
           ("POST", "/sms", {"json": {"message": "ok see you at 6", "test": True}}),
           ("POST", "/file?name=a.txt", {"content": b"hello"}), ("GET", "/explain/nope", {}),
           ("GET", "/alerts", {}), ("POST", "/iot", {"json": READING}), ("GET", "/iot", {}),
-          ("GET", "/devices", {}), ("POST", "/iot/mode", {"json": {"device": "esp32-lab", "mode": "normal"}})]
+          ("GET", "/devices", {}), ("POST", "/iot/mode", {"json": {"device": "esp32-lab", "mode": "normal"}}),
+          ("GET", "/llama", {}), ("GET", "/llama/tokenizer.model", {})]
 
 
 class Clock:
@@ -86,6 +87,7 @@ def test_a_lab_devices_token_only_posts_readings(make, monkeypatch):
     assert call(c, "POST", "/iot", {"json": READING}, token="old1234a").status_code == 200
     for method, path, kw in ROUTES:
         if (method, path) != ("POST", "/iot"):
+            make.clock.t += 61                                 # each a minute apart: no address is blocked
             assert call(c, method, path, kw, token="old1234a").status_code == 401, path
 
 

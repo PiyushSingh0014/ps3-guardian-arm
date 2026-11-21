@@ -37,6 +37,11 @@ def test_the_phone_has_the_pis_playbooks(export):
     assert len(asset("playbooks.json")["books"]) == 25
 
 
+def test_the_phone_asks_llama_and_checks_its_answers_as_the_pi_does(export):
+    assert same(export.llama_data(), asset("llama.json"))
+    assert asset("llama.json")["max_new_tokens"] == {"en": 64, "hi": 160}
+
+
 def test_the_phone_has_the_pis_link_lists(export):
     phone = asset("links.json")
     pi = export.links_data(phone["top_sites"], phone["link_model"])

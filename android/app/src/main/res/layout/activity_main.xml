@@ -25,6 +25,19 @@
             android:text="Phone Guard: loading..." />
 
         <TextView
+            android:id="@+id/llama_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp"
+            android:text="Llama on this phone: checking..." />
+
+        <Button
+            android:id="@+id/get_llama"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Get Llama from the Pi (about 1 GB)" />
+
+        <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:paddingTop="16dp"

@@ -163,6 +163,19 @@ class SmsRules internal constructor(s: Map<String, Any?>) {
     // --- brands.py -----------------------------------------------------------------------------
     private fun brandsNamed(text: String) = brands.filter { it.rx.containsMatchIn(text) }
 
+    /**
+     * brands.claimed_identity: the organisation the message claims to be, as (name, kind), or null.
+     * preferred: for each scam type, the kinds of organisation its scammers usually pretend to be.
+     */
+    fun claimedIdentity(text: String, category: String?, preferred: Map<String, List<String>>): Pair<String, String>? {
+        val hits = brandsNamed(text)
+        if (hits.isEmpty()) return null
+        for (kind in preferred[category] ?: emptyList()) {
+            hits.firstOrNull { it.kind == kind }?.let { return Pair(it.name, it.kind) }
+        }
+        return Pair(hits[0].name, hits[0].kind)
+    }
+
     private fun headerBelongs(root: String, names: List<String>): Boolean {
         val r = root.uppercase()
         return names.any { name -> (headerRoots[name] ?: emptyList()).any { it in r } }

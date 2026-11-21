@@ -1,6 +1,7 @@
 package com.ps3guardian.app
 
 import android.content.Context
+import com.ps3guardian.app.guard.GuardResult
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -14,8 +15,9 @@ class Msg(val channel: String, val app: String?, val sender: String, val text: S
 
 /**
  * Checks each message on the phone first (Phone Guard: no network needed), then sends it to the Pi,
- * which adds Llama's explanation and its phishing list when the phone is on its Wi-Fi. Blocking:
- * call it from a background thread.
+ * which adds Llama's explanation and its phishing list when the phone is on its Wi-Fi. When the Pi
+ * cannot be reached and Llama is on this phone (update 44), Llama explains the alert here instead.
+ * Blocking: call it from a background thread.
  */
 object Checker {
     private val DEVANAGARI = Regex("[\\u0900-\\u097F]")
@@ -31,33 +33,45 @@ object Checker {
         onMessage(context, Msg("chat", app, sender, text, System.currentTimeMillis()))
 
     private fun onMessage(context: Context, m: Msg) {
-        onPhone(context, m)
+        val r = onPhone(context, m)
         if (check(context, m, test = false)) {
             FlushWorker.flushSoon(context)              // the Pi answers: send anything still waiting
         } else {
             Settings.addPending(context, m)
             Settings.addRecent(context, line(m, "WAITING for the Pi"))
             FlushWorker.schedule(context)
+            explainHere(context, m, r)
         }
     }
 
     /** The "Send a test scam" button: checked on the phone, then by the Pi; never kept for later, and the Pi does not log it. */
     fun test(context: Context, sender: String, text: String) {
         val m = Msg("sms", null, sender, text, System.currentTimeMillis())
-        onPhone(context, m)
-        check(context, m, test = true)
+        val r = onPhone(context, m)
+        if (!check(context, m, test = true)) explainHere(context, m, r)
     }
 
+    /** "hi" for a message in Devanagari, else "en": the language of the explanation. */
+    fun languageOf(text: String) = if (DEVANAGARI.containsMatchIn(text)) "hi" else "en"
+
     /** Phone Guard: the verdict on this phone, at once, and an alert if the message is not safe. */
-    private fun onPhone(context: Context, m: Msg) {
-        val r = PhoneGuard.check(context, m.text.take(PiClient.MAX_MESSAGE), m.sender.take(64)) ?: return
+    private fun onPhone(context: Context, m: Msg): GuardResult? {
+        val r = PhoneGuard.check(context, m.text.take(PiClient.MAX_MESSAGE), m.sender.take(64)) ?: return null
         m.phoneVerdict = r.verdict
         val ms = if (r.millis < 1) "under 1 ms" else "%.0f ms".format(Locale.US, r.millis)
         Settings.addRecent(context, line(m, "${r.verdict.uppercase(Locale.US)} (${"%.2f".format(Locale.US, r.score)}) on this phone, $ms"))
         if (r.verdict != "safe") {
-            val where = if (m.app != null) "${ChatApps.label(m.app)}: " else ""
-            m.notifyId = Notifier.show(context, where + r.headline, r.adviceText() + "\n(Checked on this phone.)")
+            m.notifyId = Notifier.show(context, title(m, r), r.adviceText() + "\n(Checked on this phone.)")
         }
+        return r
+    }
+
+    private fun title(m: Msg, r: GuardResult) = (if (m.app != null) "${ChatApps.label(m.app)}: " else "") + r.headline
+
+    /** The Pi cannot be reached: Llama on this phone explains the phone's alert, if Llama is here. */
+    private fun explainHere(context: Context, m: Msg, r: GuardResult?) {
+        if (r == null || m.notifyId == 0) return
+        PhoneExplainWorker.enqueue(context, r, m.notifyId, title(m, r), languageOf(m.text), head(m))
     }
 
     /** Sends the waiting messages, oldest first, until the Pi stops answering. */
@@ -79,7 +93,7 @@ object Checker {
     private fun check(context: Context, m: Msg, test: Boolean): Boolean {
         try {
             val client = PiClient.of(context)
-            val language = if (DEVANAGARI.containsMatchIn(m.text)) "hi" else "en"
+            val language = languageOf(m.text)
             val res = client.checkSms(
                 m.text.take(PiClient.MAX_MESSAGE), m.sender.take(64), language, test,
                 channel = m.channel, app = m.app, device = Settings.device(context), study = Settings.study(context)
@@ -120,8 +134,10 @@ object Checker {
 
     private fun stamp(time: Long) = SimpleDateFormat("dd MMM HH:mm", Locale.US).format(Date(time))
 
-    private fun line(m: Msg, status: String): String {
+    private fun head(m: Msg): String {
         val from = (if (m.app != null) "[${ChatApps.label(m.app)}] " else "") + m.sender.ifBlank { "unknown sender" }
-        return "${stamp(m.received)}  $from  $status\n${m.text.take(80)}"
+        return "${stamp(m.received)}  $from"
     }
+
+    private fun line(m: Msg, status: String) = "${head(m)}  $status\n${m.text.take(80)}"
 }
