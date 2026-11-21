@@ -21,7 +21,8 @@ import org.json.JSONObject
  * own screen) and "Call 1930" (the dialler, with the number filled in; nothing is called by itself).
  * App 3.1: each alert first says which message it is about (the sender, the start of the message
  * with its links broken, and the time it arrived), so the alerts that come together when the
- * phone reaches the Home Hub again can be told apart. The lock screen shows none of the message.
+ * phone reaches the Home Hub again can be told apart. A lock screen set to hide sensitive content
+ * shows only the verdict and the scam type.
  */
 object Notifier {
     private const val CHANNEL = "alerts"
@@ -126,7 +127,7 @@ object Notifier {
         if (sub.isNotBlank()) b.setSubText(sub)
         if (time > 0L) b.setWhen(time).setShowWhen(true)    // when the message arrived, not when it was checked
         if (hidden.isNotBlank()) {
-            // On a locked phone: the verdict and the scam type only, never the sender or the message.
+            // A lock screen that hides sensitive content shows this: never the sender or the message.
             val locked = NotificationCompat.Builder(c, channel).setSmallIcon(R.drawable.ic_stat_sajag).setColor(color)
                 .setContentTitle(title).setContentText(hidden)
             if (time > 0L) locked.setWhen(time).setShowWhen(true)
