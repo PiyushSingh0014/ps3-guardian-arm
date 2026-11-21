@@ -1,0 +1,482 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Set-up, three steps: allow the checks, connect the Home Hub, add offline explanations. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/setup_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/ground"
+    android:orientation="vertical">
+
+    <View
+        android:id="@+id/setup_status_space"
+        android:layout_width="match_parent"
+        android:layout_height="0dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingTop="20dp"
+        android:paddingEnd="20dp">
+
+        <TextView
+            android:id="@+id/setup_step_label"
+            style="@style/Sajag.Text.Label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="0dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <View
+                android:id="@+id/setup_seg1"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/bg_step_on" />
+
+            <View
+                android:id="@+id/setup_seg2"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_step_off" />
+
+            <View
+                android:id="@+id/setup_seg3"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_step_off" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="20dp"
+            android:paddingTop="22dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="20dp">
+
+            <!-- Step 1: permissions -->
+            <LinearLayout
+                android:id="@+id/step_checks"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    style="@style/Sajag.Text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/rozha_one"
+                    android:includeFontPadding="false"
+                    android:paddingTop="6dp"
+                    android:text="सजग"
+                    android:textSize="44sp" />
+
+                <TextView
+                    style="@style/Sajag.Text.Title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="18dp"
+                    android:text="Let Sajag check your messages"
+                    android:textSize="30sp" />
+
+                <TextView
+                    style="@style/Sajag.Text.Body"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Sajag reads incoming messages to spot scams, right here on this phone. It never sends, changes or deletes them."
+                    android:textColor="@color/text_2" />
+
+                <LinearLayout
+                    style="@style/Sajag.Card"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="22dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:minHeight="76dp"
+                        android:orientation="horizontal"
+                        android:paddingTop="12dp"
+                        android:paddingBottom="12dp">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                style="@style/Sajag.Text.RowTitle"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="SMS and alerts" />
+
+                            <TextView
+                                android:id="@+id/setup_perm_sub"
+                                style="@style/Sajag.Text.Sub"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/setup_perm_btn"
+                            style="@style/Sajag.Button.Primary"
+                            android:layout_width="wrap_content"
+                            android:layout_marginStart="12dp"
+                            android:minHeight="44dp"
+                            android:text="Allow" />
+                    </LinearLayout>
+
+                    <View style="@style/Sajag.Divider" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:minHeight="76dp"
+                        android:orientation="horizontal"
+                        android:paddingTop="12dp"
+                        android:paddingBottom="12dp">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                style="@style/Sajag.Text.RowTitle"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="WhatsApp and Messages chats" />
+
+                            <TextView
+                                android:id="@+id/setup_chat_sub"
+                                style="@style/Sajag.Text.Sub"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/setup_chat_btn"
+                            style="@style/Sajag.Button.Tonal"
+                            android:layout_width="wrap_content"
+                            android:layout_marginStart="12dp"
+                            android:minHeight="44dp"
+                            android:text="Allow" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Step 2: the Home Hub -->
+            <LinearLayout
+                android:id="@+id/step_hub"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:importantForAccessibility="noHideDescendants"
+                    android:orientation="horizontal"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="4dp">
+
+                    <FrameLayout
+                        android:layout_width="72dp"
+                        android:layout_height="72dp"
+                        android:background="@drawable/bg_circle">
+
+                        <ImageView
+                            android:layout_width="32dp"
+                            android:layout_height="32dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_phone"
+                            android:tint="@color/text_2" />
+                    </FrameLayout>
+
+                    <View
+                        android:layout_width="60dp"
+                        android:layout_height="4dp"
+                        android:layerType="software"
+                        android:background="@drawable/bg_dash" />
+
+                    <FrameLayout
+                        android:layout_width="88dp"
+                        android:layout_height="88dp"
+                        android:background="@drawable/bg_hub_circle">
+
+                        <ImageView
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_hub"
+                            android:tint="@color/ink" />
+                    </FrameLayout>
+                </LinearLayout>
+
+                <TextView
+                    style="@style/Sajag.Text.Title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:text="Connect your Home Hub"
+                    android:textSize="30sp" />
+
+                <TextView
+                    style="@style/Sajag.Text.Body"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Your Home Hub adds its list of phishing websites, explains alerts and watches the devices on your home Wi-Fi. Pair this phone with it once, while you are on that Wi-Fi."
+                    android:textColor="@color/text_2" />
+
+                <TextView
+                    style="@style/Sajag.Text.Label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="22dp"
+                    android:text="HOME HUB ADDRESS" />
+
+                <EditText
+                    android:id="@+id/setup_address"
+                    style="@style/Sajag.Text"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_input"
+                    android:hint="https://10.42.0.1:8443"
+                    android:importantForAutofill="no"
+                    android:inputType="textUri"
+                    android:maxLines="1" />
+
+                <TextView
+                    style="@style/Sajag.Text.Label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="PAIRING CODE" />
+
+                <EditText
+                    android:id="@+id/setup_token"
+                    style="@style/Sajag.Text"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_input"
+                    android:hint="The code your Home Hub shows"
+                    android:importantForAutofill="no"
+                    android:inputType="textPassword"
+                    android:maxLines="1" />
+
+                <TextView
+                    style="@style/Sajag.Text.Note"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:paddingStart="4dp"
+                    android:text="On the Home Hub, run: cat ~/.ps3_guardian_token" />
+
+                <TextView
+                    style="@style/Sajag.Text.Label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="PHONE NAME" />
+
+                <EditText
+                    android:id="@+id/setup_device"
+                    style="@style/Sajag.Text"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_input"
+                    android:hint="For example: Riya's phone"
+                    android:importantForAutofill="no"
+                    android:inputType="textCapWords"
+                    android:maxLength="32"
+                    android:maxLines="1" />
+
+                <TextView
+                    android:id="@+id/setup_pair"
+                    style="@style/Sajag.Button.Primary"
+                    android:layout_width="match_parent"
+                    android:layout_marginTop="20dp"
+                    android:text="Pair with this Home Hub" />
+
+                <TextView
+                    android:id="@+id/setup_hub_status"
+                    style="@style/Sajag.Text.Sub"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:paddingStart="4dp"
+                    android:textColor="@color/text_2"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <!-- Step 3: offline explanations -->
+            <LinearLayout
+                android:id="@+id/step_llama"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <FrameLayout
+                    android:layout_width="72dp"
+                    android:layout_height="72dp"
+                    android:background="@drawable/bg_hub_circle">
+
+                    <ImageView
+                        android:layout_width="34dp"
+                        android:layout_height="34dp"
+                        android:layout_gravity="center"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_explain"
+                        android:tint="@color/ink" />
+                </FrameLayout>
+
+                <TextView
+                    style="@style/Sajag.Text.Title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:text="Explanations, even offline"
+                    android:textSize="30sp" />
+
+                <TextView
+                    style="@style/Sajag.Text.Body"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Get a short, plain explanation of every alert, even away from home. Copy it once from your Home Hub."
+                    android:textColor="@color/text_2" />
+
+                <LinearLayout
+                    style="@style/Sajag.Card"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp">
+
+                    <include layout="@layout/row_bullet_chip" />
+
+                    <View style="@style/Sajag.Divider" />
+
+                    <include layout="@layout/row_bullet_privacy" />
+
+                    <View style="@style/Sajag.Divider" />
+
+                    <include layout="@layout/row_bullet_time" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:background="@drawable/bg_card"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/setup_copy_title"
+                            style="@style/Sajag.Text.RowTitle"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1" />
+
+                        <TextView
+                            android:id="@+id/setup_copy_pct"
+                            style="@style/Sajag.Text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="@font/figtree_extrabold"
+                            android:textSize="20sp" />
+                    </LinearLayout>
+
+                    <ProgressBar
+                        android:id="@+id/setup_copy_bar"
+                        style="@android:style/Widget.ProgressBar.Horizontal"
+                        android:layout_width="match_parent"
+                        android:layout_height="8dp"
+                        android:layout_marginTop="12dp"
+                        android:max="100"
+                        android:progressDrawable="@drawable/bg_progress" />
+
+                    <TextView
+                        android:id="@+id/setup_copy_note"
+                        style="@style/Sajag.Text.Note"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp" />
+                </LinearLayout>
+
+                <TextView
+                    style="@style/Sajag.Text.Note"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:gravity="center"
+                    android:text="Llama 3.2 1B · Built with Llama" />
+            </LinearLayout>
+        </FrameLayout>
+    </ScrollView>
+
+    <LinearLayout
+        android:id="@+id/setup_buttons"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingStart="20dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="20dp">
+
+        <TextView
+            android:id="@+id/setup_secondary"
+            style="@style/Sajag.Button.Tonal"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="Skip for now" />
+
+        <TextView
+            android:id="@+id/setup_primary"
+            style="@style/Sajag.Button.Primary"
+            android:layout_width="0dp"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:text="Next" />
+    </LinearLayout>
+</LinearLayout>

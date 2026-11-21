@@ -74,7 +74,7 @@ First, **what the file really is**, from its first bytes: the name does not coun
 
 ### On the phone: Share to PS3 Guardian
 
-In WhatsApp, long-press the file, then **Share** (the share icon, or **⋮** → **Share**) → **PS3 Guardian: check it**. Files, Gmail and Messages share the same way. Downloading a file in WhatsApp does not open it, and neither does sharing it. You can share a message's text too. Setup and a test: [android-companion.md](android-companion.md), Part I.
+In WhatsApp, long-press the file, then **Share** (the share icon, or **⋮** → **Share**) → **Check with Sajag** (called **PS3 Guardian: check it** before app 3.0). Files, Gmail and Messages share the same way. Downloading a file in WhatsApp does not open it, and neither does sharing it. You can share a message's text too. Setup and a test: [android-companion.md](android-companion.md), Part I.
 
 ### By itself: an app sent by a saved contact
 
@@ -129,7 +129,7 @@ python scripts/check_files.py ~/ps3-file-samples
 | `detectors/files/checker.py` | The real type of a file and its signs: `FileChecker.check(data, name)` returns a `Finding` (`source="file"`) |
 | `advisor/playbooks/app_file.md`, `harmful_document.md`, `phishing_document.md` | What to do, for the advice and for Llama's prompt |
 | `app/server.py` | `POST /file`, and the file picker on the page |
-| `android/.../ShareActivity.kt` | Share to PS3 Guardian: sends the file or text to the Pi, shows the answer and Llama's text |
+| `android/.../ShareActivity.kt` | Check with Sajag: sends the file or text to the Pi; the alert's own screen shows the answer and Llama's text |
 | `android/.../ChatListener.kt`, `ChatApps.kt` | The app-file warning for chats from saved contacts |
 | `scripts/make_file_samples.py`, `scripts/check_files.py` | Harmless test files; check a folder |
 | `tests/test_files.py` | Tests |

@@ -1,232 +1,153 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Sajag (app 3.0): four pages and the bar that switches between them. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fitsSystemWindows="true">
+    android:background="@color/ground"
+    android:orientation="vertical">
+
+    <View
+        android:id="@+id/status_space"
+        android:layout_width="match_parent"
+        android:layout_height="0dp" />
+
+    <FrameLayout
+        android:id="@+id/pages"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <include
+            android:id="@+id/page_home"
+            layout="@layout/page_home" />
+
+        <include
+            android:id="@+id/page_alerts"
+            layout="@layout/page_alerts"
+            android:visibility="gone" />
+
+        <include
+            android:id="@+id/page_network"
+            layout="@layout/page_network"
+            android:visibility="gone" />
+
+        <include
+            android:id="@+id/page_settings"
+            layout="@layout/page_settings"
+            android:visibility="gone" />
+    </FrameLayout>
 
     <LinearLayout
+        android:id="@+id/nav"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:background="@color/nav"
+        android:orientation="horizontal"
+        android:paddingStart="6dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="6dp"
+        android:paddingBottom="12dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="PS3 Guardian"
-            android:textSize="22sp"
-            android:textStyle="bold" />
+        <LinearLayout
+            android:id="@+id/tab_home"
+            style="@style/Sajag.NavTab"
+            android:contentDescription="Home">
 
-        <TextView
-            android:id="@+id/guard_status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="8dp"
-            android:text="Phone Guard: loading..." />
+            <FrameLayout
+                android:id="@+id/tab_home_pill"
+                style="@style/Sajag.NavPill">
 
-        <TextView
-            android:id="@+id/llama_status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="8dp"
-            android:text="Llama on this phone: checking..." />
+                <ImageView
+                    android:id="@+id/tab_home_icon"
+                    style="@style/Sajag.NavIcon"
+                    android:src="@drawable/ic_shield" />
+            </FrameLayout>
 
-        <Button
-            android:id="@+id/get_llama"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Get Llama from the Pi (about 1 GB)" />
+            <TextView
+                android:id="@+id/tab_home_label"
+                style="@style/Sajag.NavLabel"
+                android:text="Home" />
+        </LinearLayout>
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingTop="16dp"
-            android:text="Pi address" />
+        <LinearLayout
+            android:id="@+id/tab_alerts"
+            style="@style/Sajag.NavTab"
+            android:contentDescription="Alerts">
 
-        <EditText
-            android:id="@+id/pi_url"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="https://10.42.0.1:8443"
-            android:inputType="textUri" />
+            <FrameLayout
+                android:id="@+id/tab_alerts_pill"
+                style="@style/Sajag.NavPill">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Pairing token (on the Pi: cat ~/.ps3_guardian_token)" />
+                <ImageView
+                    android:id="@+id/tab_alerts_icon"
+                    style="@style/Sajag.NavIcon"
+                    android:src="@drawable/ic_bell" />
 
-        <EditText
-            android:id="@+id/token"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="text" />
+                <TextView
+                    android:id="@+id/tab_alerts_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="16dp"
+                    android:layout_gravity="top|end"
+                    android:layout_marginTop="1dp"
+                    android:layout_marginEnd="13dp"
+                    android:background="@drawable/bg_badge"
+                    android:fontFamily="@font/figtree_extrabold"
+                    android:gravity="center"
+                    android:minWidth="16dp"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
+                    android:textColor="@color/ink"
+                    android:textSize="10sp"
+                    android:visibility="gone" />
+            </FrameLayout>
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Phone name (marks this phone's messages in the Pi's log, for example A)" />
+            <TextView
+                android:id="@+id/tab_alerts_label"
+                style="@style/Sajag.NavLabel"
+                android:text="Alerts" />
+        </LinearLayout>
 
-        <EditText
-            android:id="@+id/device"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="text"
-            android:maxLength="32" />
+        <LinearLayout
+            android:id="@+id/tab_network"
+            style="@style/Sajag.NavTab"
+            android:contentDescription="Network">
 
-        <CheckBox
-            android:id="@+id/study"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="8dp"
-            android:text="Share message texts with the team's study" />
+            <FrameLayout
+                android:id="@+id/tab_network_pill"
+                style="@style/Sajag.NavPill">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Off: the Pi keeps each message's verdict and its sender ID (only 'mobile number' for a person), never the text. On: it also keeps the text of messages from businesses and of flagged messages, digits hidden, so the team can label them; the Pi must also have this phone on its study list. You can switch it off at any time." />
+                <ImageView
+                    android:id="@+id/tab_network_icon"
+                    style="@style/Sajag.NavIcon"
+                    android:src="@drawable/ic_wifi" />
+            </FrameLayout>
 
-        <Button
-            android:id="@+id/save"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Save" />
+            <TextView
+                android:id="@+id/tab_network_label"
+                style="@style/Sajag.NavLabel"
+                android:text="Network" />
+        </LinearLayout>
 
-        <Button
-            android:id="@+id/permissions"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Allow SMS and notifications" />
+        <LinearLayout
+            android:id="@+id/tab_settings"
+            style="@style/Sajag.NavTab"
+            android:contentDescription="Settings">
 
-        <Button
-            android:id="@+id/pair"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Pair with the Pi" />
+            <FrameLayout
+                android:id="@+id/tab_settings_pill"
+                style="@style/Sajag.NavPill">
 
-        <Button
-            android:id="@+id/test_connection"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Test connection" />
+                <ImageView
+                    android:id="@+id/tab_settings_icon"
+                    style="@style/Sajag.NavIcon"
+                    android:src="@drawable/ic_sliders" />
+            </FrameLayout>
 
-        <Button
-            android:id="@+id/test_message"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Send a test scam" />
-
-        <TextView
-            android:id="@+id/status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="8dp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingTop="16dp"
-            android:text="Chats (RCS and WhatsApp)"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Only chats from numbers that are not in your contacts are checked." />
-
-        <CheckBox
-            android:id="@+id/chat_messages"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Check chats in Messages (RCS)" />
-
-        <CheckBox
-            android:id="@+id/chat_whatsapp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Check WhatsApp chats" />
-
-        <CheckBox
-            android:id="@+id/chat_contacts"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Also check chats from saved contacts (for testing)" />
-
-        <Button
-            android:id="@+id/notification_access"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Allow notification access" />
-
-        <TextView
-            android:id="@+id/chat_status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="8dp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingTop="16dp"
-            android:text="Network alerts (the Pi's Wi-Fi)"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="What the Pi's network monitor finds on PS3-Guardian-Lab, for every device there. The app asks the Pi about once a minute, every 10 s while this screen is open, and shows new alerts as notifications. Each device gets a risk level from its alerts of the last 24 hours: at risk (a dangerous one), check (a suspicious one) or OK." />
-
-        <CheckBox
-            android:id="@+id/net_on"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Show network alerts and notify me" />
-
-        <TextView
-            android:id="@+id/net_status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="8dp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingTop="8dp"
-            android:text="Devices, riskiest first"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/dev_list"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="4dp"
-            android:textIsSelectable="true" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingTop="8dp"
-            android:text="Alerts, newest first"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/net_alerts"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="4dp"
-            android:textIsSelectable="true" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingTop="16dp"
-            android:text="Recent messages"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/recent"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="8dp"
-            android:textIsSelectable="true" />
+            <TextView
+                android:id="@+id/tab_settings_label"
+                style="@style/Sajag.NavLabel"
+                android:text="Settings" />
+        </LinearLayout>
     </LinearLayout>
-</ScrollView>
+</LinearLayout>

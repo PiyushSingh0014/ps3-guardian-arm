@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 26 x 32: a switch is at least twice its thumb wide, so this keeps the track at 52 dp. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_checked="true">
+        <layer-list>
+            <item android:width="26dp" android:height="32dp">
+                <shape android:shape="rectangle">
+                    <solid android:color="#00000000" />
+                </shape>
+            </item>
+            <item android:width="22dp" android:height="22dp" android:gravity="center">
+                <shape android:shape="oval">
+                    <solid android:color="@color/ink" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+    <item>
+        <layer-list>
+            <item android:width="26dp" android:height="32dp">
+                <shape android:shape="rectangle">
+                    <solid android:color="#00000000" />
+                </shape>
+            </item>
+            <item android:width="16dp" android:height="16dp" android:gravity="center">
+                <shape android:shape="oval">
+                    <solid android:color="@color/text_3" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+</selector>

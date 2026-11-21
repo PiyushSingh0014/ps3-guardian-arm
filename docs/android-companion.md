@@ -29,6 +29,8 @@ Since update 20, the app also shows the Pi's **network alerts**: what its networ
 
 Since update 29, a **file** that came in a chat (a PDF, an Office file, an app, a zip) can be shared to the app and is checked on the Pi; an app file sent by a saved contact gives an alert by itself (Part I).
 
+Since update 46 (app 3.0), the app is called **Sajag** (सजग), with four pages, a screen for every alert and a set-up in three steps. The buttons the older parts of this guide name have moved: Part M says where.
+
 ## Part A: the Pi
 
 ### First time only: start automatically
@@ -112,6 +114,8 @@ New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.ps3gua
 > - Android 15+ also locks the SMS permission for apps installed from a file.
 
 ## Part D: set it up
+
+> **App 3.0 (Sajag):** the set-up opens by itself the first time and does steps 2 to 5 below; the buttons are now in Settings (Part M).
 
 1. **Connect your phone to the Pi,** in one of two ways:
    - **The Pi is on a phone's hotspot:** your phone is that hotspot or is connected to it. Use the Pi's address there, for example `https://10.140.209.76:8443`.
@@ -254,34 +258,59 @@ Away from the Pi, the phone's alerts can get Llama's two-sentence explanation to
 3. **Copy Llama:** with the phone on `PS3-Guardian-Lab` and paired (Part J), tap **Get Llama from the Pi (about 1 GB)**, then **Copy**. Keep the screen open (it stays on by itself while copying) for a few minutes. It ends with "Llama 3.2 1B is now on this phone (… MB), checked against the Pi's." Each file is checked against the Pi's SHA-256 before it is used.
 4. **Test:** Wi-Fi off, tap **Send a test scam**. The alert comes at once; a few seconds later its text becomes Llama's, ending "(Explained by Llama 3.2 on this phone, in N s.)". The list shows "Llama on this phone explained it in N s, …" with the time to load the model and how many tokens Llama read and wrote, and how fast: note that line for the report. Send a second test scam: the model is still loaded, so that line shows Llama's speed alone.
 
+## Part M: app 3.0, Sajag (update 46)
+
+From version 3.0 the app is called **Sajag** (सजग, Hindi for "alert"). It has four pages, switched by the bar at the bottom, a screen for every alert and a set-up in three steps. The checks themselves are the same as in 2.3: Phone Guard, the Pi (now called the **Home Hub** on screen), Llama on the Pi and on the phone.
+
+1. **Install:** copy the whole new `android` folder over the project on the Android Studio computer (Part B) and press **Run ▶**. It updates the app in place (version 3.0): the pairing, the switches, Llama on the phone and the messages waiting for the Pi stay. A phone that was paired before skips the set-up.
+2. **A new phone** opens the set-up by itself: (1) allow SMS and alerts, and notification access for chats if wanted; (2) the Home Hub's address, the pairing code (`cat ~/.ps3_guardian_token` on the Pi) and the phone's name, then **Pair with this Home Hub** and compare the fingerprint as in Part J; (3) copy Llama. Each step can be skipped; **Settings → Run set-up again** opens it later.
+3. **Test:** Settings → Advanced → **Send a test scam**. The alert's own screen opens at once: the verdict, what is happening, what to do now (with **Call 1930** and **Report at cybercrime.gov.in**), why it was flagged and the message with its link broken. It fills in by itself when the Home Hub answers and when Llama's explanation is ready. The notification has two buttons: **What to do** (that screen) and **Call 1930** (the dialler, with the number filled in; nothing is called by itself).
+
+| In app 2.x | In Sajag 3.0 |
+| --- | --- |
+| The list of results | **Alerts** (all, scams or safe, by day; each opens its own screen). Home shows the newest three |
+| The lines with timings ("on this phone, N ms", "Llama on this phone explained it in …") | Each alert's screen, at the bottom; all of them in **Settings → Advanced → Activity log** |
+| Pi address, token, phone name, **Save** | Set-up step 2, or **Settings → Advanced** (Home Hub address, Pairing code, Phone name): each saves at once |
+| **Pair with the Pi**, **Test connection** | **Settings → Home Hub** (**Pair again**, **Test connection**) |
+| **Get Llama from the Pi** | **Settings → Explanations → Add from your Home Hub** (or **Update…** once it is there), or set-up step 3 |
+| **Allow SMS and notifications**, **Allow notification access** | Set-up step 1, or **Settings → What to check** |
+| Chat switches, **Show network alerts and notify me** | **Settings → What to check** (and a new switch to pause SMS checks) |
+| **Share message texts with the team's study** | **Settings → Privacy → Help improve detection** (same switch, still off until switched on) |
+| **Also check chats from saved contacts**, **Send a test scam** | **Settings → Advanced** |
+| Network alerts and devices | **Network**: a summary card, the devices riskiest first (tap one for its details or its newest alert), then the alerts (each opens its own screen) |
+| Share to **PS3 Guardian: check it** | Share to **Check with Sajag**: the result opens on the alert's own screen |
+| — | **Home → Check a message** and **Check a link**: paste a text or a link to check it the same way |
+
+The look: charcoal and ivory, with red, yellow and green used only for verdicts (always with an icon and a word); the Figtree font, and the name सजग in Rozha One. Both fonts are under the SIL Open Font License; their licence texts are in `app/src/main/assets/licenses/`.
+
 ## If something goes wrong
 
 | What you see | Fix |
 | --- | --- |
-| "Cannot reach the Pi" | Same hotspot? On the Pi, `curl -s http://127.0.0.1:8000/health` must print `{"ok":true,...}`; if not, `systemctl status ps3-guardian --no-pager` and `tail -n 30 logs/app.log`. The Pi's address is in `hostname -I`. |
-| `HTTP 401` | The token is wrong or old (it changed in update 36): `cat ~/.ps3_guardian_token` on the Pi, type it again, **Save** |
-| "not paired with the Pi yet" | Tap **Pair with the Pi** (Part J). |
-| "the Pi's certificate is not the one this phone paired with" | The Pi made a new certificate (its files `~/.ps3_tls_cert.pem` or `~/.ps3_tls_key.pem` were removed), or this is not your Pi. Compare again: **Pair with the Pi**, and trust it only if the fingerprint matches `cat ~/.ps3_tls_fingerprint`. Messages wait on the phone meanwhile. |
+| "Can't reach your Home Hub" (app 3.0) or "Cannot reach the Pi" | Same hotspot? On the Pi, `curl -s http://127.0.0.1:8000/health` must print `{"ok":true,...}`; if not, `systemctl status ps3-guardian --no-pager` and `tail -n 30 logs/app.log`. The Pi's address is in `hostname -I`. |
+| `HTTP 401`, or Home Hub "Code not accepted" | The token is wrong or old (it changed in update 36): `cat ~/.ps3_guardian_token` on the Pi, then type it in Settings → Advanced → **Pairing code** |
+| "not paired with the Home Hub yet" (or "… the Pi yet") | Settings → Home Hub → **Pair again** (Part J). |
+| "the Pi's certificate is not the one this phone paired with" | The Pi made a new certificate (its files `~/.ps3_tls_cert.pem` or `~/.ps3_tls_key.pem` were removed), or this is not your Pi. Compare again: Settings → Home Hub → **Pair again**, and trust it only if the fingerprint matches `cat ~/.ps3_tls_fingerprint`. Messages wait on the phone meanwhile. |
 | "The app talks to the Pi only over HTTPS" | The address must start with `https://` and end with `:8443`. |
 | `HTTP 403` with "use https://…" | Something talked plain HTTP to port 8000 from another machine: since update 39 that port takes only the ESP32's readings. Use `https://<Pi>:8443`. |
 | `HTTP 429` | Ten wrong tokens in a minute from this phone: wait a minute, then type the right one |
 | `HTTP 503` | The Pi has no token: `sudo systemctl restart ps3-guardian` |
-| "WAITING for the Pi" | Normal while the phone cannot reach the Pi: the phone has already judged the message (the line above it), Llama on the phone explains it if it was copied there (Part L), and the phone sends it to the Pi later for the phishing list and the Pi's own explanation. Many of them: check the Pi as for "Cannot reach the Pi". |
-| "Phone Guard could not start" | The app was built without its `assets/guard` folder: copy the whole `android` folder again (Part B) and **Run ▶**. Until then messages wait for the Pi, as before update 43. |
+| "Your Home Hub was out of reach" (app 3.0) or "WAITING for the Pi" | Normal while the phone cannot reach the Pi: the phone has already judged the message (the line above it), Llama on the phone explains it if it was copied there (Part L), and the phone sends it to the Pi later for the phishing list and the Pi's own explanation. Many of them: check the Pi as for "Cannot reach the Pi". |
+| "Checks on this phone could not start" (or "Phone Guard could not start") | The app was built without its `assets/guard` folder: copy the whole `android` folder again (Part B) and **Run ▶**. Until then messages wait for the Pi, as before update 43. |
 | "The Pi has no Llama files to give" | "it runs an older version": apply update 44 on the Pi and `sudo systemctl restart ps3-guardian`. Otherwise its model files are not where `scripts/run_pi.sh` looks: on the Pi, `ls -l ~/executorch-deployment/llama3_2.pte ~/executorch-deployment/tokenizer.model`, then restart. |
-| "The copy stopped: …" | The phone left the Pi's Wi-Fi or the screen was closed. Tap **Get Llama from the Pi** again: it goes on from where it stopped. |
+| "The copy stopped: …" | The phone left the Pi's Wi-Fi or the screen was closed. Tap **Add from your Home Hub** again (Settings → Explanations): it goes on from where it stopped. |
 | "not enough free space on the phone" | Llama needs about 1.2 GB free: delete some photos or videos, then try again. |
 | "Llama on this phone could not answer: …" | Send that line. The alert keeps the playbook's advice meanwhile. |
 | "Llama on this phone (N s): answer not used, …" | Normal now and then: Llama's answer failed the Pi's checks, so the playbook's advice stays, as on the Pi. |
-| A message came with the Wi-Fi off, but no Llama explanation | Only flagged messages are explained. If the list says "SAFE (…) on this phone", there was no alert and nothing to explain, as on the Pi. To test, send a scam-like text from another phone; for WhatsApp, a new text each time (the app skips a chat text it has checked in the last 2 days). |
+| A message came with the Wi-Fi off, but no Llama explanation | Only flagged messages are explained. If Alerts shows it as **Safe**, there was no alert and nothing to explain, as on the Pi. To test, send a scam-like text from another phone; for WhatsApp, a new text each time (the app skips a chat text it has checked in the last 2 days). |
 | Build error "Could not resolve org.pytorch:executorch-android:1.5.1" | The Android Studio computer needs the internet for the first build after update 44 (Maven Central). |
 | Build error "2 files found with path 'lib/arm64-v8a/…'" | Send the first error line: that library's name goes into `pickFirsts` in `app/build.gradle.kts`, next to `libc++_shared.so`. |
 | No alert, but the list shows the message | It was judged safe (no alert for safe messages), or notifications are off for the app |
-| Nothing at all when an SMS arrives | SMS permission (Part D, step 3) and battery Unrestricted (step 4). Chats are checked only as set up in Part F. |
+| Nothing at all when an SMS arrives | SMS permission (Part D, step 5), **Text messages (SMS)** on in Settings, and battery Unrestricted (step 6). Chats are checked only as set up in Part F. |
 | Network alerts: "Cannot reach the Pi" | The phone must be on `PS3-Guardian-Lab`, with the Pi address `https://10.42.0.1:8443`, paired (Part J). |
-| No notification for a network alert | Is **Show network alerts and notify me** ticked, and are notifications on for "Network alerts" (App info → Notifications)? Only alerts newer than an hour, seen for the first time, are notified. |
-| A chat is not checked | Is its app ticked, and does the line under "Allow notification access" say chats are being checked? Is the sender shown as a phone number (not in your contacts)? Are notifications on for that chat? The check runs about 5 seconds after the notification. |
-| No **PS3 Guardian: check it** when sharing | Install the update 29 version (Part I, step 1). In the share list, scroll or tap **More**. |
+| No notification for a network alert | Is **Home network alerts** on in Settings, and are notifications on for "Network alerts" (App info → Notifications)? Only alerts newer than an hour, seen for the first time, are notified. |
+| A chat is not checked | Is its switch on in Settings, and does **Notification access for chats** say Allowed? Is the sender shown as a phone number (not in your contacts)? Are notifications on for that chat? The check runs about 5 seconds after the notification. |
+| No **Check with Sajag** (or **PS3 Guardian: check it**) when sharing | Install the update 29 version (Part I, step 1). In the share list, scroll or tap **More**. |
 | After sharing: "Could not read the file" | The file is not on the phone yet: in WhatsApp, tap the download arrow first, then share again. |
 | After sharing: "Could not reach the Pi" | As for the network alerts: the phone must be on `PS3-Guardian-Lab`, with the Pi address `https://10.42.0.1:8443`, paired (Part J). |
 | After sharing: `HTTP 404` | The Pi runs an older version: apply update 29 and `sudo systemctl restart ps3-guardian`. |

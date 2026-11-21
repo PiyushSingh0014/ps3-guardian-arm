@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Settings: what to check, the Home Hub, offline explanations, privacy and the testing tools. -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingTop="6dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="28dp">
+
+        <TextView
+            style="@style/Sajag.Text.Title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="64dp"
+            android:text="Settings" />
+        <TextView android:id="@+id/g_check" style="@style/Sajag.Text.Label" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="WHAT TO CHECK" />
+        <LinearLayout style="@style/Sajag.Card" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp">
+        <LinearLayout android:id="@+id/row_sms" style="@style/Sajag.SwitchRow" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                <TextView android:id="@+id/sw_sms_title" style="@style/Sajag.Text.RowTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Text messages (SMS)" />
+                <TextView android:id="@+id/sw_sms_sub" style="@style/Sajag.Text.Sub" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="With the sender ID, the best sign of a fake" />
+            </LinearLayout>
+            <Switch android:id="@+id/sw_sms" style="@style/Sajag.Toggle" android:contentDescription="Text messages (SMS)" />
+        </LinearLayout>
+        <View style="@style/Sajag.Divider" />
+        <LinearLayout android:id="@+id/row_whatsapp" style="@style/Sajag.SwitchRow" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                <TextView android:id="@+id/sw_whatsapp_title" style="@style/Sajag.Text.RowTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="WhatsApp" />
+                <TextView android:id="@+id/sw_whatsapp_sub" style="@style/Sajag.Text.Sub" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="Chats from numbers not in your contacts" />
+            </LinearLayout>
+            <Switch android:id="@+id/sw_whatsapp" style="@style/Sajag.Toggle" android:contentDescription="WhatsApp" />
+        </LinearLayout>
+        <View style="@style/Sajag.Divider" />
+        <LinearLayout android:id="@+id/row_rcs" style="@style/Sajag.SwitchRow" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                <TextView android:id="@+id/sw_rcs_title" style="@style/Sajag.Text.RowTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Messages chats (RCS)" />
+                <TextView android:id="@+id/sw_rcs_sub" style="@style/Sajag.Text.Sub" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="Chats from numbers not in your contacts" />
+            </LinearLayout>
+            <Switch android:id="@+id/sw_rcs" style="@style/Sajag.Toggle" android:contentDescription="Messages chats (RCS)" />
+        </LinearLayout>
+        <View style="@style/Sajag.Divider" />
+        <LinearLayout android:id="@+id/row_net" style="@style/Sajag.SwitchRow" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                <TextView android:id="@+id/sw_net_title" style="@style/Sajag.Text.RowTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Home network alerts" />
+                <TextView android:id="@+id/sw_net_sub" style="@style/Sajag.Text.Sub" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="From your Home Hub, about once a minute" />
+            </LinearLayout>
+            <Switch android:id="@+id/sw_net" style="@style/Sajag.Toggle" android:contentDescription="Home network alerts" />
+        </LinearLayout>
+        <View style="@style/Sajag.Divider" />
+        <LinearLayout android:id="@+id/row_permissions" style="@style/Sajag.Row" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <TextView android:id="@+id/row_permissions_title" style="@style/Sajag.Text.RowTitle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:paddingTop="10dp" android:paddingBottom="10dp" android:text="SMS and notifications" />
+            <TextView android:id="@+id/perm_value" style="@style/Sajag.Text.Value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:maxLines="1" />
+            <ImageView style="@style/Sajag.Chevron" />
+        </LinearLayout>
+        <View style="@style/Sajag.Divider" />
+        <LinearLayout android:id="@+id/row_notif_access" style="@style/Sajag.Row" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <TextView android:id="@+id/row_notif_access_title" style="@style/Sajag.Text.RowTitle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:paddingTop="10dp" android:paddingBottom="10dp" android:text="Notification access for chats" />
+            <TextView android:id="@+id/notif_value" style="@style/Sajag.Text.Value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:maxLines="1" />
+            <ImageView style="@style/Sajag.Chevron" />
+        </LinearLayout>
+        </LinearLayout>
+        <TextView android:id="@+id/g_hub" style="@style/Sajag.Text.Label" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="HOME HUB" />
+        <LinearLayout style="@style/Sajag.Card" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp">
+        <LinearLayout android:id="@+id/row_hub" style="@style/Sajag.Row" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="72dp" android:clickable="false" android:focusable="false" android:background="@null">
+            <FrameLayout android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/bg_circle">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp" android:layout_gravity="center" android:importantForAccessibility="no" android:src="@drawable/ic_hub" android:tint="@color/text_2" />
+            </FrameLayout>
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:orientation="vertical" android:paddingTop="12dp" android:paddingBottom="12dp">
+                <TextView style="@style/Sajag.Text.RowTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Home Hub" />
+                <TextView android:id="@+id/hub_sub" style="@style/Sajag.Text.Sub" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" />
+            </LinearLayout>
+            <TextView android:id="@+id/hub_value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:fontFamily="@font/figtree_bold" android:textSize="14sp" />
+        </LinearLayout>
+        <View style="@style/Sajag.Divider" />
+        <LinearLayout android:id="@+id/row_test" style="@style/Sajag.Row" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <TextView android:id="@+id/row_test_title" style="@style/Sajag.Text.RowTitle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:paddingTop="10dp" android:paddingBottom="10dp" android:text="Test connection" />
+            <ImageView style="@style/Sajag.Chevron" />
+        </LinearLayout>
+        <View style="@style/Sajag.Divider" />
+        <LinearLayout android:id="@+id/row_pair" style="@style/Sajag.Row" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <TextView android:id="@+id/row_pair_title" style="@style/Sajag.Text.RowTitle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:paddingTop="10dp" android:paddingBottom="10dp" android:text="Pair again" />
+            <ImageView style="@style/Sajag.Chevron" />
+        </LinearLayout>
+        </LinearLayout>
+        <TextView android:id="@+id/hub_note" style="@style/Sajag.Text.Note" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:paddingStart="4dp" android:paddingEnd="4dp" android:visibility="gone" />
+        <TextView android:id="@+id/g_explain" style="@style/Sajag.Text.Label" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="EXPLANATIONS" />
+        <LinearLayout style="@style/Sajag.Card" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp">
+        <LinearLayout android:id="@+id/row_llama" style="@style/Sajag.Row" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="72dp" android:clickable="false" android:focusable="false" android:background="@null">
+            <FrameLayout android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/bg_circle">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp" android:layout_gravity="center" android:importantForAccessibility="no" android:src="@drawable/ic_explain" android:tint="@color/text_2" />
+            </FrameLayout>
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:orientation="vertical" android:paddingTop="12dp" android:paddingBottom="12dp">
+                <TextView style="@style/Sajag.Text.RowTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Offline explanations" />
+                <TextView android:id="@+id/llama_sub" style="@style/Sajag.Text.Sub" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" />
+            </LinearLayout>
+            <TextView android:id="@+id/llama_value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:fontFamily="@font/figtree_bold" android:textSize="14sp" />
+        </LinearLayout>
+        <ProgressBar android:id="@+id/llama_progress" style="@android:style/Widget.ProgressBar.Horizontal" android:layout_width="match_parent" android:layout_height="8dp" android:layout_marginTop="2dp" android:layout_marginBottom="12dp" android:max="100" android:progressDrawable="@drawable/bg_progress" android:visibility="gone" />
+        <View style="@style/Sajag.Divider" />
+        <LinearLayout android:id="@+id/row_llama_get" style="@style/Sajag.Row" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <TextView android:id="@+id/row_llama_get_title" style="@style/Sajag.Text.RowTitle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:paddingTop="10dp" android:paddingBottom="10dp" android:text="Add from your Home Hub" />
+            <ImageView style="@style/Sajag.Chevron" />
+        </LinearLayout>
+        </LinearLayout>
+        <TextView android:id="@+id/llama_note" style="@style/Sajag.Text.Note" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:paddingStart="4dp" android:paddingEnd="4dp" android:visibility="gone" />
+        <TextView android:id="@+id/g_privacy" style="@style/Sajag.Text.Label" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="PRIVACY" />
+        <LinearLayout style="@style/Sajag.Card" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp">
+        <LinearLayout android:id="@+id/row_study" style="@style/Sajag.SwitchRow" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                <TextView android:id="@+id/sw_study_title" style="@style/Sajag.Text.RowTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Help improve detection" />
+                <TextView android:id="@+id/sw_study_sub" style="@style/Sajag.Text.Sub" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="Share the text of flagged messages with your Home Hub, digits hidden. When off, it keeps only each verdict and the sender type." />
+            </LinearLayout>
+            <Switch android:id="@+id/sw_study" style="@style/Sajag.Toggle" android:contentDescription="Help improve detection" />
+        </LinearLayout>
+        </LinearLayout>
+        <TextView android:id="@+id/g_adv" style="@style/Sajag.Text.Label" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="ADVANCED" />
+        <LinearLayout style="@style/Sajag.Card" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp">
+        <LinearLayout android:id="@+id/row_test_scam" style="@style/Sajag.Row" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <TextView android:id="@+id/row_test_scam_title" style="@style/Sajag.Text.RowTitle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:paddingTop="10dp" android:paddingBottom="10dp" android:text="Send a test scam" />
+            <ImageView style="@style/Sajag.Chevron" />
+        </LinearLayout>
+        <View style="@style/Sajag.Divider" />
+        <LinearLayout android:id="@+id/row_contacts" style="@style/Sajag.SwitchRow" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                <TextView android:id="@+id/sw_contacts_title" style="@style/Sajag.Text.RowTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Also check chats from saved contacts" />
+                <TextView android:id="@+id/sw_contacts_sub" style="@style/Sajag.Text.Sub" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="For testing" />
+            </LinearLayout>
+            <Switch android:id="@+id/sw_contacts" style="@style/Sajag.Toggle" android:contentDescription="Also check chats from saved contacts" />
+        </LinearLayout>
+        <View style="@style/Sajag.Divider" />
+        <LinearLayout android:id="@+id/row_phone_name" style="@style/Sajag.Row" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <TextView android:id="@+id/row_phone_name_title" style="@style/Sajag.Text.RowTitle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:paddingTop="10dp" android:paddingBottom="10dp" android:text="Phone name" />
+            <TextView android:id="@+id/phone_name_value" style="@style/Sajag.Text.Value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:maxLines="1" />
+            <ImageView style="@style/Sajag.Chevron" />
+        </LinearLayout>
+        <View style="@style/Sajag.Divider" />
+        <LinearLayout android:id="@+id/row_hub_address" style="@style/Sajag.Row" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <TextView android:id="@+id/row_hub_address_title" style="@style/Sajag.Text.RowTitle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:paddingTop="10dp" android:paddingBottom="10dp" android:text="Home Hub address" />
+            <TextView android:id="@+id/hub_address_value" style="@style/Sajag.Text.Value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:maxLines="1" />
+            <ImageView style="@style/Sajag.Chevron" />
+        </LinearLayout>
+        <View style="@style/Sajag.Divider" />
+        <LinearLayout android:id="@+id/row_token" style="@style/Sajag.Row" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <TextView android:id="@+id/row_token_title" style="@style/Sajag.Text.RowTitle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:paddingTop="10dp" android:paddingBottom="10dp" android:text="Pairing code" />
+            <TextView android:id="@+id/token_value" style="@style/Sajag.Text.Value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:maxLines="1" />
+            <ImageView style="@style/Sajag.Chevron" />
+        </LinearLayout>
+        <View style="@style/Sajag.Divider" />
+        <LinearLayout android:id="@+id/row_log" style="@style/Sajag.Row" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <TextView android:id="@+id/row_log_title" style="@style/Sajag.Text.RowTitle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:paddingTop="10dp" android:paddingBottom="10dp" android:text="Activity log" />
+            <ImageView style="@style/Sajag.Chevron" />
+        </LinearLayout>
+        <View style="@style/Sajag.Divider" />
+        <LinearLayout android:id="@+id/row_setup" style="@style/Sajag.Row" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <TextView android:id="@+id/row_setup_title" style="@style/Sajag.Text.RowTitle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:paddingTop="10dp" android:paddingBottom="10dp" android:text="Run set-up again" />
+            <ImageView style="@style/Sajag.Chevron" />
+        </LinearLayout>
+        </LinearLayout>
+        <TextView android:id="@+id/adv_note" style="@style/Sajag.Text.Note" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:paddingStart="4dp" android:paddingEnd="4dp" android:visibility="gone" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:orientation="vertical" android:paddingStart="4dp" android:paddingEnd="4dp">
+            <TextView android:id="@+id/about_version" style="@style/Sajag.Text" android:layout_width="match_parent" android:layout_height="wrap_content" android:fontFamily="@font/figtree_bold" android:textColor="@color/text_2" android:textSize="14sp" />
+            <TextView style="@style/Sajag.Text.Note" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Messages are checked on this phone and on your Home Hub. Nothing is sent to the cloud." />
+            <TextView style="@style/Sajag.Text.Note" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Built with Llama. Fonts: Figtree and Rozha One, under the SIL Open Font License." />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

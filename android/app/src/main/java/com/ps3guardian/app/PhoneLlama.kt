@@ -193,11 +193,11 @@ object PhoneLlama {
             } catch (e: Exception) {
                 val why = e.message ?: e.javaClass.simpleName
                 when {
-                    "no Llama files" in why -> "The Pi has no Llama files to give: on the Pi, check that " +
+                    "no Llama files" in why -> "Your Home Hub has no Llama files to give: on the Home Hub, check that " +
                         "~/executorch-deployment/llama3_2.pte and tokenizer.model are there, then restart it."
-                    "HTTP 404" in why -> "The Pi has no Llama files to give: it runs an older version. Update it " +
+                    "HTTP 404" in why -> "Your Home Hub has no Llama files to give: it runs an older version. Update it " +
                         "(update 44) and restart it."
-                    else -> "The copy stopped: $why. Tap 'Get Llama from the Pi' again: it goes on from where it stopped."
+                    else -> "The copy stopped: $why. Tap Add again: it goes on from where it stopped."
                 }
             } finally {
                 copying = false
@@ -214,11 +214,11 @@ object PhoneLlama {
         val ok = readOk(c)
         val list = (0 until files.length()).map { files.getJSONObject(it) }
         val names = list.map { it.getString("name") }
-        if (names.sorted() != NAMES.sorted()) throw IOException("the Pi listed other files: $names")
+        if (names.sorted() != NAMES.sorted()) throw IOException("the Home Hub listed other files: $names")
         val need = list.filter { f -> !same(c, ok, f) }
         toCopy = list.sumOf { it.getLong("bytes") }
         copied = toCopy - need.sumOf { it.getLong("bytes") }
-        if (need.isEmpty()) return "Llama on this phone is the same as the Pi's (${megabytes(toCopy)})."
+        if (need.isEmpty()) return "Llama on this phone is the same as the Home Hub's (${megabytes(toCopy)})."
         val missing = need.sumOf { it.getLong("bytes") - File(d, it.getString("name") + ".part").length().coerceAtLeast(0) }
         if (d.usableSpace < missing + 200_000_000L) {
             throw IOException("not enough free space on the phone: ${megabytes(missing)} more are needed")
@@ -235,7 +235,7 @@ object PhoneLlama {
             copied = before + bytes
             if (sha256(part) != sha) {
                 part.delete()
-                throw IOException("the copy of $name does not match the Pi's (SHA-256), so it was deleted")
+                throw IOException("the copy of $name does not match the Home Hub's (SHA-256), so it was deleted")
             }
             ok.remove(name)
             writeOk(c, ok)                                    // not ready while the file is swapped
@@ -245,7 +245,7 @@ object PhoneLlama {
             ok.put(name, JSONObject().put("bytes", bytes).put("sha256", sha))
             writeOk(c, ok)
         }
-        return "Llama 3.2 1B is now on this phone (${megabytes(toCopy)}), checked against the Pi's."
+        return "Llama 3.2 1B is now on this phone (${megabytes(toCopy)}), checked against the Home Hub's."
     }
 
     private fun same(c: Context, ok: JSONObject, f: JSONObject): Boolean {

@@ -39,7 +39,7 @@ It has two parts. **Phone Guard**, on the Android phone, checks the owner's SMS,
 | **Measured** | **SMS:** F1 0.950 on held-out public messages; on 227 real Indian messages 96 of 100 scams caught, but 59–64% of normal messages flagged with the text and the senders we had (4% with ideal registered sender IDs is a projection, not a measurement); on the team's real traffic, 13% of SMS from registered sender IDs flagged, mostly marketing. **Links:** 81% of brand-new phishing sites caught with no lists; 1.1% of popular websites called dangerous. **Network:** all 10 network-level attacks in CIC-IDS2017 detected; on IoT-23's real IoT malware, 2 of 5 infected devices flagged, with no false alarm in 28.8 h of three real smart-home devices. **Files:** 21 of 21 test files right, no false alarm on 521 ordinary PDFs. **Phone Guard:** the same verdict as the Pi on all 16,272 test messages, and the same Llama prompt on all 8,833 of them that Llama explains. **Llama:** of the sentences users see, 72% supported by the evidence and 12% wrong (one grader) |
 | **Security** | HTTPS to the Pi with a certificate each phone pins when pairing; a 128-bit pairing token on every request; message texts kept only for phones whose owner switched the study on |
 | **Cloud use** | None. The phone decides on its own and talks to the Pi over the home Wi-Fi; the internet is needed only for the devices' own browsing and for refreshing the phishing list |
-| **Code** | 65 Python files (≈12,100 lines), a 28-file Kotlin Android app (≈4,000 lines, Phone Guard and Llama on the phone included), a C++ Llama engine, an ESP32 sketch; 364 automated tests as pytest counts them (263 test functions, some run with several inputs) |
+| **Code** | 65 Python files (≈12,100 lines), a 38-file Kotlin Android app, Sajag (≈5,500 lines, Phone Guard and Llama on the phone included), a C++ Llama engine, an ESP32 sketch; 364 automated tests as pytest counts them (263 test functions, some run with several inputs) |
 
 ---
 
@@ -184,7 +184,7 @@ flowchart LR
 
 ### 5.1 Android companion app
 
-A complete Android Studio project in Kotlin (`android/`, package `com.ps3guardian.app`, version 2.3), minimum Android 8.0 (API 26), target API 36, WorkManager 2.12.0. Installed from Android Studio over USB, because Play Protect in India blocks apps with SMS permissions installed from a file.
+A complete Android Studio project in Kotlin (`android/`, package `com.ps3guardian.app`, version 3.0), minimum Android 8.0 (API 26), target API 36, WorkManager 2.12.0. Since version 3.0 the app is called **Sajag** (सजग, Hindi for "alert"), and it calls the Pi the **Home Hub**. Installed from Android Studio over USB, because Play Protect in India blocks apps with SMS permissions installed from a file.
 
 | Part | What it does |
 | --- | --- |
@@ -194,10 +194,11 @@ A complete Android Studio project in Kotlin (`android/`, package `com.ps3guardia
 | HTTPS, pinned (`PiClient.kt`, `Tls.kt`) | The app talks to the Pi only over HTTPS, and trusts exactly one certificate: the one its owner confirmed when pairing, by comparing its fingerprint with the one the Pi prints. No plain HTTP at all |
 | Waiting list (`Checker.kt`, `FlushWorker.kt`) | Keeps up to 500 messages while the Pi is out of reach and sends them later (every 15 minutes, when the app opens, and after any answered SMS) |
 | Chats (`ChatListener.kt`, `ChatApps.kt`) | With notification access switched on, checks RCS chats (Google and Samsung Messages) and WhatsApp messages from senders who are not saved contacts, where scam chats come from. A contact's chat is checked only when it names an app file (`Wedding_Invitation.apk`), and then only the file's name is sent |
-| Share to PS3 Guardian (`ShareActivity.kt`) | Share a file (PDF, Office, APK, zip) or a message's text from WhatsApp or any app: the Pi checks it and the app shows the verdict, steps and Llama's text |
-| Alerts (`Notifier.kt`, `ExplainWorker.kt`) | A notification for every flagged message, with the advice at once and Llama's explanation swapped in when ready |
+| Check with Sajag (`ShareActivity.kt`) | Share a file (PDF, Office, APK, zip) or a message's text from WhatsApp or any app, or paste one on Home: the Pi checks it (a text is also checked on the phone at once) and the alert's own screen shows the verdict, steps and Llama's text |
+| Alerts (`Notifier.kt`, `ExplainWorker.kt`) | A notification for every flagged message ("Dangerous · Fake bank KYC message"), with the advice at once and Llama's explanation swapped in when ready, and two buttons: **What to do** and **Call 1930** |
+| Screens (`MainActivity.kt`, `*Page.kt`, `AlertActivity.kt`, `SetupActivity.kt`, `History.kt`) | App 3.0: **Home** (protected or not, the Home Hub and offline explanations at a glance, the newest results), **Alerts** (every checked message by day, all, scams or safe), **Network** (the devices riskiest first, the network alerts), **Settings**; a screen per alert (what is happening, what to do now with 1930 and cybercrime.gov.in, why it was flagged, the message with its links broken); a set-up in three steps. Charcoal and ivory, with red, yellow and green only for verdicts ([docs/android-companion.md](docs/android-companion.md#part-m-app-30-sajag-update-46)) |
 | Network alerts and devices (`NetWorker.kt`, `NetAlerts.kt`, `Devices.kt`) | About once a minute, asks the Pi for new network alerts and notifies; lists the devices on the lab Wi-Fi with a risk level (AT RISK, CHECK, OK) |
-| Settings | The Pi's address, the pairing token, the paired certificate, the phone's name (each phone's messages are counted apart), the study switch (off until its owner switches it on), the chat switches |
+| Settings | What to check (SMS, WhatsApp, Messages chats, network alerts), the Home Hub (pairing with its certificate, a connection test), offline explanations, the study switch ("Help improve detection", off until its owner switches it on), the phone's name (each phone's messages are counted apart) and an activity log with every timing |
 
 Permissions: receive SMS, internet (needed for any network connection, including the home Wi-Fi), notifications, and notification access only if the user switches chats on.
 
@@ -332,9 +333,9 @@ Nothing is attacked: the names do not exist, and the beacon fetches IANA's examp
 | 14–15 November | After the review: a pairing token on every request and study phones; sender rules measured on the Pi; Llama's sentences held to their evidence and 100 answers graded by hand; HTTPS with a pinned certificate, the phone's study switch and a proper package name; DNS blocking on the hotspot; the IoT-23 replay |
 | 16 November | DNS blocking set up and tested on the Pi; IoT-23's real IoT malware replayed on the Pi |
 | 21 November | Phone Guard: the message and link checks on the phone itself, checked to decide as the Pi does, and running on the Galaxy S25; Llama on the phone for alerts away from the Pi |
-| 22 November | Llama on the S25 tested with the Pi out of reach: an explanation in 3.6 s, five to eight times faster than on the Pi 4 |
+| 22 November | Llama on the S25 tested with the Pi out of reach: an explanation in 3.6 s, five to eight times faster than on the Pi 4. The phone app becomes **Sajag**: four pages, a screen per alert, a set-up in three steps |
 
-The work reached the Pi in 45 numbered updates. Each update was a tested git bundle, pulled on the Pi and pushed to GitHub. Every update ran the full test suite first, and every result in this document comes from a script in the repository. Per-part status: [docs/status.md](docs/status.md).
+The work reached the Pi in 46 numbered updates. Each update was a tested git bundle, pulled on the Pi and pushed to GitHub. Every update ran the full test suite first, and every result in this document comes from a script in the repository. Per-part status: [docs/status.md](docs/status.md).
 
 ### Problems we solved along the way
 
@@ -581,6 +582,8 @@ uvicorn app.server:app --port 8000     # then open http://localhost:8000
 | DGA model | Logistic regression on name pieces | 262,151 weights, 1.4 MB | A few minutes |
 | Each device's normal | Statistics per device | — | Live, on the Pi (2 hours per device) |
 | Llama 3.2 1B Instruct (SpinQuant INT4) | Pre-trained by Meta; used through prompts, not fine-tuned | ≈1.2 billion parameters, ≈1.0 GB `.pte` | — |
+
+The app's fonts, Figtree (Erik Kennedy) and Rozha One (Indian Type Foundry, for the name सजग), are under the SIL Open Font License 1.1; their licence texts are in `android/app/src/main/assets/licenses/`.
 
 **Built with Llama.** This project uses Llama 3.2 1B Instruct under the [Llama 3.2 Community License](https://www.llama.com/llama3_2/license/). The weights and exported files are not in this repository; download them from Meta or Hugging Face after accepting the licence.
 

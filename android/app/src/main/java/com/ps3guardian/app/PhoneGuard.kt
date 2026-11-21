@@ -35,6 +35,9 @@ object PhoneGuard {
         }
     }
 
+    /** Loaded and ready (without loading it): for the Home screen. */
+    fun loaded(): Boolean = guard != null
+
     /** Loads it in the background, so that the first message does not wait for it. */
     fun warm(c: Context, then: (() -> Unit)? = null) {
         val app = c.applicationContext

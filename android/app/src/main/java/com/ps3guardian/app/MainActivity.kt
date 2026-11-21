@@ -1,153 +1,133 @@
 package com.ps3guardian.app
 
-import android.Manifest
-import android.content.ActivityNotFoundException
-import android.content.ComponentName
 import android.content.Intent
 import android.content.SharedPreferences
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.InputType
+import android.view.View
 import android.view.WindowManager
-import android.widget.Button
-import android.widget.CheckBox
-import android.widget.EditText
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.NotificationManagerCompat
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
- * One screen: Pi address, token and phone name, pairing with the Pi's certificate, the study switch,
- * permissions, chats, two tests, the network alerts from the Pi's lab Wi-Fi, and the last results.
+ * Sajag (app 3.0): Home, Alerts, Network and Settings, switched by the bar at the bottom. Each page
+ * is its own class; this screen keeps them fresh: when a result is saved, every 10 s for the
+ * Home Hub's network alerts while it is open, and every second while Llama is being copied.
  */
 class MainActivity : AppCompatActivity() {
+    companion object {
+        const val TAB_HOME = 0
+        const val TAB_ALERTS = 1
+        const val TAB_NETWORK = 2
+        const val TAB_SETTINGS = 3
+        const val EXTRA_TAB = "tab"
+        private const val KEY_TAB = "tab"
+    }
 
-    private lateinit var url: EditText
-    private lateinit var token: EditText
-    private lateinit var device: EditText
-    private lateinit var status: TextView
-    private lateinit var chatStatus: TextView
-    private lateinit var netStatus: TextView
-    private lateinit var devList: TextView
-    private lateinit var netAlerts: TextView
-    private lateinit var recent: TextView
-    private lateinit var llamaStatus: TextView
     private val handler = Handler(Looper.getMainLooper())
+    private lateinit var home: HomePage
+    private lateinit var alerts: AlertsPage
+    private lateinit var network: NetworkPage
+    private lateinit var settings: SettingsPage
+    private lateinit var pages: List<View>
+    private var tab = TAB_HOME
+    private var ticks = 0
 
-    // While Llama is being copied from the Pi, show how far it got every second.
+    val askPermissions =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refreshAll() }
+
+    // While Llama is being copied from the Home Hub, show how far it got every second.
     private val llamaLoop = object : Runnable {
         override fun run() {
-            showLlama()
-            if (PhoneLlama.copying) handler.postDelayed(this, 1_000L)
+            val copying = PhoneLlama.copying
+            if (copying) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            home.refresh()
+            settings.refresh()
+            if (copying) handler.postDelayed(this, 1_000L)
         }
     }
 
-    // While the screen is open, ask the Pi for network alerts and its device list every 10 s.
+    // While the app is open: the Hub's network alerts and devices every 10 s, or, with network
+    // alerts off, a look at whether the Hub can be reached every 30 s.
     private val netLoop = object : Runnable {
         override fun run() {
-            if (Settings.netOn(this@MainActivity)) {
-                val app = applicationContext
+            val app = applicationContext
+            val net = Settings.netOn(app)
+            val ping = !net && ticks % 3 == 0 && Settings.pin(app).isNotBlank()
+            ticks++
+            if (net || ping) {
                 Thread {
-                    if (NetAlerts.check(app)) Devices.check(app)
-                    runOnUiThread { showNet() }
+                    if (net) {
+                        if (NetAlerts.check(app)) Devices.check(app)
+                    } else {
+                        try {
+                            PiClient.of(app).health()
+                        } catch (e: Exception) {
+                            // recorded by PiClient: the Home page shows "Away"
+                        }
+                    }
                 }.start()
             }
             handler.postDelayed(this, 10_000L)
         }
     }
 
-    private val askPermissions =
-        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-            val denied = result.filterValues { granted -> !granted }.keys.map { it.substringAfterLast('.') }
-            status.text = if (denied.isEmpty()) {
-                "Permissions allowed. Incoming SMS will now be checked."
-            } else {
-                "Not allowed: ${denied.joinToString()}. If SMS cannot be allowed, open App info, " +
-                    "tap ⋮ and choose 'Allow restricted settings' (see the guide)."
+    // While the screen is open, show new results as soon as they are saved.
+    private val refresh = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        runOnUiThread {
+            when (key) {
+                History.KEY -> {
+                    home.refresh()
+                    alerts.refresh()
+                    updateBadge()
+                }
+                Settings.KEY_PENDING -> home.refresh()
+                Settings.KEY_NET_LIST, Settings.KEY_DEV_LIST -> network.refresh()
+                Settings.KEY_HUB -> {
+                    home.refresh()
+                    network.refresh()
+                    settings.refresh()
+                }
+                Settings.KEY_RECENT -> {}
+                else -> settings.refresh()
             }
         }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        url = findViewById(R.id.pi_url)
-        token = findViewById(R.id.token)
-        device = findViewById(R.id.device)
-        status = findViewById(R.id.status)
-        chatStatus = findViewById(R.id.chat_status)
-        netStatus = findViewById(R.id.net_status)
-        devList = findViewById(R.id.dev_list)
-        netAlerts = findViewById(R.id.net_alerts)
-        recent = findViewById(R.id.recent)
-        llamaStatus = findViewById(R.id.llama_status)
-        val guardStatus = findViewById<TextView>(R.id.guard_status)
-        PhoneGuard.warm(this) {
-            val g = PhoneGuard.get(this)
-            runOnUiThread {
-                guardStatus.text = if (g != null) {
-                    "Phone Guard is on: SMS, chats and links are checked on this phone, with no network needed. " +
-                        "On the Pi's Wi-Fi, the Pi adds its phishing list and Llama's explanation; away from it, " +
-                        "Llama on this phone explains alerts, once it is copied here."
-                } else "Phone Guard could not start (${PhoneGuard.error}): messages wait for the Pi."
-            }
-        }
-        url.setText(Settings.piUrl(this))
-        token.setText(Settings.token(this))
-        device.setText(Settings.device(this))
+        Ui.edgeToEdge(this, findViewById(R.id.root), findViewById(R.id.status_space), findViewById(R.id.nav))
         Notifier.ensureChannel(this)
-
-        findViewById<Button>(R.id.save).setOnClickListener {
-            save()
-            status.text = "Saved."
+        home = HomePage(this, findViewById(R.id.page_home))
+        alerts = AlertsPage(this, findViewById(R.id.page_alerts))
+        network = NetworkPage(this, findViewById(R.id.page_network))
+        settings = SettingsPage(this, findViewById(R.id.page_settings))
+        pages = listOf(R.id.page_home, R.id.page_alerts, R.id.page_network, R.id.page_settings).map { findViewById<View>(it) }
+        listOf(R.id.tab_home, R.id.tab_alerts, R.id.tab_network, R.id.tab_settings).forEachIndexed { i, id ->
+            findViewById<View>(id).setOnClickListener { select(i) }
         }
-        findViewById<Button>(R.id.permissions).setOnClickListener {
-            val wanted = mutableListOf(Manifest.permission.RECEIVE_SMS)
-            if (Build.VERSION.SDK_INT >= 33) wanted += Manifest.permission.POST_NOTIFICATIONS
-            askPermissions.launch(wanted.toTypedArray())
-        }
-        findViewById<Button>(R.id.pair).setOnClickListener { pair() }
-        findViewById<Button>(R.id.test_connection).setOnClickListener { testConnection() }
-        findViewById<Button>(R.id.test_message).setOnClickListener { testMessage() }
-        findViewById<Button>(R.id.get_llama).setOnClickListener { getLlama() }
-
-        val studyBox = findViewById<CheckBox>(R.id.study)
-        studyBox.isChecked = Settings.study(this)
-        studyBox.setOnCheckedChangeListener { _, on -> Settings.setSwitch(this, Settings.STUDY, on) }
-
-        bindSwitch(R.id.chat_messages, Settings.chatKey(ChatApps.MESSAGES))
-        bindSwitch(R.id.chat_whatsapp, Settings.chatKey(ChatApps.WHATSAPP))
-        bindSwitch(R.id.chat_contacts, Settings.CHAT_CONTACTS)
-        findViewById<Button>(R.id.notification_access).setOnClickListener { openNotificationAccess() }
-
-        val netBox = findViewById<CheckBox>(R.id.net_on)
-        netBox.isChecked = Settings.netOn(this)
-        netBox.setOnCheckedChangeListener { _, on ->
-            Settings.setSwitch(this, Settings.NET_ON, on)
-            if (on) NetWorker.start(this) else NetWorker.stop(this)
-            showNet()
-        }
+        PhoneGuard.warm(this) { runOnUiThread { home.refresh() } }
         NetWorker.start(this)
+        select(savedInstanceState?.getInt(KEY_TAB) ?: intent.getIntExtra(EXTRA_TAB, TAB_HOME))
+        if (savedInstanceState == null && !Settings.setupDone(this)) startActivity(Intent(this, SetupActivity::class.java))
     }
 
-    // While the screen is open, show new results as soon as they are saved.
-    private val refresh = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == Settings.KEY_RECENT || key == Settings.KEY_PENDING) runOnUiThread { showRecent() }
-        if (key == Settings.KEY_NET_LIST || key == Settings.KEY_DEV_LIST) runOnUiThread { showNet() }
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(KEY_TAB, tab)
     }
 
     override fun onResume() {
         super.onResume()
         Settings.prefs(this).registerOnSharedPreferenceChangeListener(refresh)
-        showRecent()
-        showNet()
-        showChatStatus()                     // notification access may have just been allowed
-        FlushWorker.flushSoon(this)          // send messages that waited for the Pi, if it can be reached now
+        refreshAll()
+        FlushWorker.flushSoon(this)          // send messages that waited for the Hub, if it can be reached now
         handler.post(netLoop)
         handler.post(llamaLoop)
     }
@@ -159,206 +139,70 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
     }
 
-    private fun save() = Settings.save(this, url.text.toString(), token.text.toString(), device.text.toString())
-
-    private fun bindSwitch(id: Int, key: String) {
-        val box = findViewById<CheckBox>(id)
-        box.isChecked = Settings.prefs(this).getBoolean(key, false)
-        box.setOnCheckedChangeListener { _, on ->
-            Settings.setSwitch(this, key, on)
-            showChatStatus()
-        }
+    /** Shows the copy's progress every second until it ends (Llama was just asked for). */
+    fun watchLlama() {
+        handler.removeCallbacks(llamaLoop)
+        handler.post(llamaLoop)
     }
 
-    /** Android's settings page where the user allows the app to read notifications. */
-    private fun openNotificationAccess() {
-        val list = Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-        val intent = if (Build.VERSION.SDK_INT >= 30) {
-            Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
-                android.provider.Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
-                ComponentName(this, ChatListener::class.java).flattenToString()
-            )
-        } else {
-            list
-        }
-        try {
-            startActivity(intent)
-        } catch (e: ActivityNotFoundException) {
-            startActivity(list)
-        }
+    fun refreshAll() {
+        home.refresh()
+        alerts.refresh()
+        network.refresh()
+        settings.refresh()
+        updateBadge()
     }
 
-    private fun showChatStatus() {
-        val allowed = NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
-        val on = listOf(ChatApps.MESSAGES, ChatApps.WHATSAPP).filter { Settings.chatOn(this, it) }
-            .map { ChatApps.label(it) }
-        chatStatus.text = when {
-            on.isEmpty() -> "Chats are not checked."
-            !allowed -> "Tap 'Allow notification access' so that chats in ${on.joinToString(" and ")} can be checked."
-            else -> "Checking chats in ${on.joinToString(" and ")} from numbers that are not in your contacts" +
-                (if (Settings.chatContacts(this)) ", and from your contacts (testing)." else ".")
+    /** Shows one of the four pages and marks its tab. */
+    fun select(i: Int) {
+        tab = i.coerceIn(TAB_HOME, TAB_SETTINGS)
+        pages.forEachIndexed { n, p -> p.visibility = if (n == tab) View.VISIBLE else View.GONE }
+        val on = getColor(R.color.ivory)
+        val off = getColor(R.color.text_3)
+        val parts = listOf(
+            Triple(R.id.tab_home_pill, R.id.tab_home_icon, R.id.tab_home_label),
+            Triple(R.id.tab_alerts_pill, R.id.tab_alerts_icon, R.id.tab_alerts_label),
+            Triple(R.id.tab_network_pill, R.id.tab_network_icon, R.id.tab_network_label),
+            Triple(R.id.tab_settings_pill, R.id.tab_settings_icon, R.id.tab_settings_label),
+        )
+        parts.forEachIndexed { n, (pill, icon, label) ->
+            val selected = n == tab
+            findViewById<View>(pill).setBackgroundResource(if (selected) R.drawable.bg_nav_pill else 0)
+            Ui.tint(findViewById<ImageView>(icon), if (selected) on else off)
+            val text = findViewById<TextView>(label)
+            text.setTextColor(if (selected) on else off)
+            text.typeface = resources.getFont(if (selected) R.font.figtree_bold else R.font.figtree_semibold)
         }
+        if (tab == TAB_ALERTS) Settings.setAlertsSeen(this)
+        updateBadge()
     }
 
-    /** Asks the Pi for its certificate and shows the fingerprint, to compare with the Pi's own (update 39). */
-    private fun pair() {
-        save()
-        val address = Settings.piUrl(this)
-        if (!address.startsWith("https://")) {
-            status.text = HTTPS_ONLY
-            return
-        }
-        status.text = "Asking the Pi for its certificate..."
-        Thread {
-            val seen = try {
-                Tls.seen(address)
-            } catch (e: Exception) {
-                runOnUiThread { status.text = "Cannot reach the Pi: ${e.message}" }
-                null
-            }
-            if (seen != null) runOnUiThread { confirmPin(address, seen) }
-        }.start()
+    /** The number on the Alerts tab: flagged messages since the Alerts page was last opened. */
+    private fun updateBadge() {
+        val seen = Settings.alertsSeen(this)
+        val n = History.entries(this).count { it.flagged && it.time > seen }
+        val badge = findViewById<TextView>(R.id.tab_alerts_badge)
+        badge.text = if (n > 9) "9+" else n.toString()
+        badge.visibility = if (n > 0 && tab != TAB_ALERTS) View.VISIBLE else View.GONE
     }
 
-    private fun confirmPin(address: String, seen: String) {
-        AlertDialog.Builder(this)
-            .setTitle("Is this your Pi?")
-            .setMessage(
-                "The Pi at $address shows this certificate fingerprint:\n\n$seen\n\n" +
-                    "On the Pi, run:  cat ~/.ps3_tls_fingerprint\n\n" +
-                    "Tap Trust only if the two are the same. The app then talks to no other certificate."
-            )
-            .setPositiveButton("Trust") { _, _ ->
-                Settings.setPin(this, seen)
-                status.text = "Paired with the Pi."
-                testConnection()
-            }
-            .setNegativeButton("Cancel") { _, _ ->
-                status.text = "Not paired: the fingerprints must be the same."
-            }
-            .show()
-    }
+    fun openAlert(id: String) =
+        startActivity(Intent(this, AlertActivity::class.java).putExtra(AlertActivity.EXTRA_ID, id))
 
-    private fun testConnection() {
-        save()
-        val address = Settings.piUrl(this)
-        if (!address.startsWith("https://")) {
-            status.text = HTTPS_ONLY
-            return
+    fun openNetAlert(id: String) =
+        startActivity(Intent(this, AlertActivity::class.java).putExtra(AlertActivity.EXTRA_NET, id))
+
+    /** "Check a message" and "Check a link": pasted here, then checked like a shared message. */
+    fun checkDialog(link: Boolean) {
+        val type = if (link) InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+        else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        Dialogs.input(
+            this, if (link) "Check a link" else "Check a message",
+            if (link) "Paste the link. Sajag checks it on this phone and, at home, on your Home Hub. It is never opened."
+            else "Paste the message. Sajag checks it on this phone and, at home, on your Home Hub.",
+            if (link) "https://…" else "Paste the message here", "", type, if (link) 1 else 4, "Check"
+        ) { text ->
+            if (text.isNotBlank()) openAlert(Checker.shareText(this, text.trim()))
         }
-        if (Settings.pin(this).isBlank()) {
-            status.text = "Tap 'Pair with the Pi' first: the app checks the Pi's certificate before it sends anything."
-            return
-        }
-        status.text = "Connecting..."
-        Thread {
-            val message = try {
-                val health = PiClient.of(this).health()
-                "Connected over HTTPS to the paired Pi. Advisor: ${health.optString("backend")}."
-            } catch (e: Exception) {
-                "Cannot reach the Pi: ${e.message}"
-            }
-            runOnUiThread { status.text = message }
-        }.start()
-    }
-
-    /** Copies Llama 3.2 1B from the Pi (update 44), after asking: it is about 1 GB. */
-    private fun getLlama() {
-        save()
-        if (PhoneLlama.copying) return
-        if (!Settings.piUrl(this).startsWith("https://") || Settings.pin(this).isBlank()) {
-            llamaStatus.text = "Pair with the Pi first (on its Wi-Fi): the model comes from the paired Pi only."
-            return
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Copy Llama from the Pi?")
-            .setMessage(
-                "Llama 3.2 1B (about 1 GB) is copied from your Pi to this phone, over the Pi's Wi-Fi, in a few " +
-                    "minutes. Keep the phone on PS3-Guardian-Lab and this screen open until it is done.\n\n" +
-                    "Then, when the Pi cannot be reached, Llama explains alerts on this phone. If the copy stops, " +
-                    "tap the button again: it goes on from where it stopped."
-            )
-            .setPositiveButton("Copy") { _, _ ->
-                PhoneLlama.startCopy(this)
-                handler.removeCallbacks(llamaLoop)
-                handler.post(llamaLoop)
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun showLlama() {
-        val copying = PhoneLlama.copying
-        if (copying) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        val last = PhoneLlama.copyResult?.let { "$it\n" } ?: ""
-        llamaStatus.text = when {
-            copying && PhoneLlama.toCopy == 0L -> "Asking the Pi for Llama..."
-            copying -> {
-                val pct = (PhoneLlama.copied * 100 / PhoneLlama.toCopy).toInt()
-                "Copying Llama from the Pi: ${PhoneLlama.megabytes(PhoneLlama.copied)} of " +
-                    "${PhoneLlama.megabytes(PhoneLlama.toCopy)} ($pct%). Keep this screen open."
-            }
-            PhoneLlama.ready(this) -> last + "Llama 3.2 1B is on this phone (${PhoneLlama.megabytes(PhoneLlama.size(this))}): " +
-                "when the Pi cannot be reached, it explains alerts here."
-            else -> last + "Llama is not on this phone yet: away from the Pi, alerts get the playbook's advice " +
-                "without Llama's explanation. On the Pi's Wi-Fi, tap 'Get Llama from the Pi'."
-        }
-    }
-
-    /** A fake scam from a phone number: checks the token too. The Pi does not log tests. */
-    private fun testMessage() {
-        save()
-        status.text = "Sending a test scam..."
-        Thread {
-            Checker.test(
-                applicationContext, "9812345678",
-                "Dear customer your SBI account will be blocked today. Update KYC: http://sbi-kyc.example/update"
-            )
-            runOnUiThread {
-                status.text = "Test done: the phone's verdict, then the Pi's if it answered. See the alert and the list below." +
-                    (if (PhoneLlama.ready(this)) " If the Pi did not answer, Llama on this phone updates the alert in a few seconds." else "")
-                showRecent()
-            }
-        }.start()
-    }
-
-    private fun clock(ms: Long): String = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(ms))
-
-    private fun showNet() {
-        if (!Settings.netOn(this)) {
-            netStatus.text = "Off: this phone does not ask the Pi for network alerts."
-            devList.text = ""
-            netAlerts.text = ""
-            return
-        }
-        val checked = Settings.netCheckedAt(this)
-        val failed = Settings.netFailedAt(this)
-        netStatus.text = when {
-            checked == 0L && failed == 0L -> "Not checked yet."
-            failed > checked -> "Cannot reach the Pi" +
-                (if (checked > 0L) " (last reached at ${clock(checked)})" else "") +
-                ". Network alerts come while this phone is on the Pi's Wi-Fi, PS3-Guardian-Lab."
-            else -> "Checked at ${clock(checked)}. New alerts come as notifications."
-        }
-        val devices = Settings.devList(this)
-        devList.text = if (devices.isEmpty()) "No device seen yet." else devices.joinToString("\n\n")
-        val lines = Settings.netList(this)
-        netAlerts.text = if (lines.isEmpty()) "No network alerts." else lines.joinToString("\n\n")
-    }
-
-    companion object {
-        private const val HTTPS_ONLY = "The app talks to the Pi only over HTTPS: use the address https://10.42.0.1:8443."
-    }
-
-    private fun showRecent() {
-        val lines = Settings.recent(this)
-        val waiting = Settings.pendingCount(this)
-        val head = when (waiting) {
-            0 -> ""
-            1 -> "1 message is waiting for the Pi. It is sent as soon as the Pi can be reached.\n\n"
-            else -> "$waiting messages are waiting for the Pi. They are sent as soon as the Pi can be reached.\n\n"
-        }
-        recent.text = head + if (lines.isEmpty()) "No messages checked yet." else lines.joinToString("\n\n")
     }
 }
