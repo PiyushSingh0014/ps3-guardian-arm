@@ -23,7 +23,8 @@ object ChatApps {
         else -> app
     }
 
-    class Incoming(val sender: String, val text: String)
+    /** time: when the app says the message was sent (its messaging layout), or 0 when it does not say. */
+    class Incoming(val sender: String, val text: String, val time: Long = 0L)
 
     /** The newest message in the notification that someone else sent (not you), or null. */
     fun latestIncoming(n: Notification): Incoming? {
@@ -36,7 +37,7 @@ object ChatApps {
             } ?: return null
             val sender = m.person?.name?.toString() ?: return null
             val text = m.text?.toString() ?: return null
-            return if (text.isBlank()) null else Incoming(sender, text)
+            return if (text.isBlank()) null else Incoming(sender, text, m.timestamp)
         }
         // Apps without the messaging layout: the title is the sender, the text the message.
         val title = n.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: return null

@@ -38,12 +38,12 @@ class ChatListener : NotificationListenerService() {
             try {
                 if (sender == null) {                        // a saved contact: only the file's name
                     val name = appFile ?: return@Runnable
-                    if (!Seen.firstTimeChat(context, app, CONTACT, name)) return@Runnable
+                    if (!Seen.firstTimeChat(context, app, CONTACT, name, msg.time)) return@Runnable
                     Checker.onChat(context, app, CONTACT, "Attachment: $name")
                     return@Runnable
                 }
                 if (Seen.isRecentSms(context, msg.text)) return@Runnable
-                if (!Seen.firstTimeChat(context, app, sender, msg.text)) return@Runnable
+                if (!Seen.firstTimeChat(context, app, sender, msg.text, msg.time)) return@Runnable
                 Checker.onChat(context, app, sender, msg.text)
             } catch (e: Exception) {
                 // never let one unusual notification stop the service
