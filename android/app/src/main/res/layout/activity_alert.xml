@@ -1,0 +1,323 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One alert: the verdict, what is happening, what to do, why it was flagged, the message. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/alert_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/ground"
+    android:orientation="vertical">
+
+    <View
+        android:id="@+id/alert_status_space"
+        android:layout_width="match_parent"
+        android:layout_height="0dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingEnd="20dp">
+
+        <FrameLayout
+            android:id="@+id/alert_back"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_icon_plain"
+            android:clickable="true"
+            android:contentDescription="Back"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_back"
+                android:tint="@color/ivory" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/alert_bar_title"
+            style="@style/Sajag.Text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:fontFamily="@font/figtree_bold"
+            android:text="Alert"
+            android:textSize="18sp" />
+    </LinearLayout>
+
+    <ScrollView
+        android:id="@+id/alert_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:id="@+id/alert_body"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="20dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="28dp">
+
+            <LinearLayout
+                android:id="@+id/alert_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="20dp"
+                android:paddingTop="22dp"
+                android:paddingEnd="20dp"
+                android:paddingBottom="20dp">
+
+                <FrameLayout
+                    android:id="@+id/alert_icon_box"
+                    android:layout_width="52dp"
+                    android:layout_height="52dp">
+
+                    <ImageView
+                        android:id="@+id/alert_icon"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:layout_gravity="center"
+                        android:importantForAccessibility="no" />
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/alert_word"
+                    style="@style/Sajag.Text"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:fontFamily="@font/figtree_extrabold"
+                    android:letterSpacing="0.02"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:id="@+id/alert_title"
+                    style="@style/Sajag.Text.Title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:lineSpacingExtra="2sp"
+                    android:textSize="28sp" />
+
+                <TextView
+                    android:id="@+id/alert_meta"
+                    style="@style/Sajag.Text"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:lineSpacingExtra="3sp"
+                    android:textSize="15sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/alert_state"
+                style="@style/Sajag.Text.Sub"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:paddingStart="4dp"
+                android:textColor="@color/text_2"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/alert_what_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <TextView
+                    style="@style/Sajag.Text.H2"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="What's happening" />
+
+                <TextView
+                    android:id="@+id/alert_what"
+                    style="@style/Sajag.Text.Body"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:textIsSelectable="true" />
+
+                <LinearLayout
+                    android:id="@+id/alert_by_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <ImageView
+                        android:layout_width="15dp"
+                        android:layout_height="15dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_explain"
+                        android:tint="@color/text_3" />
+
+                    <TextView
+                        android:id="@+id/alert_by"
+                        style="@style/Sajag.Text.Note"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:layout_weight="1" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/alert_steps_head"
+                style="@style/Sajag.Text.H2"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:text="What to do now" />
+
+            <LinearLayout
+                android:id="@+id/alert_steps"
+                style="@style/Sajag.Card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp" />
+
+            <LinearLayout
+                android:id="@+id/btn_call"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_button_danger"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_call"
+                    android:tint="@color/danger_ink" />
+
+                <TextView
+                    style="@style/Sajag.Text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:fontFamily="@font/figtree_extrabold"
+                    android:text="Lost money? Call 1930"
+                    android:textColor="@color/danger_ink" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/btn_report"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_button_tonal"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_globe"
+                    android:tint="@color/ivory" />
+
+                <TextView
+                    style="@style/Sajag.Text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:fontFamily="@font/figtree_bold"
+                    android:text="Report at cybercrime.gov.in" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/alert_reasons_head"
+                style="@style/Sajag.Text.H2"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:text="Why it was flagged" />
+
+            <LinearLayout
+                android:id="@+id/alert_reasons"
+                style="@style/Sajag.Card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp" />
+
+            <TextView
+                android:id="@+id/alert_msg_head"
+                style="@style/Sajag.Text.H2"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:text="The message" />
+
+            <LinearLayout
+                android:id="@+id/alert_msg_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:paddingStart="18dp"
+                android:paddingTop="16dp"
+                android:paddingEnd="18dp"
+                android:paddingBottom="16dp">
+
+                <TextView
+                    android:id="@+id/alert_from"
+                    style="@style/Sajag.Text.Sub"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/figtree_semibold"
+                    android:textIsSelectable="true" />
+
+                <TextView
+                    android:id="@+id/alert_text"
+                    style="@style/Sajag.Text.Body"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:textIsSelectable="true" />
+
+                <TextView
+                    android:id="@+id/alert_text_note"
+                    style="@style/Sajag.Text.Note"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="Links are shown broken on purpose, so they can't be opened by mistake." />
+            </LinearLayout>
+
+            <View
+                style="@style/Sajag.Divider"
+                android:layout_marginTop="24dp" />
+
+            <TextView
+                android:id="@+id/alert_footer"
+                style="@style/Sajag.Text.Note"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:textIsSelectable="true" />
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

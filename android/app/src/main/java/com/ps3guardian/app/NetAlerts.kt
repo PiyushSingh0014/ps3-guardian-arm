@@ -5,31 +5,29 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Network alerts from the Pi (GET /alerts): what its network monitor found on the lab Wi-Fi
- * PS3-Guardian-Lab, for every device there, newest first. The main screen lists them.
+ * Network alerts from the Home Hub (GET /alerts): what its network monitor found on the home Wi-Fi,
+ * for every device there, newest first. The Network page lists them; each opens its own screen.
  *
  * A new alert becomes a notification, dangerous and suspicious alike. If Llama's explanation is
- * not ready yet, the notification first shows the playbook's checked text; once the Pi has
+ * not ready yet, the notification first shows the playbook's checked text; once the Hub has
  * Llama's text, the same notification shows it instead, without sounding again. Alerts older
- * than an hour are only listed, so a phone that comes back to the lab Wi-Fi is not flooded.
+ * than an hour are only listed, so a phone that comes back to the home Wi-Fi is not flooded.
  */
 object NetAlerts {
-    private const val LIMIT = 20                         // the Pi's page lists 20 too
+    private const val LIMIT = 20                         // the Hub's page lists 20 too
     const val NOTIFY_WITHIN_MS = 60 * 60_000L
     const val MAX_NOTIFY = 3                             // new notifications per check, the newest
 
-    /** One alert, as the phone shows it. */
+    /** One alert, as the phone shows it: json is what the Network page and the alert's screen read. */
     class Alert(
         val id: String,
         val timeMs: Long,             // when the connection that set it off started (0 if unknown)
-        val title: String,            // e.g. "DANGEROUS: Malware looking for its controller ..."
-        val text: String,             // notification text: Llama's once ready, else the playbook's
-        val explained: Boolean,       // text is Llama's
+        val explained: Boolean,       // the text is Llama's
         val llamaComing: Boolean,     // Llama is still going to explain it
-        val line: String              // the main screen's list
+        val json: JSONObject
     )
 
-    /** What one answer from the Pi changes. */
+    /** What one answer from the Hub changes. */
     class Plan(val notify: List<Alert>, val update: List<Alert>, val seen: List<String>, val waiting: List<String>)
 
     /**
@@ -58,11 +56,11 @@ object NetAlerts {
                 }
             }
         }
-        wait.retainAll(alerts.map { it.id }.toSet())     // no longer among the Pi's newest: stop waiting
+        wait.retainAll(alerts.map { it.id }.toSet())     // no longer among the Hub's newest: stop waiting
         return Plan(notify, update, handled.toList(), wait.toList())
     }
 
-    /** Asks the Pi once and handles the answer. False if the Pi could not be reached. */
+    /** Asks the Hub once and handles the answer. False if the Hub could not be reached. */
     fun check(c: Context): Boolean {
         val reply = try {
             PiClient.of(c).alerts(LIMIT)
@@ -79,45 +77,43 @@ object NetAlerts {
     private fun handle(c: Context, alerts: List<Alert>) {
         val p = plan(alerts, Settings.netSeen(c), Settings.netWaiting(c), System.currentTimeMillis())
         for (a in p.notify.asReversed()) {               // oldest first, so the newest ends up on top
-            Notifier.show(c, a.title, a.text, notificationId(a.id), Notifier.NET)
+            Notifier.netAlert(c, a.json, notificationId(a.id))
         }
         for (a in p.update) {
-            if (Notifier.isShowing(c, notificationId(a.id))) {
-                Notifier.show(c, a.title, a.text, notificationId(a.id), Notifier.NET)
-            }
+            if (Notifier.isShowing(c, notificationId(a.id))) Notifier.netAlert(c, a.json, notificationId(a.id))
         }
-        Settings.saveNet(c, p.seen, p.waiting, alerts.map { it.line })
+        Settings.saveNet(c, p.seen, p.waiting, alerts.map { it.json })
     }
 
     private fun notificationId(alertId: String) = ("net:$alertId").hashCode()
 
-    /** One alert of the Pi's answer. */
+    /** A text value, or "" when it is missing or JSON null (optString would give "null"). */
+    private fun text(o: JSONObject, key: String): String = if (o.isNull(key)) "" else o.optString(key)
+
+    /** One alert of the Hub's answer: Llama's what and why once they are ready, else the playbook's. */
     fun parse(a: JSONObject): Alert {
         val advice = a.optJSONObject("advice") ?: JSONObject()
         val explain = a.optJSONObject("explain")
         val status = explain?.optString("status") ?: ""
         val llama = if (status == "done") explain?.optJSONObject("advice") else null
-        val e = a.optJSONObject("finding")?.optJSONObject("entities") ?: JSONObject()
-        val ip = e.optString("device")
-        val name = e.optString("device_name").take(32)           // chosen by the device: shown as text only
-        val device = if (name.isNotBlank()) "$name ($ip)" else ip
-        val time = a.optString("time")
-        val title = advice.optString("headline").ifBlank { "Network alert" }
-
-        val head = listOf(device, time.takeLast(8)).filter { it.isNotBlank() }.joinToString(", ")
-        val text = (head + "\n" + Notifier.adviceText(llama ?: advice)).trim()
-
-        val line = StringBuilder(title).append('\n').append(time).append(" | ").append(device)
-        if (llama != null) {
-            line.append('\n').append((llama.optString("what") + " " + llama.optString("why")).trim())
-            line.append("\n(Explained by Llama 3.2 on the Pi)")
-        } else {
-            line.append('\n').append(advice.optString("why"))
-        }
-        val steps = advice.optJSONArray("steps")
-        if (steps != null && steps.length() > 0) line.append("\nFirst step: ").append(steps.optString(0))
-
-        return Alert(a.optString("id"), e.optLong("time_ms", 0L), title, text, llama != null,
-            status == "queued" || status == "pending", line.toString())
+        val finding = a.optJSONObject("finding") ?: JSONObject()
+        val e = finding.optJSONObject("entities") ?: JSONObject()
+        val ip = text(e, "device")
+        val name = text(e, "device_name").take(32)               // chosen by the device: shown as text only
+        val headline = text(advice, "headline").ifBlank { "Network alert" }
+        val verdict = text(finding, "verdict").ifBlank { if (headline.startsWith("DANGEROUS")) "dangerous" else "suspicious" }
+        val shown = llama ?: advice
+        val json = JSONObject()
+            .put("id", text(a, "id")).put("time", text(a, "time")).put("time_ms", e.optLong("time_ms", 0L))
+            .put("verdict", verdict).put("title", History.cleanTitle(headline)).put("category", text(finding, "category"))
+            .put("device", name.ifBlank { ip }).put("ip", ip)
+            .put("what", text(shown, "what")).put("why", text(shown, "why"))
+            .put("steps", advice.optJSONArray("steps") ?: JSONArray())
+            .put("reasons", finding.optJSONArray("reasons") ?: JSONArray())
+            .put("explained", llama != null)
+        return Alert(text(a, "id"), e.optLong("time_ms", 0L), llama != null, status == "queued" || status == "pending", json)
     }
+
+    /** One of the newest alerts kept for the Network page, by id (from a notification, for example). */
+    fun find(c: Context, id: String): JSONObject? = Settings.netList(c).firstOrNull { it.optString("id") == id }
 }

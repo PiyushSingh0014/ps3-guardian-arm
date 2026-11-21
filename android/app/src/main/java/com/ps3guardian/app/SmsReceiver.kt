@@ -14,6 +14,7 @@ class SmsReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
+        if (!Settings.smsOn(context)) return              // switched off in Settings (app 3.0)
         val parts = Telephony.Sms.Intents.getMessagesFromIntent(intent)
         if (parts.isNullOrEmpty()) return
 

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One step of "What to do now": its number and the advice. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingTop="14dp"
+        android:paddingBottom="14dp">
+
+        <TextView
+            android:id="@+id/step_n"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:background="@drawable/bg_circle"
+            android:fontFamily="@font/figtree_extrabold"
+            android:gravity="center"
+            android:textColor="@color/ivory"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/step_text"
+            style="@style/Sajag.Text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="14dp"
+            android:layout_weight="1"
+            android:lineSpacingExtra="5sp"
+            android:paddingTop="3dp" />
+    </LinearLayout>
+
+    <View
+        android:id="@+id/step_divider"
+        style="@style/Sajag.Divider" />
+</LinearLayout>

@@ -16,7 +16,8 @@ import javax.net.ssl.SSLException
  * Over https:// (the Pi's port 8443) the connection trusts only the certificate this phone paired
  * with ([pin], see Tls.kt), and the pairing token is sent only over such a connection.
  */
-class PiClient(private val baseUrl: String, private val token: String, private val pin: String = "") {
+class PiClient(private val baseUrl: String, private val token: String, private val pin: String = "",
+               private val ctx: Context? = null) {
 
     /** The Pi refused the request itself (bad or too long a message), not the connection or the token. */
     class Rejected(message: String) : IOException(message)
@@ -115,13 +116,14 @@ class PiClient(private val baseUrl: String, private val token: String, private v
     /** Still an IOException: a message waits on the phone until the Pi can be reached. */
     private fun pinError(e: SSLException): IOException {
         if (!Tls.notPinned(e)) return e
-        return IOException(if (pin.isBlank()) "not paired with the Pi yet: tap 'Pair with the Pi'"
-                           else "the Pi's certificate is not the one this phone paired with: tap 'Pair with the Pi'")
+        return IOException(if (pin.isBlank()) "not paired with the Home Hub yet: Settings, Pair again"
+                           else "the Home Hub's certificate is not the one this phone paired with: Settings, Pair again")
     }
 
     private fun request(method: String, path: String, body: JSONObject?, raw: ByteArray? = null,
                         readMs: Int = 6_000): JSONObject {
         val conn = open(method, path, readMs)
+        var reached = false
         try {
             if (body != null) {
                 conn.doOutput = true
@@ -134,21 +136,34 @@ class PiClient(private val baseUrl: String, private val token: String, private v
                 conn.outputStream.use { it.write(raw) }
             }
             val code = conn.responseCode
+            reached = true
+            if (code == 401) mark("refused", "the Home Hub did not accept the pairing code") else mark("ok")
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
             val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
             if (code in REFUSED) throw Rejected("HTTP $code ${text.take(120)}")
             if (code !in 200..299) throw IOException("HTTP $code ${text.take(120)}")
             return JSONObject(text)
         } catch (e: SSLException) {
-            throw pinError(e)
+            val err = pinError(e)
+            mark("away", err.message ?: "")
+            throw err
+        } catch (e: IOException) {
+            if (!reached) mark("away", e.message ?: "")
+            throw e
         } finally {
             conn.disconnect()
         }
     }
 
+    /** Whether the Home Hub answered, for the Home and Settings screens (app 3.0). */
+    private fun mark(state: String, error: String = "") {
+        val c = ctx ?: return
+        Settings.hubSeen(c, state, error)
+    }
+
     companion object {
         /** A client with this phone's settings: the Pi address, the pairing token and the pinned certificate. */
-        fun of(c: Context) = PiClient(Settings.piUrl(c), Settings.token(c), Settings.pin(c))
+        fun of(c: Context) = PiClient(Settings.piUrl(c), Settings.token(c), Settings.pin(c), c.applicationContext)
 
         const val MAX_MESSAGE = 2000        // the Pi accepts up to 2000 characters
         const val MAX_FILE = 25 * 1024 * 1024   // and files up to 25 MB

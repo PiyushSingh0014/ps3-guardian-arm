@@ -2,4 +2,35 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Charcoal and ivory (app 3.0). Red, yellow and green are only for verdicts. -->
+    <color name="ground">#FF0F0F10</color>
+    <color name="surface">#FF1A1A1C</color>
+    <color name="raised">#FF242427</color>
+    <color name="raised_2">#FF2B2B2E</color>
+    <color name="line">#FF2E2E32</color>
+    <color name="outline">#FF48484E</color>
+    <color name="nav">#FF161618</color>
+    <color name="selected">#FF34322E</color>
+    <color name="ivory">#FFF5F2EC</color>
+    <color name="body">#FFE4E0D8</color>
+    <color name="text_2">#FFBDB8B0</color>
+    <color name="text_3">#FF918C85</color>
+    <color name="ink">#FF111111</color>
+    <color name="ripple">#33FFFFFF</color>
+    <color name="ripple_dark">#26000000</color>
+    <color name="tile">#0FFFFFFF</color>
+
+    <color name="danger">#FFFF5D52</color>
+    <color name="danger_tint">#FF341614</color>
+    <color name="danger_ink">#FF1F0806</color>
+    <color name="danger_soft">#FFF2C4BF</color>
+    <color name="warn">#FFF5C64A</color>
+    <color name="warn_tint">#FF33290F</color>
+    <color name="warn_ink">#FF1F1600</color>
+    <color name="warn_soft">#FFE8D9AE</color>
+    <color name="safe">#FF3FD08A</color>
+    <color name="safe_tint">#FF102B1E</color>
+    <color name="safe_ink">#FF0B1F15</color>
+    <color name="safe_soft">#FFC9E7D6</color>
 </resources>
