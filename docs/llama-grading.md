@@ -119,6 +119,7 @@ On the Pi, from `~/ps3-guardian` with `source ~/ps3-venv/bin/activate`, while th
 
 ## Limits
 
+- These answers were written with prompt v4. Prompt v5 (update 47) also tells Llama what the message says, in fixed words ([phone-guard.md](phone-guard.md#what-the-message-says-update-47)), so its answers have to be graded again.
 - The case is all Llama sees, so "supported" means supported by the scanner's evidence, not that the scan was right.
 - The 38b checks were written after reading these same answers, so how much they help here is the best case. The India set gives only about 104 different cases, so there is no second set of the same kind; the app's own alerts will show it over time.
 - The checks look at words, not meaning: a rule is allowed in any case whose fact states a rule, and one supported sentence is still dropped ("real banks never send messages from 10-digit mobile numbers", where the case says "real banks send SMS from registered sender IDs").

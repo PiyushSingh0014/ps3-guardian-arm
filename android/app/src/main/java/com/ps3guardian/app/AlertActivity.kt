@@ -141,7 +141,7 @@ open class AlertActivity : AppCompatActivity() {
         state.visibility = if (state.text.isNullOrBlank()) View.GONE else View.VISIBLE
 
         val explanation = e.explanation
-        val what = explanation ?: listOf(e.what, e.why).filter { it.isNotBlank() }.joinToString(" ")
+        val what = e.summary
         show(R.id.alert_what_card, what.isNotBlank())
         v<TextView>(R.id.alert_what).text = what
         show(R.id.alert_by_row, explanation != null)

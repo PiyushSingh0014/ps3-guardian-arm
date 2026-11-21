@@ -50,9 +50,9 @@ Checked on a computer: the phone's Kotlin code (run on the JVM by `android/guard
 **How:**
 
 - The app copies the Pi's own model files, `llama3_2.pte` and `tokenizer.model` (about 1 GB), from the paired Pi, over the pinned HTTPS connection with the pairing token (`GET /llama`, `app/llama_files.py`). It checks each file's SHA-256 against the Pi's and keeps them in its private storage. The model is never in the app or the repository.
-- It runs them with ExecuTorch's Android library, release 1.5.1, the release the Pi's model was exported with (`org.pytorch:executorch-android`), on the phone's Arm CPU (XNNPACK). Greedy, as on the Pi; at most 64 new pieces of text in English and 160 in Hindi.
+- It runs them with ExecuTorch's Android library, release 1.5.1, the release the Pi's model was exported with (`org.pytorch:executorch-android`), on the phone's Arm CPU (XNNPACK). Greedy, as on the Pi; at most 80 new pieces of text in English and 192 in Hindi (64 and 160 before prompt v5).
 - Only when the Pi cannot be reached. The phone's alert comes at once; a few seconds later Llama's text replaces it while it is on screen, ending "(Explained by Llama 3.2 on this phone, in N s.)". At home the Pi explains, as before. **Share to PS3 Guardian** with a message's text does the same.
-- Llama sees what it sees on the Pi: the scanner result, the scam type, the playbook's checked fact and the scammer's goal, the warning signs, and who the message claims to be (from the fixed list). Never the message text or the sender. Its answer passes the Pi's checks: a sentence with a number, a link, an organisation, a rule or a claim that the evidence does not have is dropped, and if nothing is left the playbook's text stays.
+- Llama sees what it sees on the Pi: the scanner result, the scam type, the playbook's checked fact and the scammer's goal, the warning signs, and who the message claims to be (from the fixed list). Since update 47 also what the message says, in fixed words (below). Never the message text or the sender. Its answer passes the Pi's checks: a sentence with a number, a link, an organisation, a rule or a claim that the evidence does not have is dropped, and if nothing is left the playbook's text stays.
 - The model is loaded for an alert and leaves the phone's memory after 3 minutes without one.
 
 **The same prompt and checks as the Pi's**, compared on a computer (`scripts/check_phone_guard.py`, the phone's Kotlin code run by `android/guard-check/`):
@@ -75,6 +75,30 @@ Checked on a computer: the phone's Kotlin code (run on the JVM by `android/guard
 The Pi 4 takes 18–31 s for a new explanation, although it reuses the fixed start of the prompt; the phone reads the whole prompt each time and is still five to eight times faster. Llama's explanation of that test on the phone, as shown in the alert: "This message pretends to be from SBI to steal your net-banking login, card details or OTP through a fake KYC page. Genuine banks do not send links from 10-digit mobile numbers, and this link is not on an official .bank.in website."
 
 As on the Pi, only flagged messages are explained: a message the phone judges safe gets no alert, so there is nothing for Llama to explain.
+
+## What the message says (update 47)
+
+**Why:** Llama saw the scam type and the warning signs, not the message, so every message of a type got much the same explanation: a message threatening to cut the electricity could be told it "pretends to be your bank".
+
+**How:** `detectors/sms/says.py` finds what the message itself claims (an account, card or SIM blocked, electricity cut off, a prize, a parcel, a refund, a job, a loan, police, an investment, reward points; in English or Hindi), the amount, a deadline, and what it asks (an OTP, paying, installing an app, calling someone, updating details, opening a link). It names each in fixed words, at most 4, in that order: "says your electricity will be cut off", "mentions ₹25,000", "asks you to pay money". Only flagged messages get them.
+
+- Llama's case lists them under "The message:" (prompt v5, with new worked examples). Nothing the scammer wrote reaches Llama except an amount, and Llama's answer is still held to its case by the checks.
+- The phone has the same patterns (exported to `sms.json`) and finds the same phrases, so Llama on the phone gets the same case.
+- Until Llama's text arrives, the alert and its notification show them as one sentence: "The message says your bank account will be blocked, says you must act now, asks you to update or verify your details and has a link to open."
+- An OTP is only "talked about": a bank's own OTP message uses the same words as a scam that asks for it, and the warning signs say which it is. "Rs.0" and "Rs. 0.45" are not amounts.
+
+**How often:** 175 of the 201 different flagged messages in the India set get at least one phrase (98 get two or more); 725 of the 1,081 flagged messages in the public set.
+
+**The same on the phone and the Pi, after v5** (the same comparison as above):
+
+| Set | Messages | All the same | Llama prompts the same |
+| --- | --- | --- | --- |
+| India | 2,043 | 2,043 | 1,053 of 1,053 |
+| Public | 6,053 | 6,053 | 570 of 570 |
+| Edge cases | 176 | 168 (all 176 verdicts; the 8 are the known mis-encoded texts) | 137 of 137 |
+| Links | 8,000 | 8,000 | 7,073 of 7,073 |
+
+The 100 answers graded by hand ([llama-grading.md](llama-grading.md)) were written with prompt v4; v5's answers have to be graded again.
 
 ## Install and test (updates 43 and 44)
 

@@ -12,8 +12,8 @@ android {
         applicationId = "com.ps3guardian.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "3.0"
+        versionCode = 7
+        versionName = "3.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

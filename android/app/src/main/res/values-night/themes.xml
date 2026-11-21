@@ -18,8 +18,9 @@
         <item name="android:textColorHighlight">#665E5A52</item>
         <item name="android:colorControlActivated">@color/ivory</item>
         <item name="android:colorControlNormal">@color/text_3</item>
+        <!-- Only android:fontFamily. AppCompat lets a theme's app:fontFamily win over every view's own
+             font, which turned the wordmark and all the bold titles into Figtree Regular (app 3.0). -->
         <item name="android:fontFamily">@font/figtree_regular</item>
-        <item name="fontFamily">@font/figtree_regular</item>
     </style>
 
     <style name="Theme.PS3Guardian" parent="Base.Theme.PS3Guardian" />

@@ -39,7 +39,7 @@ def test_the_phone_has_the_pis_playbooks(export):
 
 def test_the_phone_asks_llama_and_checks_its_answers_as_the_pi_does(export):
     assert same(export.llama_data(), asset("llama.json"))
-    assert asset("llama.json")["max_new_tokens"] == {"en": 64, "hi": 160}
+    assert asset("llama.json")["max_new_tokens"] == {"en": 80, "hi": 192}
 
 
 def test_the_phone_has_the_pis_link_lists(export):

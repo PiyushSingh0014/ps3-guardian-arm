@@ -21,6 +21,8 @@ class GuardResult(
     // kind ("bank"): the only words about the sender that Llama is told (detector.py: entities).
     val claimsToBe: String? = null,
     val claimsKind: String? = null,
+    // What the message says, in fixed words (detectors/sms/says.py): shown to Llama (prompt v5) and on the alert.
+    val says: List<String> = emptyList(),
 ) {
     /** The advice as notification text: what, why, then the steps (as Notifier.adviceText). */
     fun adviceText(): String {
@@ -99,6 +101,7 @@ class Guard(private val files: GuardFiles) {
             return GuardResult(verdict, score, category, reasons, safe["headline"] as String, safe["what"] as String,
                 safe["why"] as String, safe["steps"].strings(), linkVerdicts, millis, claimsToBe, claimsKind)
         }
+        val says = rules.says(text)                     // flagged only, as on the Pi (detector.py)
         val book = (books[category] ?: books["generic_suspicious"]).obj()
         val steps = book["steps"].strings()
         val chosen = (1..minOf(maxSteps, steps.size)).toMutableList()
@@ -106,6 +109,6 @@ class Guard(private val files: GuardFiles) {
         val why = if (reasons.isNotEmpty()) "Red flags: " + reasons.take(3).joinToString("; ") + "."
         else "It matches text patterns common in scam messages."
         return GuardResult(verdict, score, category, reasons, "${verdict.uppercase()}: ${book["title"]}",
-            book["summary"] as String, why, chosen.map { steps[it - 1] }, linkVerdicts, millis, claimsToBe, claimsKind)
+            book["summary"] as String, why, chosen.map { steps[it - 1] }, linkVerdicts, millis, claimsToBe, claimsKind, says)
     }
 }

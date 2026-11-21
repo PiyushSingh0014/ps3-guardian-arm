@@ -29,6 +29,7 @@ import tldextract                                                # noqa: E402
 
 import brands as sms_brands                                      # noqa: E402
 import rules_india                                               # noqa: E402
+import says as sms_says                                          # noqa: E402
 import senders                                                   # noqa: E402
 from advisor import categorize                                   # noqa: E402
 from advisor.advise import MAX_STEPS, SAFE_ADVICE                # noqa: E402
@@ -118,6 +119,8 @@ def sms_data():
         "link_odds": sms_detector.LINK_ODDS, "official_link_odds": sms_detector.OFFICIAL_LINK_ODDS,
         "risky_kinds": list(sms_detector.RISKY_KINDS), "app_ext": sorted(file_names.APP_EXT),
         "suspicious_at": SUSPICIOUS_AT, "dangerous_at": DANGEROUS_AT,
+        # What a flagged message says, in fixed words, for Llama (detectors/sms/says.py, prompt v5).
+        "says": [[*pattern(rx), phrase] for rx, phrase in sms_says._RULES], "max_says": sms_says.MAX_SAYS,
     }
 
 
