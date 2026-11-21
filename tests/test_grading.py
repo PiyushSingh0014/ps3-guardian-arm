@@ -82,7 +82,8 @@ def test_every_worked_example_passes_the_checks_against_its_own_case():
     example's "Real companies never ask for your OTP": its fact says "No bank ... ever asks"."""
     from advisor.prompt import EXAMPLES, EXAMPLES_NET, format_case, format_net_case
     for ex in EXAMPLES:
-        case = format_case(ex["result"], ex["scam_type"], ex["pretends"], ex["signs"], ex["fact"], ex["wants"])
+        case = format_case(ex["result"], ex["scam_type"], ex["pretends"], ex["signs"], ex["fact"], ex["wants"],
+                           ex["says"])
         verdict = "dangerous" if "high" in ex["result"] else "suspicious"
         for lang, answer in ex["answer"].items():
             c = check_explanation(answer, verdict, lang, evidence=case)

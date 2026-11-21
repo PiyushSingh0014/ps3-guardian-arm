@@ -35,7 +35,7 @@ Files that changed or are new in step 3:
 
 | File | Role |
 | --- | --- |
-| `advisor/prompt.py` | Prompt v4: evidence only (including what the scammer wants), 3 worked examples (English and Hindi), fixed prefix |
+| `advisor/prompt.py` | Prompt v4: evidence only (including what the scammer wants), 3 worked examples (English and Hindi), fixed prefix. Prompt v5 (update 47) adds what the message says, in fixed words ([phone-guard.md](phone-guard.md#what-the-message-says-update-47)) |
 | `advisor/validator.py` | Checks the 2 sentences: verdict contradiction, language, numbers/links, hedging, KYC wording |
 | `advisor/advise.py` | `quick()` (template, instant) and `explain()` (Llama, validated); code picks the steps |
 | `deploy/advisor_server/` | **Native engine for the Pi 4:** `advisor_server.cpp` (Llama on ExecuTorch with KV-cache prefix reuse) and `build_pi4.sh`, which builds it like `llama_main` |

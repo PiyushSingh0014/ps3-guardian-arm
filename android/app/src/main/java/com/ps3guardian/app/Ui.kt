@@ -19,7 +19,7 @@ import java.util.Locale
 
 /** Colours, words and small helpers shared by the screens (app 3.0, charcoal and ivory). */
 object Ui {
-    const val VERSION = "3.0"
+    const val VERSION = "3.1"
 
     /** How a verdict looks: its word, its colour, the dark tint behind it, the ink on it, a soft text colour. */
     class Look(val word: String, val color: Int, val tint: Int, val ink: Int, val soft: Int, val icon: Int)

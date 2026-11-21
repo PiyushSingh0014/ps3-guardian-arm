@@ -40,6 +40,22 @@ object History {
         val llama: String get() = o.optString("llama")                 // writing, done, failed or ""
         val notifyId: Int get() = o.optInt("notify")
         val flagged: Boolean get() = verdict == "dangerous" || verdict == "suspicious"
+        /** What a flagged message says, in fixed words (update 47): "says your bank account will be blocked". */
+        val says: List<String> get() = strings(o.optJSONArray("says"))
+
+        /**
+         * What the alert shows: Llama's explanation once it is written; until then what this message
+         * says (or the scam type's "what" when no phrase was found), and why that is a scam.
+         */
+        val summary: String get() = explanation
+            ?: listOf(saysLine(says).ifBlank { what }, why).filter { it.isNotBlank() }.joinToString(" ")
+    }
+
+    /** "The message says your account will be blocked, says you must act now and has a link to open." */
+    fun saysLine(says: List<String>): String = when (says.size) {
+        0 -> ""
+        1 -> "The message ${says[0]}."
+        else -> "The message ${says.dropLast(1).joinToString(", ")} and ${says.last()}."
     }
 
     private fun strings(a: JSONArray?): List<String> =
@@ -115,6 +131,7 @@ object History {
     fun fromPhone(c: Context, id: String, r: GuardResult, text: String?) = update(c, id) { o ->
         put(o, r.verdict, r.headline, r.what, r.why, r.steps, r.reasons, text)
         o.put("by", "phone").put("check_ms", r.millis)
+        if (r.says.isNotEmpty()) o.put("says", JSONArray(r.says)) else o.remove("says")
     }
 
     /** The Home Hub's answer: its verdict replaces the phone's (it also has the phishing list). */
@@ -124,9 +141,12 @@ object History {
         val headline = advice.optString("headline")
         val verdict = finding.optString("verdict").ifBlank { verdictOf(headline, "safe") }
         val reasons = strings(finding.optJSONArray("reasons"))
+        val says = strings(finding.optJSONObject("entities")?.optJSONArray("says"))
         put(o, verdict, headline, advice.optString("what"), advice.optString("why"), strings(advice.optJSONArray("steps")),
             reasons.ifEmpty { strings(o.optJSONArray("reasons")) }, text ?: o.optString("text").ifBlank { null })
         o.put("by", "hub").put("hub", if (late) "later" else "").put("hub_at", System.currentTimeMillis())
+        // A Hub before update 47 sends no phrases: the phone's stay, unless the Hub found the message safe.
+        if (says.isNotEmpty()) o.put("says", JSONArray(says)) else if (verdict == "safe") o.remove("says")
         if (res.optJSONObject("explain") != null && verdict != "safe") o.put("llama", "writing")
     }
 

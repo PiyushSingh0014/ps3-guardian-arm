@@ -17,6 +17,7 @@ import joblib                                    # noqa: E402
 import train_baseline as tb                      # noqa: E402
 from brands import HEADER_ROOTS, brands_named, claimed_identity, header_belongs  # noqa: E402
 from rules_india import BANK_DETAILS_RE, asks_for_secret, extract_signals  # noqa: E402
+from says import message_says                    # noqa: E402
 from senders import active_rules, apply_sender, classify_sender, sender_odds  # noqa: E402
 
 from advisor.categorize import categorize_message    # noqa: E402
@@ -265,6 +266,10 @@ class SmsDetector:
                 reasons = [r for r in reasons if "app file (.apk) from a link" not in r]
             reasons.insert(0, "the chat brought an Android app (APK) file, not a document or a photo" if app in APP_EXT
                            else "the chat brought a program file, not a document or a photo")
+        if verdict != "safe":                      # what the message says, in fixed words (prompt v5)
+            says = message_says(text)
+            if says:
+                entities["says"] = says
         return Finding(source="sms", verdict=verdict, score=round(score, 3), category=category,
                        reasons=reasons, entities=entities,
                        raw_text=message, language=language)

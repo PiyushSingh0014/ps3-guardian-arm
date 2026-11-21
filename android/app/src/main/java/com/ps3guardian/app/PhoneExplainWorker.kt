@@ -13,8 +13,8 @@ import java.util.Locale
 
 /**
  * Llama on this phone (update 44), for an alert the Pi could not explain because it could not be
- * reached. It gets the same evidence-only prompt as on the Pi (the scam type, the warning signs and
- * who the message claims to be: never the message text), its answer passes the Pi's checks, and
+ * reached. It gets the same evidence-only prompt as on the Pi (the scam type, the warning signs, who
+ * the message claims to be and what it says in fixed words: never the message text), its answer passes the Pi's checks, and
  * the alert's text is replaced while it is still on screen, as ExplainWorker does with the Pi's.
  * One alert at a time: the jobs queue one after another.
  */
@@ -30,7 +30,8 @@ class PhoneExplainWorker(context: Context, params: WorkerParameters) : Worker(co
         val language = d.getString(KEY_LANGUAGE) ?: "en"
         val guard = PhoneGuard.get(c) ?: return Result.success()
         val prompt = guard.llama.prompt(verdict, d.getString(KEY_CATEGORY) ?: "", strings(d.getString(KEY_REASONS)),
-            d.getString(KEY_CLAIMS)?.ifEmpty { null }, d.getString(KEY_KIND)?.ifEmpty { null }, language)
+            d.getString(KEY_CLAIMS)?.ifEmpty { null }, d.getString(KEY_KIND)?.ifEmpty { null }, language,
+            strings(d.getString(KEY_SAYS)))
             ?: return Result.success()
         History.set(c, historyId, "llama", "writing")
         val answer = PhoneLlama.answer(c, prompt)
@@ -70,6 +71,7 @@ class PhoneExplainWorker(context: Context, params: WorkerParameters) : Worker(co
         private const val KEY_STEPS = "steps"
         private const val KEY_LINE = "line"
         private const val KEY_HISTORY = "history"
+        private const val KEY_SAYS = "says"
 
         /**
          * Asks Llama on this phone to explain the alert with this id (0: none on screen) and its History
@@ -85,7 +87,7 @@ class PhoneExplainWorker(context: Context, params: WorkerParameters) : Worker(co
                 KEY_CATEGORY to r.category, KEY_REASONS to JSONArray(r.reasons.take(8)).toString(),   // the prompt uses 4
                 KEY_CLAIMS to (r.claimsToBe ?: ""), KEY_KIND to (r.claimsKind ?: ""), KEY_LANGUAGE to language,
                 KEY_WHAT to r.what, KEY_WHY to r.why, KEY_STEPS to JSONArray(r.steps).toString(), KEY_LINE to line,
-                KEY_HISTORY to historyId,
+                KEY_HISTORY to historyId, KEY_SAYS to JSONArray(r.says).toString(),
             )
             val request = OneTimeWorkRequestBuilder<PhoneExplainWorker>().setInputData(data).build()
             WorkManager.getInstance(context).enqueueUniqueWork(QUEUE, ExistingWorkPolicy.APPEND_OR_REPLACE, request)

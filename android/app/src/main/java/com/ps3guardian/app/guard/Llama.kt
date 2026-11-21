@@ -7,8 +7,8 @@ class LlamaPrompt(val text: String, val evidence: String, val maxNewTokens: Int,
 class LlamaChecked(val what: String, val why: String, val flags: List<String>, val ok: Boolean)
 
 /**
- * The Pi's Llama prompt for messages (advisor/prompt.py, v4: evidence only, never the message
- * text, and worked examples) and its answer checker (advisor/validator.py: the verdict, the
+ * The Pi's Llama prompt for messages (advisor/prompt.py, v5: evidence only, never the message
+ * text: what it says only in fixed words; and worked examples) and its answer checker (advisor/validator.py: the verdict, the
  * language, links and phone numbers, and every sentence held to its evidence), from llama.json.
  */
 class LlamaText internal constructor(d: Map<String, Any?>, private val books: Map<String, Any?>) {
@@ -53,11 +53,16 @@ class LlamaText internal constructor(d: Map<String, Any?>, private val books: Ma
     private fun header(role: String) = "<|start_header_id|>$role<|end_header_id|>\n\n"
 
     private fun formatCase(result: String, scamType: String, pretends: String, signs: List<String>,
-                           fact: String, wants: String): String {
+                           fact: String, wants: String, says: List<String>): String {
         val lines = mutableListOf("Scam type: ${field(scamType)}")
         if (wants.isNotEmpty()) lines.add("Scammer wants: ${field(wants)}")
         if (fact.isNotEmpty()) lines.add("Fact: ${field(fact, 300)}")
-        lines += listOf("Scanner result: ${field(result)}", "Pretends to be: ${field(pretends)}", "Warning signs:")
+        lines += listOf("Scanner result: ${field(result)}", "Pretends to be: ${field(pretends)}")
+        if (says.isNotEmpty()) {                                     // v5: what this message says, in fixed words
+            lines.add("The message:")
+            lines += says.map { "- ${field(it)}" }
+        }
+        lines.add("Warning signs:")
         val s = signs.take(maxSigns).map { "- ${field(it)}" }
         lines += s.ifEmpty { listOf("- text patterns common in scam messages") }
         return lines.joinToString("\n")
@@ -70,7 +75,8 @@ class LlamaText internal constructor(d: Map<String, Any?>, private val books: Ma
         sb.append(header("system")).append(system.replace("{lang}", langNames[lang]!!)).append("<|eot_id|>")
         for (ex in examples) {
             val case = formatCase(ex["result"] as String, ex["scam_type"] as String, ex["pretends"] as String,
-                ex["signs"].strings(), ex["fact"] as String, ex["wants"] as String)
+                ex["signs"].strings(), ex["fact"] as String, ex["wants"] as String,
+                if (ex["says"] != null) ex["says"].strings() else emptyList())
             sb.append(header("user")).append(case).append("<|eot_id|>").append(header("assistant"))
                 .append(ex["answer"].obj()[lang] as String).append("<|eot_id|>")
         }
@@ -79,11 +85,14 @@ class LlamaText internal constructor(d: Map<String, Any?>, private val books: Ma
 
     /** The prompt for a phone verdict, or null when there is nothing to explain (safe, or promotional). */
     fun prompt(r: GuardResult, language: String): LlamaPrompt? =
-        prompt(r.verdict, r.category, r.reasons, r.claimsToBe, r.claimsKind, language)
+        prompt(r.verdict, r.category, r.reasons, r.claimsToBe, r.claimsKind, language, r.says)
 
-    /** advisor.needs_llm and prompt.build_prompt for a message: verdict, scam type, warning signs, and who it claims to be. */
+    /**
+     * advisor.needs_llm and prompt.build_prompt for a message: verdict, scam type, warning signs, who it
+     * claims to be, and what it says in fixed words (prompt v5).
+     */
     fun prompt(verdict: String, category: String, reasons: List<String>, claimsToBe: String?, claimsKind: String?,
-               language: String): LlamaPrompt? {
+               language: String, says: List<String> = emptyList()): LlamaPrompt? {
         if (verdict == "safe") return null
         val book = (books[category] ?: books["generic_suspicious"]).obj()
         if ((book["severity"] as String) in skip) return null
@@ -92,7 +101,7 @@ class LlamaText internal constructor(d: Map<String, Any?>, private val books: Ma
             claimsKind?.let { kindLabel[it] }?.let { "$claimsToBe ($it)" } ?: claimsToBe     // findings.describe_org
         } else (book["pretends"] as String).ifEmpty { "someone you might trust" }
         val case = formatCase(result, book["title"] as String, pretends, reasons, book["fact"] as String,
-            book["wants"] as String)
+            book["wants"] as String, says)
         val text = staticPrefix(language) + header("user") + case + "<|eot_id|>" + header("assistant")
         return LlamaPrompt(text, case, maxNew[language] ?: maxNew["en"]!!, language)
     }

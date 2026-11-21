@@ -37,6 +37,9 @@ class SmsRules internal constructor(s: Map<String, Any?>) {
     private val mobileRiskyOdds = s["mobile_risky_odds"].num()
     private val noSuffixOdds = s["no_suffix_odds"].num()
     val senderRules: Set<String> = s["sender_rules"].strings().toSet()
+    private class Say(val rx: Regex, val phrase: String)
+    private val sayRules = s["says"].list().map { e -> e.list().let { Say(PyRe.compile(it[0] as String, it[1] as Boolean), it[2] as String) } }
+    private val maxSays = s["max_says"].num().toInt()
     private val linkOdds = s["link_odds"].obj().mapValues { it.value.num() }
     private val officialLinkOdds = s["official_link_odds"].num()
     private val riskyKinds = s["risky_kinds"].strings().toSet()
@@ -290,4 +293,16 @@ class SmsRules internal constructor(s: Map<String, Any?>) {
     }
 
     fun isAppExt(ext: String) = ext in appExt
+
+    /** detectors/sms/says.message_says: what the (cleaned) message says, in fixed words, for Llama (prompt v5). */
+    fun says(text: String): List<String> {
+        val out = ArrayList<String>()
+        for (r in sayRules) {
+            val m = r.rx.find(text) ?: continue
+            val said = if ("{0}" in r.phrase) r.phrase.replace("{0}", m.groupValues[1]) else r.phrase
+            if (said !in out) out.add(said)
+            if (out.size == maxSays) break
+        }
+        return out
+    }
 }

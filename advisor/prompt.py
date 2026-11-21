@@ -1,4 +1,10 @@
-"""Builds the Llama 3.2 Instruct prompt for the advisor (v4).
+"""Builds the Llama 3.2 Instruct prompt for the advisor (v5).
+
+v5 (update 47): each case also lists what the message itself says, in fixed words found by
+detectors/sms/says.py ("says your electricity will be cut off", "mentions ₹25,000", "asks you to
+pay money"). With only the scam type and the warning signs, v4 explained every message of a type
+the same way, even when the message said something else. The message text is still never sent:
+only those fixed phrases and an amount, and the answer is held to them by the checks.
 
 v4 (after the first Pi benchmark): each case also says what the scammer wants
 (the playbook's `wants:` line), and sentence 2 is asked for as "the checked
@@ -40,7 +46,7 @@ from .findings import describe_org
 INCLUDE_BOS_TOKEN = True
 MAX_UNTRUSTED_CHARS = 300
 MAX_SIGNS = 4
-MAX_NEW_TOKENS = {"en": 64, "hi": 160}      # Hindi needs ~3x more tokens for the same text
+MAX_NEW_TOKENS = {"en": 80, "hi": 192}      # Hindi needs ~3x more tokens; v5's sentence 1 is longer
 MAX_NEW_TOKENS_NET = 72                    # network answers name an action and a fact: a little longer
 LANG_NAMES = {"en": "simple English", "hi": "simple Hindi, written in Devanagari script"}
 
@@ -52,7 +58,7 @@ SYSTEM = (
     "You explain scam alerts to people in India in {lang}. "
     "A security scanner has already checked the message and listed what it found. "
     "Using only those facts, write exactly 2 short sentences. "
-    "Sentence 1: who the message pretends to be from and what the scammer wants. "
+    "Sentence 1: who the message pretends to be from, what it says or asks, and what the scammer wants. "
     "Sentence 2: the checked fact and the first warning sign."
 )
 
@@ -67,53 +73,58 @@ EXAMPLES = [
         "result": RESULT_TEXT["dangerous"],
         "scam_type": "Fake electricity or bill disconnection",
         "pretends": "the electricity company",
+        "says": ["says your electricity will be cut off", "says you must act now",
+                 "asks you to call or message someone"],
         "wants": "to scare you into paying a scammer",
         "signs": ["asks you to call or WhatsApp a mobile number",
                   "rushes you with a deadline or a threat to block or cut off a service"],
         "fact": ("Electricity companies send disconnection notices with the official bill and do "
                  "not ask you to call a personal mobile number or install an app."),
         "answer": {
-            "en": ("This message pretends to be from your electricity company to scare you into "
-                   "paying a scammer. Real electricity companies send notices with the bill and do "
-                   "not ask you to call a personal number."),
-            "hi": ("यह संदेश आपकी बिजली कंपनी के नाम पर भेजा गया है, ताकि आप डरकर ठग को पैसे दे "
-                   "दें। असली बिजली कंपनियाँ नोटिस बिल के साथ भेजती हैं और किसी निजी नंबर पर कॉल "
-                   "करने को नहीं कहतीं।"),
+            "en": ("This message pretends to be from your electricity company and says your power will be "
+                   "cut off soon unless you call a number, to scare you into paying a scammer. Real "
+                   "electricity companies send notices with the bill and do not ask you to call a personal "
+                   "number."),
+            "hi": ("यह संदेश आपकी बिजली कंपनी के नाम पर कहता है कि जल्द ही आपकी बिजली कट जाएगी और एक नंबर "
+                   "पर कॉल करने को कहता है, ताकि आप डरकर ठग को पैसे दे दें। असली बिजली कंपनियाँ नोटिस बिल के "
+                   "साथ भेजती हैं और किसी निजी नंबर पर कॉल करने को नहीं कहतीं।"),
         },
     },
     {
         "result": RESULT_TEXT["dangerous"],
         "scam_type": "Fake parcel or delivery fee",
         "pretends": "India Post (a courier company)",
+        "says": ["talks about a parcel or delivery", "asks you to pay money", "has a link to open"],
         "wants": "to steal your card details through a fake delivery fee",
         "signs": ["uses a short link that hides the real website",
                   "rushes you with a deadline or a threat to block or cut off a service"],
         "fact": ("Courier companies and India Post do not ask for redelivery, address-update or "
                  "customs fees through links in SMS messages."),
         "answer": {
-            "en": ("This message pretends to be from India Post to steal your card details through "
-                   "a fake delivery fee. India Post does not collect fees through SMS links, and "
-                   "this short link hides the real website."),
-            "hi": ("यह संदेश इंडिया पोस्ट के नाम पर नकली डिलीवरी फीस के बहाने आपके कार्ड की "
-                   "जानकारी चुराने के लिए भेजा गया है। इंडिया पोस्ट SMS लिंक से फीस नहीं लेता, और "
-                   "यह छोटा लिंक असली वेबसाइट छिपाता है।"),
+            "en": ("This message pretends to be from India Post and asks you to pay for your parcel through "
+                   "a link, to steal your card details through a fake delivery fee. India Post does not "
+                   "collect fees through SMS links, and this short link hides the real website."),
+            "hi": ("यह संदेश इंडिया पोस्ट के नाम पर आपके पार्सल के लिए लिंक से पैसे भरने को कहता है, ताकि "
+                   "नकली डिलीवरी फीस के बहाने आपके कार्ड की जानकारी चुराई जा सके। इंडिया पोस्ट SMS लिंक से "
+                   "फीस नहीं लेता, और यह छोटा लिंक असली वेबसाइट छिपाता है।"),
         },
     },
     {
         "result": RESULT_TEXT["suspicious"],
         "scam_type": "OTP or password theft",
         "pretends": "Paytm (a payment app)",
+        "says": ["promises a refund or cashback", "mentions ₹500", "talks about an OTP, PIN or password"],
         "wants": "to get your OTP and empty your account",
         "signs": ["talks about your OTP, PIN, CVV or password",
                   "promises a prize, refund or cashback"],
         "fact": ("No bank, company or government office ever asks you to share an OTP; anyone who "
                  "has your OTP can take money from your account or take over your apps."),
         "answer": {
-            "en": ("This message looks like someone pretending to be Paytm to get your OTP and empty "
-                   "your account. Real companies never ask for your OTP, and promised cashback is "
-                   "a common bait."),
-            "hi": ("यह संदेश Paytm के नाम पर आपका OTP पाकर खाता खाली करने की कोशिश जैसा लगता है। "
-                   "असली कंपनियाँ कभी OTP नहीं माँगतीं, और कैशबैक का वादा अक्सर एक चारा होता है।"),
+            "en": ("This message looks like someone pretending to be Paytm, promising ₹500 cashback to get "
+                   "your OTP and empty your account. Real companies never ask for your OTP, and promised "
+                   "cashback is a common bait."),
+            "hi": ("यह संदेश Paytm के नाम पर ₹500 कैशबैक का वादा करके आपका OTP पाकर खाता खाली करने की कोशिश "
+                   "जैसा लगता है। असली कंपनियाँ कभी OTP नहीं माँगतीं, और कैशबैक का वादा अक्सर एक चारा होता है।"),
         },
     },
 ]
@@ -147,7 +158,7 @@ def _header(role):
     return f"<|start_header_id|>{role}<|end_header_id|>\n\n"
 
 
-def format_case(result, scam_type, pretends, signs, fact, wants=""):
+def format_case(result, scam_type, pretends, signs, fact, wants="", says=()):
     # Fixed-per-scam-type lines come first: two alerts of the same type then share
     # these tokens too, and the service does not read them again.
     lines = [f"Scam type: {_field(scam_type)}"]
@@ -156,8 +167,10 @@ def format_case(result, scam_type, pretends, signs, fact, wants=""):
     if fact:
         lines.append(f"Fact: {_field(fact, 300)}")
     lines += [f"Scanner result: {_field(result)}",
-              f"Pretends to be: {_field(pretends)}",
-              "Warning signs:"]
+              f"Pretends to be: {_field(pretends)}"]
+    if says:                                   # v5: what this message says, in fixed words
+        lines += ["The message:"] + [f"- {_field(x)}" for x in says]
+    lines.append("Warning signs:")
     lines += [f"- {_field(s)}" for s in signs[:MAX_SIGNS]] or ["- text patterns common in scam messages"]
     return "\n".join(lines)
 
@@ -176,7 +189,8 @@ def build_user_turn(finding, playbook):
                        pretends=pretends_to_be(finding, playbook),
                        signs=finding.reasons,
                        fact=playbook.fact,
-                       wants=playbook.wants)
+                       wants=playbook.wants,
+                       says=finding.entities.get("says") or ())
 
 
 def case_text(finding, playbook):
@@ -191,7 +205,8 @@ def static_prefix(language="en", n_examples=len(EXAMPLES)):
     bos = "<|begin_of_text|>" if INCLUDE_BOS_TOKEN else ""
     parts = [bos, _header("system"), SYSTEM.format(lang=LANG_NAMES[lang]), "<|eot_id|>"]
     for ex in EXAMPLES[:n_examples]:
-        case = format_case(ex["result"], ex["scam_type"], ex["pretends"], ex["signs"], ex["fact"], ex["wants"])
+        case = format_case(ex["result"], ex["scam_type"], ex["pretends"], ex["signs"], ex["fact"], ex["wants"],
+                           ex.get("says", ()))
         parts += [_header("user"), case, "<|eot_id|>", _header("assistant"), ex["answer"][lang], "<|eot_id|>"]
     return "".join(parts)
 
