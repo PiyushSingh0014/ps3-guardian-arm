@@ -273,6 +273,7 @@ Away from the Pi, the phone's alerts can get Llama's two-sentence explanation to
 | "not enough free space on the phone" | Llama needs about 1.2 GB free: delete some photos or videos, then try again. |
 | "Llama on this phone could not answer: …" | Send that line. The alert keeps the playbook's advice meanwhile. |
 | "Llama on this phone (N s): answer not used, …" | Normal now and then: Llama's answer failed the Pi's checks, so the playbook's advice stays, as on the Pi. |
+| A message came with the Wi-Fi off, but no Llama explanation | Only flagged messages are explained. If the list says "SAFE (…) on this phone", there was no alert and nothing to explain, as on the Pi. To test, send a scam-like text from another phone; for WhatsApp, a new text each time (the app skips a chat text it has checked in the last 2 days). |
 | Build error "Could not resolve org.pytorch:executorch-android:1.5.1" | The Android Studio computer needs the internet for the first build after update 44 (Maven Central). |
 | Build error "2 files found with path 'lib/arm64-v8a/…'" | Send the first error line: that library's name goes into `pickFirsts` in `app/build.gradle.kts`, next to `libc++_shared.so`. |
 | No alert, but the list shows the message | It was judged safe (no alert for safe messages), or notifications are off for the app |
