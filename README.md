@@ -34,8 +34,8 @@ It has two parts. **Phone Guard**, on the Android phone, checks the owner's SMS,
 | **Hardware** | Raspberry Pi 4 Model B, 4 GB (4× Arm Cortex-A72, 64-bit Linux), CPU only, no accelerator; a Samsung Galaxy S25 and teammates' Android phones; an ESP32 on an IoT Pro Kit as a lab IoT device |
 | **Llama** | Llama 3.2 1B Instruct, Meta's SpinQuant INT4 checkpoint, exported with ExecuTorch (XNNPACK, 4-bit weights, 8-bit activations), ≈1.0 GB `.pte`, run by our own C++ engine on the Pi's Arm CPU; the same file runs on the phone with ExecuTorch for Android when the Pi cannot be reached |
 | **What it checks** | SMS with their real sender IDs; WhatsApp and RCS chats from unknown numbers; links; PDF, Office, APK, zip and web files; the traffic of every device on the Pi's Wi-Fi |
-| **What the user gets** | A verdict at once, from the phone itself, with the reasons and the steps to take (1930, cybercrime.gov.in); Llama's two-sentence explanation, from the Pi at home (20–30 s later) or from the phone away from it; scam websites blocked on the Pi's Wi-Fi |
-| **Speed** | On the phone: a message in 2–11 ms on the Galaxy S25 (0.7 ms on a laptop-class CPU). On the Pi 4: SMS verdict ≈30 ms; link ≈1 ms; file ≈20 ms; network alert within about 30 s to 10 min, by kind; a new Llama explanation 18–31 s, a repeated one instant |
+| **What the user gets** | A verdict at once, from the phone itself, with the reasons and the steps to take (1930, cybercrime.gov.in); Llama's two-sentence explanation, from the Pi at home (20–30 s later) or from the phone away from it (about 4 s on the S25); scam websites blocked on the Pi's Wi-Fi |
+| **Speed** | On the phone: a message in 2–11 ms on the Galaxy S25 (0.7 ms on a laptop-class CPU), and Llama's explanation in 3.6 s (5.2 s when the model loads first). On the Pi 4: SMS verdict ≈30 ms; link ≈1 ms; file ≈20 ms; network alert within about 30 s to 10 min, by kind; a new Llama explanation 18–31 s, a repeated one instant |
 | **Measured** | **SMS:** F1 0.950 on held-out public messages; on 227 real Indian messages 96 of 100 scams caught, but 59–64% of normal messages flagged with the text and the senders we had (4% with ideal registered sender IDs is a projection, not a measurement); on the team's real traffic, 13% of SMS from registered sender IDs flagged, mostly marketing. **Links:** 81% of brand-new phishing sites caught with no lists; 1.1% of popular websites called dangerous. **Network:** all 10 network-level attacks in CIC-IDS2017 detected; on IoT-23's real IoT malware, 2 of 5 infected devices flagged, with no false alarm in 28.8 h of three real smart-home devices. **Files:** 21 of 21 test files right, no false alarm on 521 ordinary PDFs. **Phone Guard:** the same verdict as the Pi on all 16,272 test messages, and the same Llama prompt on all 8,833 of them that Llama explains. **Llama:** of the sentences users see, 72% supported by the evidence and 12% wrong (one grader) |
 | **Security** | HTTPS to the Pi with a certificate each phone pins when pairing; a 128-bit pairing token on every request; message texts kept only for phones whose owner switched the study on |
 | **Cloud use** | None. The phone decides on its own and talks to the Pi over the home Wi-Fi; the internet is needed only for the devices' own browsing and for refreshing the phishing list |
@@ -184,7 +184,7 @@ flowchart LR
 
 ### 5.1 Android companion app
 
-A complete Android Studio project in Kotlin (`android/`, package `com.ps3guardian.app`, version 2.2), minimum Android 8.0 (API 26), target API 36, WorkManager 2.12.0. Installed from Android Studio over USB, because Play Protect in India blocks apps with SMS permissions installed from a file.
+A complete Android Studio project in Kotlin (`android/`, package `com.ps3guardian.app`, version 2.3), minimum Android 8.0 (API 26), target API 36, WorkManager 2.12.0. Installed from Android Studio over USB, because Play Protect in India blocks apps with SMS permissions installed from a file.
 
 | Part | What it does |
 | --- | --- |
@@ -332,8 +332,9 @@ Nothing is attacked: the names do not exist, and the beacon fetches IANA's examp
 | 14–15 November | After the review: a pairing token on every request and study phones; sender rules measured on the Pi; Llama's sentences held to their evidence and 100 answers graded by hand; HTTPS with a pinned certificate, the phone's study switch and a proper package name; DNS blocking on the hotspot; the IoT-23 replay |
 | 16 November | DNS blocking set up and tested on the Pi; IoT-23's real IoT malware replayed on the Pi |
 | 21 November | Phone Guard: the message and link checks on the phone itself, checked to decide as the Pi does, and running on the Galaxy S25; Llama on the phone for alerts away from the Pi |
+| 22 November | Llama on the S25 tested with the Pi out of reach: an explanation in 3.6 s, five to eight times faster than on the Pi 4 |
 
-The work reached the Pi in 44 numbered updates. Each update was a tested git bundle, pulled on the Pi and pushed to GitHub. Every update ran the full test suite first, and every result in this document comes from a script in the repository. Per-part status: [docs/status.md](docs/status.md).
+The work reached the Pi in 45 numbered updates. Each update was a tested git bundle, pulled on the Pi and pushed to GitHub. Every update ran the full test suite first, and every result in this document comes from a script in the repository. Per-part status: [docs/status.md](docs/status.md).
 
 ### Problems we solved along the way
 
@@ -452,7 +453,7 @@ The phone's Kotlin code against the Pi's Python code, on a computer, both withou
 | Hard cases (hidden and disguised links, Hindi, emoji, HTML entities) | 176 | 176 | 168 (one garbled-text message the phone does not repair) |
 | Links: phishing, popular and held-out test domains | 8,000 | 8,000 | 8,000 |
 
-Llama on the phone gets the Pi's prompt: the same whole prompt, in English and in Hindi, for all 8,833 of these messages that Llama explains, and the same organisation it claims to be for all 16,272. Its answers pass the Pi's answer checker: the phone's copy decided as the Pi's on 9,850 answers (Llama's 100 graded answers from the Pi, the worked examples, and variants built to trip every rule). Llama's speed on the phone is still to be measured on the S25.
+Llama on the phone gets the Pi's prompt: the same whole prompt, in English and in Hindi, for all 8,833 of these messages that Llama explains, and the same organisation it claims to be for all 16,272. Its answers pass the Pi's answer checker: the phone's copy decided as the Pi's on 9,850 answers (Llama's 100 graded answers from the Pi, the worked examples, and variants built to trip every rule). On the Galaxy S25, Llama explained the test scam in 3.6 s (5.2 s when the model had to load first, in 1.3 s): it read the 678-token prompt in 2.0–2.6 s and wrote 54 tokens in 1.2–1.5 s. The Pi 4 needs 18–31 s for a new explanation.
 
 ### Files ([eval/results_files.md](eval/results_files.md))
 
@@ -488,7 +489,7 @@ Llama on the phone gets the Pi's prompt: the same whole prompt, in English and i
 
 ## 9. Limitations
 
-- **Away from home the phone is on its own:** its verdicts, steps and (once copied from the Pi) Llama's explanation are the Pi's, but without the 392,000-site phishing list and the file checker, which stay on the Pi. Messages wait on the phone (up to 500) for those. Llama on the phone is not timed yet, and its words can differ a little from the Pi's (other arithmetic kernels); the same checks hold either to the evidence.
+- **Away from home the phone is on its own:** its verdicts, steps and (once copied from the Pi) Llama's explanation are the Pi's, but without the 392,000-site phishing list and the file checker, which stay on the Pi. Messages wait on the phone (up to 500) for those. Llama's words on the phone can differ a little from the Pi's (other arithmetic kernels); the same checks hold either to the evidence.
 - **The SMS text model learned from public data.** With text alone it flags many normal Indian messages. The real sender ID fixes much of that, but on the team's phones 13% of SMS from registered sender IDs are still flagged, and the exact false-alarm rate waits for the flagged messages to be labelled.
 - **A scam from a registered sender ID is the open door.** The sender rules close part of it; v1 still let through 3 of the 4 such scams on the team's phones. TRAI's full header list, with each header's owner, is the next step.
 - **Llama is slow on a Pi 4** (18–31 s per new explanation), and about one sentence in eight that users see was judged wrong by our one grader. The verdict and the steps never wait for Llama or depend on it.
@@ -507,7 +508,6 @@ Llama on the phone gets the Pi's prompt: the same whole prompt, in English and i
 **Phase 1 (submission 23 November 2026)**
 
 - Technical report and demo video, including a test with the internet unplugged.
-- Llama on the phone tested and timed on the Galaxy S25.
 - More of the team's messages labelled, for the exact false-alarm rate.
 
 **Phase 2 (PoC, until 5 February 2027)**

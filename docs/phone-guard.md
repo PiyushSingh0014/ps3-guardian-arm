@@ -65,7 +65,16 @@ Checked on a computer: the phone's Kotlin code (run on the JVM by `android/guard
 
 **What can differ:** Llama's words. The phone's CPU does its arithmetic with other kernels than the Pi 4's, and at a near-tie greedy decoding can then pick another word, as seen between Arm and x86 builds ([step3-fast-advisor.md](step3-fast-advisor.md)); the checks hold either answer to the same evidence. The phone also counts pieces of text where the Pi counts tokens: a Devanagari letter can be a few tokens in one piece, so a Hindi answer can run a little longer before it is cut.
 
-**Speed on the phone:** to be measured on the Galaxy S25. The app writes each explanation's numbers in its list: "Llama on this phone explained it in T s, L s of it loading the model; read P tokens in A s, wrote G in B s" (the last part comes from ExecuTorch's runner; the model is loaded only for the first alert in 3 minutes).
+**Speed on the Galaxy S25** (22 November, the test scam with the phone's Wi-Fi off; the numbers are the app's list lines, the token counts and times from ExecuTorch's runner):
+
+| | Whole explanation | Loading the model | Reading the prompt (678 tokens) | Writing (54 tokens) |
+| --- | --- | --- | --- | --- |
+| First alert (model loaded for it) | 5.2 s | 1.3 s | 2.6 s (about 260 tokens/s) | 1.2 s |
+| Next alert (model still loaded) | 3.6 s | — | 2.0 s (about 340 tokens/s) | 1.5 s (about 36 tokens/s) |
+
+The Pi 4 takes 18–31 s for a new explanation, although it reuses the fixed start of the prompt; the phone reads the whole prompt each time and is still five to eight times faster. Llama's explanation of that test on the phone, as shown in the alert: "This message pretends to be from SBI to steal your net-banking login, card details or OTP through a fake KYC page. Genuine banks do not send links from 10-digit mobile numbers, and this link is not on an official .bank.in website."
+
+As on the Pi, only flagged messages are explained: a message the phone judges safe gets no alert, so there is nothing for Llama to explain.
 
 ## Install and test (updates 43 and 44)
 
@@ -79,7 +88,7 @@ Checked on a computer: the phone's Kotlin code (run on the JVM by `android/guard
 ## Limits
 
 - **Llama on the phone needs one copy from the Pi** (about 1 GB, on the Pi's Wi-Fi). Uninstalling the app deletes it; updating the app keeps it. Network alerts are explained only on the Pi: they are about the home network.
-- **Llama's speed on the phone is not measured yet,** and its words can differ a little from the Pi's (see above).
+- **Llama's words on the phone can differ a little from the Pi's** (see above). Its speed was measured on one phone, the S25, with the test scam.
 - **The phone runs the Pi's model, Llama 3.2 1B,** although the S25 has room for Llama 3.2 3B (about 3.7 GB while running, too much for the Pi 4). Phase 2: 3B on the phone, if its graded answers on the same 100 cases are better at an acceptable speed. It stays on the phone's Arm CPU, through ExecuTorch.
 - **No phishing list on the phone:** a reported phishing site that the rules and the link model miss is caught only by the Pi, when the phone is home. Phase 2: copy the list to the phone when it is home.
 - **Files** shared to the app are checked only by the Pi.

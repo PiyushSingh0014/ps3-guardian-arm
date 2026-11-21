@@ -24,6 +24,7 @@ class PhoneExplainWorker(context: Context, params: WorkerParameters) : Worker(co
         val c = applicationContext
         val d = inputData
         val id = d.getInt(KEY_NOTIFICATION, 0)
+        if (!firstTime(id, d.getString(KEY_LINE) ?: "")) return Result.success()     // explained already
         val verdict = d.getString(KEY_VERDICT) ?: return Result.success()
         val language = d.getString(KEY_LANGUAGE) ?: "en"
         val guard = PhoneGuard.get(c) ?: return Result.success()
@@ -87,6 +88,17 @@ class PhoneExplainWorker(context: Context, params: WorkerParameters) : Worker(co
         }
 
         private const val QUEUE = "phone-llama"
+
+        // The alerts explained since the app started. WorkManager can run a job a second time (one
+        // test on the S25 was explained twice); the second run then costs nothing and adds no line.
+        private val explained = LinkedHashSet<String>()
+
+        @Synchronized
+        private fun firstTime(id: Int, line: String): Boolean {
+            if (!explained.add("$id $line")) return false
+            if (explained.size > 200) explained.remove(explained.first())
+            return true
+        }
 
         private fun strings(json: String?): List<String> {
             val a = JSONArray(json ?: "[]")
