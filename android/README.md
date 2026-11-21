@@ -4,7 +4,7 @@ A small Android app that reads every incoming SMS **with its sender ID** (for ex
 
 From version 3.0 (update 46) the app is called **Sajag**: Home, Alerts, Network and Settings, a screen for every alert, and a set-up in three steps ([docs/android-companion.md](../docs/android-companion.md), Part M). It also checks every message on the phone itself (Phone Guard) and explains alerts with Llama on the phone when the Pi cannot be reached ([docs/phone-guard.md](../docs/phone-guard.md)).
 
-This folder is a complete Android Studio project (Kotlin, package `com.ps3guardian.app` (version 3.0, update 46), minimum Android 8.0 / API 26, target API 36, AGP 9.4, Gradle 9.6, WorkManager 2.12). Open this `android` folder in Android Studio (File → Open), connect the phone by USB and press Run ▶. Step-by-step instructions, including the phone settings: [`docs/android-companion.md`](../docs/android-companion.md).
+This folder is a complete Android Studio project (Kotlin, package `com.ps3guardian.app` (version 3.2, update 48; 3.0 came with update 46), minimum Android 8.0 / API 26, target API 36, AGP 9.4, Gradle 9.6, WorkManager 2.12). Open this `android` folder in Android Studio (File → Open), connect the phone by USB and press Run ▶. Step-by-step instructions, including the phone settings: [`docs/android-companion.md`](../docs/android-companion.md).
 
 | File (under `app/src/main/`) | What it does |
 | --- | --- |

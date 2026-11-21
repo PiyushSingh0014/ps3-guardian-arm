@@ -184,7 +184,7 @@ flowchart LR
 
 ### 5.1 Android companion app
 
-A complete Android Studio project in Kotlin (`android/`, package `com.ps3guardian.app`, version 3.0), minimum Android 8.0 (API 26), target API 36, WorkManager 2.12.0. Since version 3.0 the app is called **Sajag** (सजग, Hindi for "alert"), and it calls the Pi the **Home Hub**. Installed from Android Studio over USB, because Play Protect in India blocks apps with SMS permissions installed from a file.
+A complete Android Studio project in Kotlin (`android/`, package `com.ps3guardian.app`, version 3.2), minimum Android 8.0 (API 26), target API 36, WorkManager 2.12.0. Since version 3.0 the app is called **Sajag** (सजग, Hindi for "alert"), and it calls the Pi the **Home Hub**. Installed from Android Studio over USB, because Play Protect in India blocks apps with SMS permissions installed from a file.
 
 | Part | What it does |
 | --- | --- |
@@ -335,7 +335,7 @@ Nothing is attacked: the names do not exist, and the beacon fetches IANA's examp
 | 21 November | Phone Guard: the message and link checks on the phone itself, checked to decide as the Pi does, and running on the Galaxy S25; Llama on the phone for alerts away from the Pi |
 | 22 November | Llama on the S25 tested with the Pi out of reach: an explanation in 3.6 s, five to eight times faster than on the Pi 4. The phone app becomes **Sajag**: four pages, a screen per alert, a set-up in three steps. Prompt v5: Llama is told what each message says, in fixed words; each notification names its message |
 
-The work reached the Pi in 47 numbered updates. Each update was a tested git bundle, pulled on the Pi and pushed to GitHub. Every update ran the full test suite first, and every result in this document comes from a script in the repository. Per-part status: [docs/status.md](docs/status.md).
+The work reached the Pi in 48 numbered updates. Each update was a tested git bundle, pulled on the Pi and pushed to GitHub. Every update ran the full test suite first, and every result in this document comes from a script in the repository. Per-part status: [docs/status.md](docs/status.md).
 
 ### Problems we solved along the way
 

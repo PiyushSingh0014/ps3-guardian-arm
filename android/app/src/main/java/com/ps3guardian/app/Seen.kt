@@ -9,12 +9,20 @@ import java.security.MessageDigest
  * Remembers recent SMS and checked chat messages (as short hashes, not their text), so that
  * one message is not checked twice: an SMS also appears as a Messages notification, and chat
  * apps post the same notification again when it is updated.
+ *
+ * A chat message is known by its app, sender, text and the time its app gives it (app 3.2): the
+ * same notification posted again is skipped, but the same words sent again later are a new
+ * message and are checked again. Before, the same words from the same sender were skipped for 2
+ * days, so a scam sent twice gave no second alert. Without a time, the same words are skipped for
+ * 10 minutes only.
  */
 object Seen {
     private const val SMS_KEY = "seen_sms"
     private const val CHAT_KEY = "seen_chat"
     private const val SMS_WINDOW_MS = 10 * 60 * 1000L
     private const val CHAT_WINDOW_MS = 2 * 24 * 3600 * 1000L
+    private const val CHAT_TEXT_KEY = "seen_chat_text"         // chat messages that came without a time
+    private const val CHAT_TEXT_WINDOW_MS = 10 * 60 * 1000L
     private const val MAX = 300
 
     private fun hash(s: String): String {
@@ -59,7 +67,8 @@ object Seen {
 
     fun isRecentSms(c: Context, text: String) = contains(c, SMS_KEY, hash(norm(text)), SMS_WINDOW_MS)
 
-    /** True the first time this chat message is seen (and remembers it). */
-    fun firstTimeChat(c: Context, app: String, sender: String, text: String) =
-        !remember(c, CHAT_KEY, hash("$app|$sender|${norm(text)}"), CHAT_WINDOW_MS)
+    /** True the first time this chat message is seen (and remembers it). time: from its app, or 0. */
+    fun firstTimeChat(c: Context, app: String, sender: String, text: String, time: Long = 0L) =
+        if (time > 0L) !remember(c, CHAT_KEY, hash("$app|$sender|${norm(text)}|$time"), CHAT_WINDOW_MS)
+        else !remember(c, CHAT_TEXT_KEY, hash("$app|$sender|${norm(text)}"), CHAT_TEXT_WINDOW_MS)
 }
