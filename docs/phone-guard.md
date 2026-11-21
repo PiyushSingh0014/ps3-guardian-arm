@@ -65,7 +65,7 @@ Checked on a computer: the phone's Kotlin code (run on the JVM by `android/guard
 
 **What can differ:** Llama's words. The phone's CPU does its arithmetic with other kernels than the Pi 4's, and at a near-tie greedy decoding can then pick another word, as seen between Arm and x86 builds ([step3-fast-advisor.md](step3-fast-advisor.md)); the checks hold either answer to the same evidence. The phone also counts pieces of text where the Pi counts tokens: a Devanagari letter can be a few tokens in one piece, so a Hindi answer can run a little longer before it is cut.
 
-**Speed on the phone:** to be measured on the Galaxy S25; the app writes each explanation's time in its list ("Llama on this phone explained it in N s").
+**Speed on the phone:** to be measured on the Galaxy S25. The app writes each explanation's numbers in its list: "Llama on this phone explained it in T s, L s of it loading the model; read P tokens in A s, wrote G in B s" (the last part comes from ExecuTorch's runner; the model is loaded only for the first alert in 3 minutes).
 
 ## Install and test (updates 43 and 44)
 
@@ -73,7 +73,7 @@ Checked on a computer: the phone's Kotlin code (run on the JVM by `android/guard
 2. Copy the new `android` folder to the Android Studio computer (as in [android-companion.md](android-companion.md), Part B) and press **Run ▶** with the phone connected. It updates the app in place (version 2.2): settings, pairing and the list stay. The first build downloads ExecuTorch's library (about 8 MB).
 3. Open the app: under the title it says **Phone Guard is on**.
 4. **Copy Llama** (once, on the Pi's Wi-Fi, paired): tap **Get Llama from the Pi (about 1 GB)**, then **Copy**. Keep the screen open; it takes a few minutes and ends "Llama 3.2 1B is now on this phone (… MB), checked against the Pi's." If it stops, tap the button again: it goes on from where it stopped.
-5. **Test without the Pi:** switch the phone's Wi-Fi off (mobile data may stay on). Tap **Send a test scam**: the alert comes at once, ending "(Checked on this phone.)", and the list shows "DANGEROUS (…) on this phone, N ms" and "the Pi did not answer". A few seconds later the alert's text becomes Llama's, ending "(Explained by Llama 3.2 on this phone, in N s.)", and the list shows "Llama on this phone explained it in N s". A real SMS from another phone gives the same.
+5. **Test without the Pi:** switch the phone's Wi-Fi off (mobile data may stay on). Tap **Send a test scam**: the alert comes at once, ending "(Checked on this phone.)", and the list shows "DANGEROUS (…) on this phone, N ms" and "the Pi did not answer". A few seconds later the alert's text becomes Llama's, ending "(Explained by Llama 3.2 on this phone, in N s.)", and the list shows "Llama on this phone explained it in N s, …" with the model's load time and the tokens read and written. A real SMS from another phone gives the same.
 6. **Back home:** switch Wi-Fi on. Messages kept while away go to the Pi (for its phishing list, its Llama and the study's counts). An alert still on screen gets the Pi's text; one already dismissed is not shown again.
 
 ## Limits

@@ -252,7 +252,7 @@ Away from the Pi, the phone's alerts can get Llama's two-sentence explanation to
 1. **The Pi:** apply update 44 and restart (`sudo systemctl restart ps3-guardian`). It gives its model files only to paired phones, over HTTPS with the token.
 2. **The app:** copy the whole new `android` folder (Part B) and press **Run ▶** (version 2.2). The first build downloads ExecuTorch's library from Maven Central, so the Android Studio computer needs the internet once.
 3. **Copy Llama:** with the phone on `PS3-Guardian-Lab` and paired (Part J), tap **Get Llama from the Pi (about 1 GB)**, then **Copy**. Keep the screen open (it stays on by itself while copying) for a few minutes. It ends with "Llama 3.2 1B is now on this phone (… MB), checked against the Pi's." Each file is checked against the Pi's SHA-256 before it is used.
-4. **Test:** Wi-Fi off, tap **Send a test scam**. The alert comes at once; a few seconds later its text becomes Llama's, ending "(Explained by Llama 3.2 on this phone, in N s.)". The list shows "Llama on this phone explained it in N s": note that time for the report.
+4. **Test:** Wi-Fi off, tap **Send a test scam**. The alert comes at once; a few seconds later its text becomes Llama's, ending "(Explained by Llama 3.2 on this phone, in N s.)". The list shows "Llama on this phone explained it in N s, …" with the time to load the model and how many tokens Llama read and wrote, and how fast: note that line for the report. Send a second test scam: the model is still loaded, so that line shows Llama's speed alone.
 
 ## If something goes wrong
 

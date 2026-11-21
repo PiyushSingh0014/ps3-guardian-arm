@@ -60,8 +60,28 @@ object PhoneLlama {
 
     // --- running Llama -----------------------------------------------------------------------
 
-    /** Llama's raw answer, how long it took, and how many pieces of text it wrote. */
-    class Answer(val text: String, val seconds: Double, val pieces: Int)
+    /**
+     * Llama's raw answer, how long it took (with loading the model, if it was loaded for it), how many
+     * pieces of text it wrote, and the runner's own numbers (JSON: tokens read and written, times).
+     */
+    class Answer(val text: String, val seconds: Double, val pieces: Int, val loadSeconds: Double, val stats: String?)
+
+    /** "9.3 s, 2.8 s of it loading the model; read 712 tokens in 3.1 s, wrote 61 in 3.2 s", for the list. */
+    fun describe(a: Answer): String {
+        val sb = StringBuilder("%.1f s".format(Locale.US, a.seconds))
+        if (a.loadSeconds > 0) sb.append(", %.1f s of it loading the model".format(Locale.US, a.loadSeconds))
+        try {
+            val s = JSONObject(a.stats ?: return sb.toString())
+            val start = s.getLong("inference_start_ms")
+            val read = s.getLong("prompt_eval_end_ms")
+            val end = s.getLong("inference_end_ms")
+            sb.append("; read ${s.getLong("prompt_tokens")} tokens in %.1f s, wrote ${s.getLong("generated_tokens")} in %.1f s"
+                .format(Locale.US, (read - start) / 1000.0, (end - read) / 1000.0))
+        } catch (e: Exception) {
+            // the runner's numbers are a bonus: without them the time above stands
+        }
+        return sb.toString()
+    }
 
     /** Why the last answer could not be had, if it could not. */
     @Volatile
@@ -86,14 +106,17 @@ object PhoneLlama {
             closing?.cancel(false)
             try {
                 val t0 = SystemClock.elapsedRealtime()
+                var loadSeconds = 0.0
                 val m = module ?: LlmModule(File(dir(c), PTE).path, File(dir(c), TOKENIZER).path, 0.0f).also {
                     it.load()                                  // a few seconds: the program and the weights
                     module = it
+                    loadSeconds = (SystemClock.elapsedRealtime() - t0) / 1000.0
                 }
                 m.resetContext()           // each alert on its own: the runner would go on from the last one
                 val out = StringBuilder()
                 var pieces = 0
                 var failed: String? = null
+                var statsOf: String? = null
                 // The runner hands over text piece by piece (a token, or a few for a Devanagari letter);
                 // after maxNewTokens pieces it is stopped, as the Pi stops at maxNewTokens tokens.
                 m.generate(p.text, SEQ_LEN, object : LlmCallback {
@@ -101,6 +124,10 @@ object PhoneLlama {
                         if (pieces < p.maxNewTokens) out.append(result)
                         pieces++
                         if (pieces >= p.maxNewTokens) m.stop()
+                    }
+
+                    override fun onStats(stats: String) {
+                        statsOf = stats
                     }
 
                     override fun onError(errorCode: Int, message: String) {
@@ -112,7 +139,7 @@ object PhoneLlama {
                     return null
                 }
                 error = null
-                return Answer(out.toString(), (SystemClock.elapsedRealtime() - t0) / 1000.0, pieces)
+                return Answer(out.toString(), (SystemClock.elapsedRealtime() - t0) / 1000.0, pieces, loadSeconds, statsOf)
             } catch (e: Throwable) {
                 // The native library or the model can fail in ways Java cannot name (a missing
                 // library, too little memory): the alert keeps the playbook's text.

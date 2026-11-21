@@ -172,7 +172,7 @@ class ShareActivity : Activity() {
         }
         for (step in local.steps) sb.append("\n• ").append(step)
         show(local.headline, sb.toString().trim())
-        ui { llm.text = "Explained by Llama 3.2 on this phone, in $took (the Pi could not be reached)." }
+        ui { llm.text = "Explained by Llama 3.2 on this phone (the Pi could not be reached): ${PhoneLlama.describe(a)}." }
     }
 
     /** The Pi's answer now, then Llama's explanation when it is ready (20-30 s). */

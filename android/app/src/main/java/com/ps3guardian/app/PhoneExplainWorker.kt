@@ -51,7 +51,7 @@ class PhoneExplainWorker(context: Context, params: WorkerParameters) : Worker(co
         if (id != 0 && Notifier.isShowing(c, id)) {
             Notifier.show(c, d.getString(KEY_TITLE) ?: "", sb.toString().trim(), id)
         }
-        Settings.addRecent(c, "$label  Llama on this phone explained it in $took")
+        Settings.addRecent(c, "$label  Llama on this phone explained it in ${PhoneLlama.describe(answer)}")
         return Result.success()
     }
 
