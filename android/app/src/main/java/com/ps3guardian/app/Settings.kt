@@ -96,6 +96,7 @@ object Settings {
         all.put(
             JSONObject().put("id", UUID.randomUUID().toString()).put("channel", m.channel)
                 .put("app", m.app ?: "").put("sender", m.sender).put("text", m.text).put("received", m.received)
+                .put("phone", m.phoneVerdict ?: "").put("notify", m.notifyId)
         )
         val out = JSONArray()
         for (i in maxOf(0, all.length() - MAX_PENDING) until all.length()) out.put(all.getJSONObject(i))
@@ -108,7 +109,8 @@ object Settings {
         if (all.length() == 0) return null
         val o = all.getJSONObject(0)
         val app = o.optString("app").ifBlank { null }
-        val msg = Msg(o.optString("channel", "sms"), app, o.optString("sender"), o.getString("text"), o.optLong("received"))
+        val msg = Msg(o.optString("channel", "sms"), app, o.optString("sender"), o.getString("text"), o.optLong("received"),
+            o.optString("phone").ifBlank { null }, o.optInt("notify"))
         return Pending(o.getString("id"), msg)
     }
 

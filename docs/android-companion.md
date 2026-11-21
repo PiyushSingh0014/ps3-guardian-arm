@@ -237,6 +237,14 @@ If the Pi ever makes a new certificate (only if its two files are removed), ever
 
 **The study switch.** **Share message texts with the team's study** is the phone owner's own say. Off (after installing): the Pi keeps each message's verdict and sender ID, never its text, even for a phone on the study list. On: the Pi keeps texts as before, if `data/sms/study.json` lists the phone too (Part G, step 4). The owner can switch it off at any time; from then on no text from that phone is kept.
 
+## Part K: Phone Guard, verdicts without the Pi (update 43)
+
+The app now checks every SMS and chat on the phone itself, with the Pi's own rules, model and lists, so a verdict needs no network: at home, on mobile data, or with no network at all. The Pi still adds Llama's explanation and its phishing list when the phone is on its Wi-Fi. How it works, what stays on the Pi and how it was checked: [phone-guard.md](phone-guard.md).
+
+1. **Install:** copy the whole new `android` folder (Part B) and press **Run ▶**. It updates the app in place (version 2.1): settings, pairing and the list stay.
+2. Under the title the app says **Phone Guard is on**.
+3. **Test:** switch Wi-Fi off and tap **Send a test scam**. The alert comes at once, ending "(Checked on this phone.)"; the list shows "DANGEROUS (…) on this phone, N ms", then "the Pi did not answer". Switch Wi-Fi back on: messages kept meanwhile go to the Pi.
+
 ## If something goes wrong
 
 | What you see | Fix |
@@ -249,7 +257,8 @@ If the Pi ever makes a new certificate (only if its two files are removed), ever
 | `HTTP 403` with "use https://…" | Something talked plain HTTP to port 8000 from another machine: since update 39 that port takes only the ESP32's readings. Use `https://<Pi>:8443`. |
 | `HTTP 429` | Ten wrong tokens in a minute from this phone: wait a minute, then type the right one |
 | `HTTP 503` | The Pi has no token: `sudo systemctl restart ps3-guardian` |
-| "WAITING for the Pi" | Normal while the phone cannot reach the Pi; the message is sent later by itself. Many of them: check the Pi as for "Cannot reach the Pi". |
+| "WAITING for the Pi" | Normal while the phone cannot reach the Pi: the phone has already judged the message (the line above it), and sends it to the Pi later for Llama's explanation and the phishing list. Many of them: check the Pi as for "Cannot reach the Pi". |
+| "Phone Guard could not start" | The app was built without its `assets/guard` folder: copy the whole `android` folder again (Part B) and **Run ▶**. Until then messages wait for the Pi, as before update 43. |
 | No alert, but the list shows the message | It was judged safe (no alert for safe messages), or notifications are off for the app |
 | Nothing at all when an SMS arrives | SMS permission (Part D, step 3) and battery Unrestricted (step 4). Chats are checked only as set up in Part F. |
 | Network alerts: "Cannot reach the Pi" | The phone must be on `PS3-Guardian-Lab`, with the Pi address `https://10.42.0.1:8443`, paired (Part J). |

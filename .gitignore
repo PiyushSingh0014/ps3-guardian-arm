@@ -34,3 +34,5 @@ logs/
 
 # ESP32 lab device: the Wi-Fi password and the pairing token stay on the laptop
 esp32/**/secrets.h
+# Phone Guard's link model (update 43): the same numbers as detectors/url/url_model.npz, which is in git too
+!android/app/src/main/assets/guard/link_model.bin
