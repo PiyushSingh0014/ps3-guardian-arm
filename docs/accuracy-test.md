@@ -6,9 +6,9 @@ Results: [eval/results_accuracy.md](../eval/results_accuracy.md).
 | Part | Who | Time |
 | --- | --- | --- |
 | A. Labelled message sets (real Indian scam reports, public held-out messages, the India test set) | done in the cloud | – |
-| B. Your phones' real messages: label the flagged ones | on the Pi | about 15 min |
+| B. Your phones' real messages: label the flagged ones | done (22 November) | – |
 | C. Llama's explanations: prompt v5 against v4 on the same cases | moved to Phase 2 (the answers are generated) | – |
-| D. Live test on the Galaxy S25 | you, with a second phone | about 30 min |
+| D. Live test on the Galaxy S25 | done (22 November) | – |
 
 Before B and C, the Pi must run update 47 or later, restarted (prompt v5):
 

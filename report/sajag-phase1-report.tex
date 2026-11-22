@@ -142,7 +142,8 @@ this loop; Phase 2 will grow it.
 
 On 859 real scam campaigns reported from Indian mobile numbers, which were never used to build the system,
 Sajag flags 87.9\% (95\% interval 86--90\%). On public messages its model never trained on, it flags 95.6\%
-of scams and 1.2\% of normal messages. Its network monitor detects all 10 network-level attacks in the CIC-IDS2017 dataset and raised no false
+of scams and 1.2\% of normal messages, and on the team's own real messages it flags 4.3 normal SMS per 100 from
+registered sender IDs. Its network monitor detects all 10 network-level attacks in the CIC-IDS2017 dataset and raised no false
 alarm in 20,960 flows of busy use of the lab Wi-Fi; its file checker gets all 21 test files right with no
 false alarm on 521 ordinary PDFs.
 This report describes the approach, the algorithms, the implementation on Arm, the measurements,
@@ -153,6 +154,8 @@ the honest limits, and the plan for Phase 2.
 \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{4.6cm}X@{}}
 Real Indian scams flagged & 755 of 859 campaigns (87.9\%) never used to build Sajag; 97\% of banking scams\\
 Public messages, held out & 95.6\% of scams flagged, 1.2\% of normal messages flagged\\
+The team's real messages & 4.3 normal SMS per 100 from registered sender IDs flagged; 4.7 per 100 over 3,126 messages\\
+Live test on the phone & 11 of 11 scams flagged, 8 of 9 normal messages safe; 4 of 4 again with the Wi-Fi off\\
 Verdict on the phone & 2--11\,ms per message on the Galaxy S25, with no network\\
 Llama on the phone & an explanation in 3.6\,s (5.2\,s with loading the model), Galaxy S25\\
 Llama on the Pi 4 & 18--31\,s per new explanation; repeated alerts at once\\
@@ -872,7 +875,7 @@ Tests & 379 automated tests (pytest), a Kotlin compile check with warnings as er
 \end{table}
 
 \textbf{How the work was delivered.} The hub is a real device on a real Wi-Fi, so every change reached it as a tested git
-bundle, pulled on the Pi and pushed to GitHub: 50 numbered updates between 19 October and 22 November 2026. Every update
+bundle, pulled on the Pi and pushed to GitHub: 52 numbered updates between 19 October and 22 November 2026. Every update
 ran the full test suite first, and every result in this report comes from a script in the repository.
 
 \textbf{Problems we solved along the way.}
@@ -970,13 +973,68 @@ left out (the reports hide links), 86.3\% are still flagged.}
         fixed phrase for Llama (prompt v5).
 \end{itemize}
 
-\begin{keybox}[unbreakable, title=To be added after the remaining tests (docs/accuracy-test.md)]
-\textbf{B. The team's real messages}, labelled after the fact: the exact false-alarm rate on SMS from registered sender IDs
-(so far: 35 of 273 flagged, of the labelled ones 14 marketing, 2 normal, 1 fraud; between 0.9 and 7.9 false alarms per
-100 messages). \todo{to be updated}\\
-\textbf{C. Llama's explanations with prompt v5}: Llama's answers to the same 87 cases are generated on the Pi; grading them against prompt v4 is moved to Phase 2.\\
-\textbf{D. Live test on the Galaxy S25}: 20 messages from a second phone, then 4 with the Wi-Fi off. \todo{to be updated}
-\end{keybox}
+\subsection{The team's real messages}
+\label{sec:real}
+
+The hub's log holds what the app decided for every message the team's four phones forwarded; nothing is re-scored.
+On 22 November every flagged message was labelled (scam, marketing or normal) except 14: 3,126 messages, 524 labelled.
+Texts of SMS from phone numbers and of chats are kept only when flagged, so their missed scams cannot be counted;
+every SMS from a registered sender ID is kept.
+
+\begin{table}[H]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}X r r >{\raggedright\arraybackslash}p{3.6cm} r@{}}
+\toprule
+\textbf{Sender} & \textbf{Received} & \textbf{Flagged} & \textbf{Flagged: scam / marketing / normal} & \textbf{Normal per 100}\\
+\midrule
+SMS from a registered sender ID & 327 & 44 & 4 / 25 / 14 (1 not labelled) & \textbf{4.3}\\
+SMS from a phone number & 17 & 12 & 3 / 1 / 8 & 47.1\\
+Chat from an unknown number & 58 & 8 & 1 / 2 / 5 & 8.6\\
+Chat from a saved contact (testing switch) & 2,723 & 243 & 50 / 61 / 119 (13 not labelled) & 4.4\\
+All (with 1 SMS from a short code) & 3,126 & 307 & 58 / 89 / 146 (14 not labelled) & \textbf{4.7}\\
+\bottomrule
+\end{tabularx}
+\caption{The team's real messages, as the app decided. Normal per 100: normal messages flagged per 100 received.}
+\label{tab:real}
+\end{table}
+
+\begin{itemize}
+  \item \textbf{False alarms on real messages: 4.3 normal SMS per 100 from registered sender IDs} (at most 4.6 if the
+        one unlabelled flagged SMS is normal), and 4.7 per 100 over all 3,126 messages (at most 5.1).
+  \item \textbf{The sender ID on real SMS}: of the labelled SMS, normal messages flagged fall from 94\% (text alone) to
+        15\% (with the sender), marketing from 87\% to 19\%, while 7 of 8 scams (88\%) stay flagged.
+  \item \textbf{Scams from registered sender IDs}: 4 flagged, 1 missed (a fantasy-league offer): the open door of
+        Section~\ref{sec:limits}.
+  \item \textbf{Most false alarms are group chats} seen through the testing switch (college notices with links, shared
+        PDFs, links to sign-in pages), and personal SMS from phone numbers that carry a link or a number, which are weighed
+        as risky on purpose.
+\end{itemize}
+
+\subsection{Live test on the phone}
+\label{sec:live}
+
+On 22 November a second phone sent 20 test messages (11 scams of different kinds, 9 normal) to the Galaxy S25 running
+Sajag 3.2, as WhatsApp messages from a saved contact, first with the S25 on the hub's Wi-Fi, then 4 of the scams again
+with its Wi-Fi off. The messages were written by us, so this tests that the whole app works, not its accuracy.
+
+\begin{table}[H]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{3.0cm}>{\raggedright\arraybackslash}p{2.6cm}X@{}}
+\toprule
+\textbf{Round} & \textbf{Messages} & \textbf{Result}\\
+\midrule
+1, hub's Wi-Fi & 11 scams & \textbf{11 flagged} (9 dangerous, 2 suspicious); the title names the right kind for 9; the SIM-card and the reward-point scams were titled ``Fake bank KYC message'' (the gap found in Section~\ref{sec:acc})\\
+1, hub's Wi-Fi & 9 normal & \textbf{8 safe}, no alert; 1 suspicious: ``Mom, I paid the electricity bill today, Rs 1,240'', the hard case on the list\\
+2, Wi-Fi off & 4 scams again & \textbf{4 of 4 alerted again}, same verdicts: the phone alone, and a message sent twice gets two alerts\\
+\bottomrule
+\end{tabularx}
+\caption{Live test on the Galaxy S25.}
+\label{tab:live}
+\end{table}
+
+Every notification named the sender, the start of the message and the time it arrived. Two real bank debit SMS that
+reached the S25 during the test were flagged suspicious: real false alarms of the kind Table~\ref{tab:real} counts.
+Llama's explanations with prompt v5 are generated for the 87 graded cases and will be graded in Phase 2.
 
 \subsection{Earlier message results}
 
@@ -1142,7 +1200,7 @@ Prompt v5 (what the message says) & running; parity checked; its answers to be g
 Security and privacy (token, HTTPS pinning, study switch) & running & 36, 39\\
 Learning loop (log, labels, model v2, export, parity) & built and run once; v2 did not pass, v1 kept & 5, 24--25, 33--35, 43\\
 ESP32 lab IoT device & four harmless test modes, all caught live & 14--16\\
-Accuracy test & labelled sets done; real messages and the live test in progress & 49\\
+Accuracy test & labelled sets, the team's real messages and the live test done; Llama v5 grading in Phase 2 & 49, 52\\
 \bottomrule
 \end{tabularx}
 \caption{The state of every part at the Phase 1 submission.}
@@ -1156,8 +1214,8 @@ Accuracy test & labelled sets done; real messages and the live test in progress 
   \item \textbf{Away from home the phone is on its own}: its verdicts, steps and explanations are the hub's, but without
         the 392,000-site phishing list and the file checker, which stay on the hub until the phone is back.
   \item \textbf{The text model learned from public data.} With text alone it flags many normal Indian messages; the real
-        sender ID fixes much of that, but 13\% of SMS from registered headers on the team's phones are still flagged,
-        mostly marketing.
+        sender ID fixes much of that (normal SMS flagged fall from 94\% to 15\% on the team's labelled messages), but 4.3
+        normal SMS per 100 from registered headers are still flagged, and more marketing ones.
   \item \textbf{A scam from a registered header is the open door.} The sender rules close part of it; v1 let through 3 of
         the 4 such scams on the team's phones.
   \item \textbf{Titles}: 16\% of caught scams get the wrong kind in the title (Section~\ref{sec:acc}).
@@ -1341,7 +1399,7 @@ Guides for every part are in \code{docs/}; the state of every part is in \code{d
 21--22 November & Phone Guard and Llama on the phone; the app becomes Sajag; prompt v5; the accuracy test\\
 \bottomrule
 \end{tabularx}
-\caption{Phase 1 in 50 updates.}
+\caption{Phase 1 in 52 updates.}
 \end{table}
 
 \end{document}
