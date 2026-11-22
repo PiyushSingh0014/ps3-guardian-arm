@@ -2,7 +2,7 @@
 
 ## Why
 
-Llama explains each alert in two sentences from a short case: the verdict, the scam type, a checked fact, who the message pretends to be and the warning signs ([advisor/prompt.py](../advisor/prompt.py), `case_text`). Until update 38 the answer checker ([advisor/validator.py](../advisor/validator.py)) caught forbidden forms: a link, a phone number, "this is safe". It could not see an invented fact. "13 of 13 accepted by the checker" meant 13 answers passed some patterns, not 13 true answers (the hard review, gap 2.5). A 1B model at 4 bits does invent details: "Genuine companies never ask for bank account details or cashback" appeared with nothing in the case to support it.
+Llama explains each alert in two sentences from a short case: the verdict, the scam type, a checked fact, who the message pretends to be and the warning signs ([home-hub/advisor/prompt.py](../home-hub/advisor/prompt.py), `case_text`). Until update 38 the answer checker ([home-hub/advisor/validator.py](../home-hub/advisor/validator.py)) caught forbidden forms: a link, a phone number, "this is safe". It could not see an invented fact. "13 of 13 accepted by the checker" meant 13 answers passed some patterns, not 13 true answers (the hard review, gap 2.5). A 1B model at 4 bits does invent details: "Genuine companies never ask for bank account details or cashback" appeared with nothing in the case to support it.
 
 ## Grounding checks (updates 38 and 38b)
 
@@ -16,7 +16,7 @@ A sentence is dropped when it says more than the case Llama was shown:
 | Where the message's link goes, or that .bank.in or .gov.in sites are not real: the case never says where a link goes (38b) | "the link ends in .bank.in, not .com" |
 | A rule about what real companies, banks or people do, when the case's fact states no rule (38b) | "Real trusted sources do not ask you to call a number" for a suspicious message |
 
-If both sentences go, the app shows the playbook's template text, as for any rejected answer. If only sentence 2 goes, the app shows the scanner's red flags in its place ([advisor/advise.py](../advisor/advise.py)). `GUARDIAN_GROUNDING=0` in the app's environment switches the checks off.
+If both sentences go, the app shows the playbook's template text, as for any rejected answer. If only sentence 2 goes, the app shows the scanner's red flags in its place ([home-hub/advisor/advise.py](../home-hub/advisor/advise.py)). `GUARDIAN_GROUNDING=0` in the app's environment switches the checks off.
 
 Every worked example in the prompt must pass the checks against its own case (a test): Llama copies them, and update 38's "never" check dropped the OTP example's own second sentence.
 

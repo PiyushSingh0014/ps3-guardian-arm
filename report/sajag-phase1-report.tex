@@ -2,16 +2,16 @@
 % Arm Bharat AI-SoC Student Challenge 2026-27, Problem Statement 3.
 % Compile with XeLaTeX (twice, for the contents and the figure numbers), from this folder:
 %   xelatex sajag-phase1-report.tex && xelatex sajag-phase1-report.tex
-% The fonts come from the app itself (android/.../res/font): Figtree and Rozha One (SIL OFL).
+% The fonts come from the app itself (phone-app/.../res/font): Figtree and Rozha One (SIL OFL).
 \documentclass[11pt,a4paper]{article}
 
 \usepackage[margin=2.2cm, headheight=14pt]{geometry}
 \usepackage{fontspec}
 \setmainfont{texgyretermes}[Extension=.otf, UprightFont=*-regular, BoldFont=*-bold,
   ItalicFont=*-italic, BoldItalicFont=*-bolditalic]
-\newfontfamily\figtree{figtree}[Path=../android/app/src/main/res/font/, Extension=.ttf, Ligatures=TeX,
+\newfontfamily\figtree{figtree}[Path=../phone-app/app/src/main/res/font/, Extension=.ttf, Ligatures=TeX,
   UprightFont=*_regular, BoldFont=*_bold, FontFace={sb}{n}{*_semibold}, FontFace={eb}{n}{*_extrabold}]
-\newfontfamily\rozha{rozha_one}[Path=../android/app/src/main/res/font/, Extension=.ttf, Script=Devanagari]
+\newfontfamily\rozha{rozha_one}[Path=../phone-app/app/src/main/res/font/, Extension=.ttf, Script=Devanagari]
 \setmonofont{DejaVu Sans Mono}[Scale=0.84]
 \newfontfamily\rupeefont{DejaVu Sans}[Scale=0.92]
 \newcommand{\rupee}{{\rupeefont ₹}}
@@ -514,7 +514,7 @@ Laptop & Opens the hub's page; exports the model, builds the C++ engine (WSL2) a
 \label{sec:sms}
 
 The message checker turns a message and its sender into one score from 0 to 1, in steps that each raise or
-lower it. It runs on the hub (\code{detectors/sms/}, Python) and on the phone (\code{guard/}, Kotlin), with the
+lower it. It runs on the hub (\code{home-hub/detectors/sms/}, Python) and on the phone (\code{guard/}, Kotlin), with the
 same rules, model weights and thresholds.
 
 \textbf{1. Red-flag rules for India} (\code{rules\_india.py}). Regular expressions for the signs Indian scams use:
@@ -551,7 +551,7 @@ checker does not call safe; \emph{brand}: a risky message that names a bank or p
 that belongs to none of the named brands, gets no reduction from its header.
 
 \textbf{6. Verdict, scam type and what the message says.} $s \ge 0.8$ is dangerous, $s \ge 0.5$ suspicious. Ordered
-rules choose the scam type, and with it the playbook (\code{advisor/categorize.py}: APK, digital arrest, delivery
+rules choose the scam type, and with it the playbook (\code{home-hub/advisor/categorize.py}: APK, digital arrest, delivery
 fee, job task, lottery or reward, utility disconnection, OTP theft, bank KYC, phishing link, general). The
 organisation the message claims to be is taken from a fixed list of 157 domains of 33 brands
 (\code{brands.py}), never from the message. Since prompt v5 (update 47), 24 more patterns name, in fixed words,
@@ -598,7 +598,7 @@ labelled messages.
 \subsection{Link checker}
 \label{sec:links}
 
-About a millisecond per link, with no network (\code{detectors/url/}).
+About a millisecond per link, with no network (\code{home-hub/detectors/url/}).
 
 \begin{enumerate}
   \item \textbf{Read the address} with an offline public-suffix list: the registered domain
@@ -627,7 +627,7 @@ Rules handle paths instead.
 \label{sec:files}
 
 About 20\,ms per file on the hub; the file stays in memory and is never stored, opened in a reader or run
-(\code{detectors/files/}).
+(\code{home-hub/detectors/files/}).
 \begin{itemize}
   \item \textbf{What is it really?} The first bytes say what a file is, whatever its name: an app named
         \code{Invitation.pdf}, a double ending (\code{Card.pdf.apk}) or a hidden right-to-left character is a disguise.
@@ -648,7 +648,7 @@ About 20\,ms per file on the hub; the file stays in memory and is never stored, 
 
 The hub is the Wi-Fi hotspot, so every device's traffic passes through it. NFStream turns packets into
 \textbf{flows} (addresses, ports, bytes, packets, duration, server name). The monitor reads who talks to whom, when
-and how much, never the content (\code{detectors/net/}, service \code{ps3-netmon}).
+and how much, never the content (\code{home-hub/detectors/net/}, service \code{ps3-netmon}).
 
 \begin{table}[H]
 \centering\small
@@ -718,7 +718,7 @@ and in the app.
 \label{fig:adv}
 \end{figure}
 
-\textbf{Playbooks} (\code{advisor/playbooks/*.md}): 25 short files, 11 for messages and links, 3 for files, 11 for the
+\textbf{Playbooks} (\code{home-hub/advisor/playbooks/*.md}): 25 short files, 11 for messages and links, 3 for files, 11 for the
 network. Each has a title, a severity, the steps to take (for scams: the 1930 helpline and cybercrime.gov.in), and
 three lines only Llama sees: who the scam pretends to be, what it wants, and one checked fact. \emph{The steps users see
 always come from the playbook, word for word.}
@@ -755,8 +755,8 @@ file runs on the hub and on the phone.
 \label{sec:engine}
 
 ExecuTorch's prebuilt Python wheel stopped on the Pi 4 with ``Illegal instruction''. Disassembling its libraries with our
-own tool (\path{deploy/tools/check_arm_isa.py}) showed 43 Armv8.1 atomic instructions in the custom LLM operators,
-built for Armv8.2; the Cortex-A72 is Armv8.0. We built our own engine (\code{deploy/advisor\_server/}) with the Arm GNU
+own tool (\path{home-hub/llama-engine/tools/check_arm_isa.py}) showed 43 Armv8.1 atomic instructions in the custom LLM operators,
+built for Armv8.2; the Cortex-A72 is Armv8.0. We built our own engine (\code{home-hub/llama-engine/advisor\_server/}) with the Arm GNU
 toolchain 14.3 and \code{-march=armv8-a -mtune=cortex-a72}, per file. It:
 \begin{itemize}
   \item keeps the model loaded (loading takes 13.7\,s);
@@ -797,13 +797,13 @@ $A' \leftarrow$ \textsc{Ground}($A$, $C$, $F$.verdict, $\lambda$) \tcp*{drop uns
 \label{sec:phone}
 
 \textbf{Phone Guard} (update 43) runs the hub's message and link checks on the phone. Rather than writing new rules,
-\code{scripts/export\_phone\_guard.py} exports the hub's own data (the text model's vocabulary and weights, the India
+\code{home-hub/scripts/export\_phone\_guard.py} exports the hub's own data (the text model's vocabulary and weights, the India
 rules' patterns, the brands, the sender odds and rules, the link model, the top sites, the scam types, the playbooks and
 the prompt's examples) to \code{assets/guard/}, and a Kotlin port runs it: Python's regular expressions translated to
 Java's, Python's text cleaning (HTML unescape, encoding fixes) and the public-suffix rules re-implemented, MurmurHash3 as
 scikit-learn uses it, and the logistic regressions summed in the same order. A computer harness runs the phone's Kotlin
 code on 16,272 messages and compares it with the hub's Python code field by field
-(\code{scripts/check\_phone\_guard.py}): same verdict on all 16,272, identical in every detail on 16,264 (the 8 others are
+(\code{home-hub/scripts/check\_phone\_guard.py}): same verdict on all 16,272, identical in every detail on 16,264 (the 8 others are
 mis-encoded texts), and the same Llama prompt on all 8,833 that Llama explains. A message takes 2--11\,ms on the S25.
 
 \textbf{Llama on the phone} (update 44). Llama's weights are not in the app (Meta's licence): a paired phone copies the
@@ -875,7 +875,7 @@ Tests & 379 automated tests (pytest), a Kotlin compile check with warnings as er
 \end{table}
 
 \textbf{How the work was delivered.} The hub is a real device on a real Wi-Fi, so every change reached it as a tested git
-bundle, pulled on the Pi and pushed to GitHub: 52 numbered updates between 19 October and 22 November 2026. Every update
+bundle, pulled on the Pi and pushed to GitHub: 53 numbered updates between 19 October and 22 November 2026. Every update
 ran the full test suite first, and every result in this report comes from a script in the repository.
 
 \textbf{Problems we solved along the way.}
@@ -1201,6 +1201,7 @@ Security and privacy (token, HTTPS pinning, study switch) & running & 36, 39\\
 Learning loop (log, labels, model v2, export, parity) & built and run once; v2 did not pass, v1 kept & 5, 24--25, 33--35, 43\\
 ESP32 lab IoT device & four harmless test modes, all caught live & 14--16\\
 Accuracy test & labelled sets, the team's real messages and the live test done; Llama v5 grading in Phase 2 & 49, 52\\
+Repository organised by part (home hub, phone app, IoT device) & public on GitHub & 50, 53\\
 \bottomrule
 \end{tabularx}
 \caption{The state of every part at the Phase 1 submission.}
@@ -1301,6 +1302,66 @@ Late January 2027 & multilingual encoder on the phone; federated training protot
 \end{table}
 
 % ================================================================= 12
+\section{The repository: where each part lives}
+\label{sec:repo}
+
+The code is public at \repourl. Its folders follow the parts of Sajag described in this report: the Home Hub
+(Section~\ref{sec:arch}), the phone app (Section~\ref{sec:phone}) and the IoT lab device, then the results, the guides
+and this report. A reviewer can start from the README's ``Start here'' table, and every part's folder has its own README.
+
+\begin{keybox}[title=How the repository is organised]
+\small
+\begin{verbatim}
+ps3-guardian-arm/
+├── home-hub/           The Home Hub: everything that runs on the Raspberry Pi 4
+│   ├── app/            the hub's server and web page, HTTPS, DNS blocking
+│   ├── detectors/      the checkers: sms/, url/, files/, net/
+│   ├── advisor/        playbooks, prompts, Llama service, grounding checker
+│   ├── llama-engine/   Llama's export with ExecuTorch, our C++ engine
+│   ├── scripts/        set-up, services, downloads, measuring tools
+│   └── tests/          379 automated tests
+├── phone-app/          Sajag for Android: Phone Guard and Llama on the phone
+├── iot-lab-device/     the ESP32 lab IoT device and its simulation
+├── results/            every measured result, and how to reproduce it
+├── docs/               guides: install, use and test each part
+└── report/             this report (PDF and LaTeX)
+\end{verbatim}
+\end{keybox}
+
+\begin{table}[H]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{4.3cm}>{\raggedright\arraybackslash}p{3.4cm}X@{}}
+\toprule
+\textbf{Folder} & \textbf{What it is for} & \textbf{With it you can}\\
+\midrule
+\code{home-hub/app/} & the hub's entry point: the server the phone and the page talk to & check a message, link or file from the page or the app; see alerts and devices; block and unblock websites; give a paired phone the Llama files\\
+\code{home-hub/detectors/} & the checkers (Section~\ref{sec:algo}) & judge messages and sender IDs (\code{sms/}), links (\code{url/}), files (\code{files/}) and every device's traffic (\code{net/}); train and evaluate their models\\
+\code{home-hub/advisor/} & advice and explanations (Section~\ref{sec:llama}) & turn a finding into the playbook's steps at once and Llama's checked explanation after; grade Llama's sentences\\
+\code{home-hub/llama-engine/} & Llama on the Pi 4 (Section~\ref{sec:engine}) & export Llama 3.2 1B with ExecuTorch and build the C++ engine for the Cortex-A72\\
+\code{home-hub/scripts/} & running and measuring the hub & make the Pi a hotspot, install the services, set up DNS blocking, download the lists, measure real traffic, export the checks to the phone, run the accuracy test\\
+\code{home-hub/tests/} & keeping it correct & run 379 tests on a laptop: \code{python -m pytest}\\
+\code{phone-app/} & protecting each person anywhere (Section~\ref{sec:phone}) & build Sajag in Android Studio and install it on a phone; Phone Guard is in \code{guard/} and its data in \code{assets/guard/}\\
+\code{iot-lab-device/} & showing the hub catch an infected IoT device & flash the ESP32 and start its four harmless test modes from the hub's page\\
+\code{results/} & how well it works (Section~\ref{sec:results}) & read every measured number with the command that reproduces it\\
+\code{docs/} & how to use each part & follow the guides: the app and pairing, Phone Guard, the network monitor, DNS blocking, the ESP32, the tests\\
+\code{report/} & the written submission & read or rebuild this report (\code{xelatex})\\
+\bottomrule
+\end{tabularx}
+\caption{What each folder is for.}
+\end{table}
+
+\textbf{To run it.}
+\begin{itemize}[leftmargin=*]\raggedright
+  \item On a Raspberry Pi, from \code{home-hub/}: the hotspot (\code{scripts/setup\_gateway.sh}); the app server and
+        Llama (\code{scripts/install\_service.sh}); the network monitor (\code{scripts/install\_netmon.sh}); DNS blocking
+        (\code{scripts/setup\_dns\_block.sh}).
+  \item On a laptop, from \code{home-hub/}: \code{pip install -r requirements.txt}, then \code{python -m pytest}.
+  \item The app: open \code{phone-app/} in Android Studio, run it on the phone, and pair it with the hub in the set-up.
+  \item Branches: \code{main} holds the Phase 1 submission, \code{dev} the work for Phase 2; the tag
+        \code{phase1-submission} marks the submitted version.
+\end{itemize}
+
+% ================================================================= 13
 \section{Conclusion}
 
 Sajag shows that a home hub and a phone, both on Arm, can protect a household from scams, phishing and IoT threats with
@@ -1348,40 +1409,6 @@ languages.
 
 % ================================================================= appendix
 \appendix
-\section{Repository and how to run it}
-\label{sec:repo}
-
-Code: \repourl. The \code{main} branch holds the Phase 1 submission.
-
-\begin{table}[H]
-\centering\small
-\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{3.1cm}X@{}}
-\toprule
-\textbf{Folder} & \textbf{What is in it}\\
-\midrule
-\code{detectors/sms/} & message checker: India rules, sender rules, brands, what the message says, text model and its training, model v2 tools\\
-\code{detectors/url/} & link checker: parsing, lists, phishing list, domain model\\
-\code{detectors/files/} & file checker\\
-\code{detectors/net/} & network monitor: flows, rules, DNS checks, DGA model, device normal, watch list, CIC-IDS2017 and IoT-23 tools\\
-\code{advisor/} & findings, scam types, playbooks, prompts, Llama service and engines, grounding checker, grading tool\\
-\code{app/} & the hub's app server and page, HTTPS, DNS blocking, Llama files for phones, message log, lab devices\\
-\code{android/} & the Sajag app (Kotlin), Phone Guard in \code{guard/}, Llama on the phone in \code{PhoneLlama.kt}\\
-\code{deploy/} & Llama export notes, the C++ engine and its Pi 4 build\\
-\code{esp32/} & the ESP32 lab device and its simulation\\
-\code{scripts/} & services, hotspot and DNS-blocking set-up, downloads, measuring tools, Phone Guard export and check, accuracy test\\
-\code{eval/}, \code{docs/}, \code{tests/} & measured results, guides for each part, 379 tests\\
-\code{report/} & this report\\
-\bottomrule
-\end{tabularx}
-\caption{Repository layout.}
-\end{table}
-
-\textbf{On the Pi:} \code{scripts/setup\_gateway.sh} (hotspot), \code{scripts/install\_service.sh} (the app server and
-Llama), \code{scripts/install\_netmon.sh} (network monitor), \code{scripts/setup\_dns\_block.sh} (DNS blocking).
-\textbf{On a computer:} \code{pip install -r requirements.txt} and \code{python -m pytest}.
-\textbf{The app:} open \code{android/} in Android Studio and run it on the phone; pair it with the hub in the set-up.
-Guides for every part are in \code{docs/}; the state of every part is in \code{docs/status.md}.
-
 \section{Timeline}
 
 \begin{table}[H]
@@ -1399,7 +1426,7 @@ Guides for every part are in \code{docs/}; the state of every part is in \code{d
 21--22 November & Phone Guard and Llama on the phone; the app becomes Sajag; prompt v5; the accuracy test\\
 \bottomrule
 \end{tabularx}
-\caption{Phase 1 in 52 updates.}
+\caption{Phase 1 in 53 updates.}
 \end{table}
 
 \end{document}

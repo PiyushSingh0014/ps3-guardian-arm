@@ -15,23 +15,41 @@ It has two parts. **Phone Guard**, on the Android phone, checks the owner's SMS,
 | --- | --- |
 | **Technical report** | [report/sajag-phase1-report.pdf](report/sajag-phase1-report.pdf): the approach, the architecture, the algorithms, the results and the Phase 2 plan |
 | **Demo video** | *link to be added* |
-| **Results** | [eval/](eval/README.md): every measured number and how to reproduce it |
+| **Results** | [results/](results/README.md): every measured number and how to reproduce it |
 | **Guides** | [docs/](docs/README.md): installing the app, the hub, each part, the tests |
 | **State of every part** | [docs/status.md](docs/status.md) |
 | **Run it** | [section 11](#11-repository-layout-and-how-to-run-it) |
 
 **The approach in three stages.** (1) A **Home Hub** on a Raspberry Pi 4 protects every device on the home Wi-Fi, including IoT devices that cannot protect themselves. (2) **Sajag on each phone** protects its owner anywhere, with the hub's own checks and the hub's own Llama running on the phone. (3) At home, each phone **feeds the hub** its owner's real messages (with consent), so the hub learns from every member of the household and can give every phone a better model. Phase 1 built and measured all three; Phase 2 grows the third.
 
-| Folder | What is in it |
-| --- | --- |
-| [`android/`](android/) | The Sajag app (Kotlin): Phone Guard, Llama on the phone, the screens |
-| [`app/`](app/) | The hub's app server and web page, HTTPS, DNS blocking |
-| [`detectors/`](detectors/) | The checkers: `sms/` messages, `url/` links, `files/` files, `net/` network |
-| [`advisor/`](advisor/) | Playbooks, prompts, the Llama service, the grounding checker, the grading tool |
-| [`deploy/`](deploy/) | Llama's export with ExecuTorch and our C++ engine for the Pi 4 |
-| [`esp32/`](esp32/) | The ESP32 lab IoT device |
-| [`scripts/`](scripts/README.md) | Set-up, services, downloads, measuring tools, the phone export |
-| [`eval/`](eval/README.md), [`docs/`](docs/README.md), [`tests/`](tests/), [`report/`](report/README.md) | Results, guides, 379 tests, the technical report |
+### How the repository is organised
+
+The folders follow the three parts of Sajag: the **Home Hub** (everything that runs on the Raspberry Pi), the **phone app**, and the **IoT lab device**; then the results, the guides and the report.
+
+```text
+ps3-guardian-arm/
+├── home-hub/            The Home Hub: everything that runs on the Raspberry Pi 4
+│   ├── app/             the hub's server and web page, HTTPS, DNS blocking, Llama files for paired phones
+│   ├── detectors/       the checkers: sms/ messages, url/ links, files/ files, net/ network traffic
+│   ├── advisor/         playbooks, prompts, the Llama service, the grounding checker, the grading tool
+│   ├── llama-engine/    Llama's export with ExecuTorch, and our C++ engine for the Pi 4's Arm CPU
+│   ├── scripts/         set-up (hotspot, services, DNS blocking), downloads, measuring tools, phone export
+│   └── tests/           379 automated tests
+├── phone-app/           Sajag for Android: Phone Guard (the hub's checks on the phone) and Llama on the phone
+├── iot-lab-device/      the ESP32 lab IoT device with harmless test modes, and its simulation
+├── results/             every measured result, and how to reproduce it
+├── docs/                guides: install, use and test each part
+└── report/              the Phase 1 technical report (PDF and LaTeX)
+```
+
+| Folder | What it is for | Use it to |
+| --- | --- | --- |
+| [`home-hub/`](home-hub/README.md) | Protecting every device at home | run the hub on a Raspberry Pi: install the services, check messages, links and files, watch the Wi-Fi, block scam websites, explain alerts with Llama |
+| [`phone-app/`](phone-app/README.md) | Protecting each person, anywhere | build the Sajag app in Android Studio and install it on a phone; it checks SMS and chats on the phone and pairs with the hub |
+| [`iot-lab-device/`](iot-lab-device/README.md) | Showing the hub catch an infected IoT device | flash an ESP32 that behaves like a smart sensor, then start its harmless test modes from the hub's page |
+| [`results/`](results/README.md) | Showing how well it works | read every measured number and the command that reproduces it |
+| [`docs/`](docs/README.md) | Explaining each part | follow step-by-step guides for installing, using and testing each part |
+| [`report/`](report/README.md) | The written submission | read the technical report: approach, architecture, algorithms, results, Phase 2 |
 
 **Branches:** `main` is the Phase 1 submission; `dev` is where Phase 2 work goes; the tag `phase1-submission` marks the version submitted on 23 November 2026.
 
@@ -203,7 +221,7 @@ flowchart LR
 ```
 
 - **Solid lines** (the Pi's own Wi-Fi) are what detection needs. **Dashed lines** (the internet) are only for the devices' browsing and for refreshing the phishing list.
-- `scripts/setup_gateway.sh` makes the Pi the hotspot with NetworkManager, and `scripts/setup_dns_block.sh` adds DNS blocking. Both undo themselves after 10 minutes unless confirmed, so a wrong setting cannot lock you out. The hotspot also tells Android phones it is metered, so they hold back big background downloads.
+- `home-hub/scripts/setup_gateway.sh` makes the Pi the hotspot with NetworkManager, and `home-hub/scripts/setup_dns_block.sh` adds DNS blocking. Both undo themselves after 10 minutes unless confirmed, so a wrong setting cannot lock you out. The hotspot also tells Android phones it is metered, so they hold back big background downloads.
 - Both services start at boot (systemd) and restart by themselves if they stop.
 
 ---
@@ -212,11 +230,11 @@ flowchart LR
 
 ### 5.1 Android companion app
 
-A complete Android Studio project in Kotlin (`android/`, package `com.ps3guardian.app`, version 3.2), minimum Android 8.0 (API 26), target API 36, WorkManager 2.12.0. Since version 3.0 the app is called **Sajag** (सजग, Hindi for "alert"), and it calls the Pi the **Home Hub**. Installed from Android Studio over USB, because Play Protect in India blocks apps with SMS permissions installed from a file.
+A complete Android Studio project in Kotlin (`phone-app/`, package `com.ps3guardian.app`, version 3.2), minimum Android 8.0 (API 26), target API 36, WorkManager 2.12.0. Since version 3.0 the app is called **Sajag** (सजग, Hindi for "alert"), and it calls the Pi the **Home Hub**. Installed from Android Studio over USB, because Play Protect in India blocks apps with SMS permissions installed from a file.
 
 | Part | What it does |
 | --- | --- |
-| Phone Guard (`guard/*.kt`, `PhoneGuard.kt`) | The Pi's message and link checks, in Kotlin: text cleaning, the SMS model, the India and sender rules, the link checker with the link model, the scam types and the playbooks' steps, and Llama's prompt and answer checks, from 3.5 MB of data copied from the Pi by `scripts/export_phone_guard.py` ([docs/phone-guard.md](docs/phone-guard.md)). Every message is judged here first, with no network |
+| Phone Guard (`guard/*.kt`, `PhoneGuard.kt`) | The Pi's message and link checks, in Kotlin: text cleaning, the SMS model, the India and sender rules, the link checker with the link model, the scam types and the playbooks' steps, and Llama's prompt and answer checks, from 3.5 MB of data copied from the Pi by `home-hub/scripts/export_phone_guard.py` ([docs/phone-guard.md](docs/phone-guard.md)). Every message is judged here first, with no network |
 | Llama on the phone (`PhoneLlama.kt`, `PhoneExplainWorker.kt`, `guard/Llama.kt`) | When the Pi cannot be reached, Llama 3.2 1B explains the phone's alert on the phone: the Pi's own model files, copied once from the paired Pi ("Get Llama from the Pi", about 1 GB, each file checked against the Pi's SHA-256), run by ExecuTorch 1.5.1 for Android with the Pi's prompt; the answer passes the Pi's checks before it replaces the alert's text |
 | SMS receiver (`SmsReceiver.kt`) | Reads every incoming SMS with its **real sender ID** (`JD-HDFCBK-S` or a 10-digit number) and sends it to the Pi. Typed sender names are unreliable; the real ID is what separates a bank alert from a scam |
 | HTTPS, pinned (`PiClient.kt`, `Tls.kt`) | The app talks to the Pi only over HTTPS, and trusts exactly one certificate: the one its owner confirmed when pairing, by comparing its fingerprint with the one the Pi prints. No plain HTTP at all |
@@ -232,7 +250,7 @@ Permissions: receive SMS, internet (needed for any network connection, including
 
 ### 5.2 App server and web page
 
-A FastAPI application (`app/server.py`) on the Pi, served by `app/serve.py` on **HTTPS (port 8443)** with the Pi's own certificate, made once by `scripts/run_pi.sh`. Port 8000 stays plain HTTP only for the Pi's own scripts and the ESP32's readings: from any other machine it takes nothing else, and the page's plain address redirects to HTTPS. Every call needs the 128-bit pairing token (only the page itself, which holds no data, opens without it); ten wrong tokens in a minute block an address for a minute. The ESP32 has its own token, good only for posting readings.
+A FastAPI application (`home-hub/app/server.py`) on the Pi, served by `home-hub/app/serve.py` on **HTTPS (port 8443)** with the Pi's own certificate, made once by `home-hub/scripts/run_pi.sh`. Port 8000 stays plain HTTP only for the Pi's own scripts and the ESP32's readings: from any other machine it takes nothing else, and the page's plain address redirects to HTTPS. Every call needs the 128-bit pairing token (only the page itself, which holds no data, opens without it); ten wrong tokens in a minute block an address for a minute. The ESP32 has its own token, good only for posting readings.
 
 | Endpoint | What for |
 | --- | --- |
@@ -250,7 +268,7 @@ The page lets anyone with the pairing token paste a message or link, check a fil
 
 ### 5.3 SMS and chat checker
 
-`detectors/sms/`: one score from 0 to 1, built in steps that each raise or lower it.
+`home-hub/detectors/sms/`: one score from 0 to 1, built in steps that each raise or lower it.
 
 1. **Red-flag rules for India** (`rules_india.py`): KYC, OTP, UPI, an `.apk` file, urgency ("blocked today"), money and prizes, a bank's or the government's name with a link that is not on `.bank.in` or `.gov.in`, talk of an OTP, PIN or password, and whether the message asks you to share one. They give the reasons and a few numbers for the model.
 2. **Text model** (`train_baseline.py`): the text is cut into pieces of 2–5 letters (TF-IDF, up to 20,000 pieces) plus the rules' numbers; logistic regression gives a fraud score. Trained on 6,053 public messages (section [12](#12-data-models-and-licences)); the team trained it on the Pi itself. The app refuses to start with the small sample model.
@@ -262,7 +280,7 @@ The page lets anyone with the pairing token paste a message or link, check a fil
 
 ### 5.4 Link checker
 
-`detectors/url/`: about a millisecond per link, with no network.
+`home-hub/detectors/url/`: about a millisecond per link, with no network.
 
 1. **Read the address** (`links.py`, offline public-suffix list): the registered domain (`sbi.co.in.kyc-check.xyz` is really `kyc-check.xyz`), punycode, and websites hidden inside Google redirects, Google Translate and Google's AMP links.
 2. **Sure signs, dangerous on their own:** an `.apk` file; the `@` trick; the site is on the phishing list; a brand's name on someone else's site with sign-in words, a cheap ending, free hosting or a fake prefix.
@@ -270,13 +288,13 @@ The page lets anyone with the pairing token paste a message or link, check a fil
 4. **Official:** `.bank.in`, `.gov.in`, `.nic.in`, `.fin.in`, the brands' own endings (`.sbi`, `.google`) and 157 domains that belong to 33 brands and organisations.
 5. **Otherwise the link model** (`model.py`): logistic regression on 2–5-letter pieces of the registered domain plus 7 numbers (length, digits, hyphens, letter entropy, vowels, consonant runs, ending), trained on 996,256 domains. Its score is then weighted for what it cannot see: an IP address ×6, a brand's name ×5 (×3 in a subdomain), look-alike letters ×3, sign-in words ×2, many subdomains ×1.5, one of the 10,000 most visited websites ×0.1.
 
-**The phishing list** (`intel.py`): Phishing.Database, about 392,000 phishing domains still online, kept in a small SQLite file on the Pi and refreshed by `scripts/get_url_data.py`. Official sites, popular sites and shared services (free hosting, Google Drive) are never listed whole, so one bad page cannot block a whole service.
+**The phishing list** (`intel.py`): Phishing.Database, about 392,000 phishing domains still online, kept in a small SQLite file on the Pi and refreshed by `home-hub/scripts/get_url_data.py`. Official sites, popular sites and shared services (free hosting, Google Drive) are never listed whole, so one bad page cannot block a whole service.
 
 **Why the model reads only the domain:** in the main public dataset every legitimate URL is a bare home page while phishing URLs have paths. A model that reads whole URLs learns "has a path means phishing", and every genuine SMS link has a path. Rules handle paths instead.
 
 ### 5.5 File checker
 
-`detectors/files/`: about 20 ms per file on the Pi. The file is kept in memory, never stored, never opened in a reader and never run.
+`home-hub/detectors/files/`: about 20 ms per file on the Pi. The file is kept in memory, never stored, never opened in a reader and never run.
 
 1. **What is it really?** The first bytes say what a file is, whatever its name. An app or program named `Invitation.pdf`, a double ending (`Card.pdf.apk`) or a hidden right-to-left character is a disguise.
 2. **Checks for its type:**
@@ -291,7 +309,7 @@ Limits for the Pi's sake: 25 MB per file, 50 MB unpacked (against zip bombs).
 
 ### 5.6 Network monitor
 
-`detectors/net/`, service `ps3-netmon`. Because the Pi is the hotspot, every device's traffic passes through it. The monitor reads **who talks to whom, when and how much, never the content**.
+`home-hub/detectors/net/`, service `ps3-netmon`. Because the Pi is the hotspot, every device's traffic passes through it. The monitor reads **who talks to whom, when and how much, never the content**.
 
 | Block | What it does |
 | --- | --- |
@@ -308,7 +326,7 @@ Limits for the Pi's sake: 25 MB per file, 50 MB unpacked (against zip bombs).
 
 When a message is flagged, the app server puts its websites on a **watch list** for 24 hours (`scamlinks.py`). If a device on the Wi-Fi then looks one up, the monitor raises **"Link from a scam message opened"**, naming the device and when the message was flagged. This catches links the link checker alone rates safe: real Indian scams use short domains that look like genuine bulk-SMS link domains, and the sender and text gave them away.
 
-**DNS blocking** (`app/dns_block.py`, update 40). The Pi is the DNS server of its hotspot, so it can refuse to look a website up; then the page does not open on any device on the Wi-Fi. Blocked automatically for 7 days: the websites of a dangerous message, a phishing site a device looked up, and a website from a flagged message that a device opened. Websites blocked by hand on the page stay blocked until unblocked. Official, popular and shared sites are never blocked. The app and the monitor only write a list; systemd runs a small root helper whenever it changes, which keeps only valid names and makes the hotspot's dnsmasq answer NXDOMAIN for each name and every name under it. **Unblock** on the page undoes a block, and that website is not blocked automatically again. Set up on the Pi on 16 November: its self-test saw the Pi's DNS refuse a blocked website and answer it again once unblocked ([docs/dns-blocking.md](docs/dns-blocking.md)).
+**DNS blocking** (`home-hub/app/dns_block.py`, update 40). The Pi is the DNS server of its hotspot, so it can refuse to look a website up; then the page does not open on any device on the Wi-Fi. Blocked automatically for 7 days: the websites of a dangerous message, a phishing site a device looked up, and a website from a flagged message that a device opened. Websites blocked by hand on the page stay blocked until unblocked. Official, popular and shared sites are never blocked. The app and the monitor only write a list; systemd runs a small root helper whenever it changes, which keeps only valid names and makes the hotspot's dnsmasq answer NXDOMAIN for each name and every name under it. **Unblock** on the page undoes a block, and that website is not blocked automatically again. Set up on the Pi on 16 November: its self-test saw the Pi's DNS refuse a blocked website and answer it again once unblocked ([docs/dns-blocking.md](docs/dns-blocking.md)).
 
 Every device on the lab Wi-Fi also gets a **risk level** from its alerts of the last 24 hours (AT RISK, CHECK, OK), on the page and in the app.
 
@@ -316,11 +334,11 @@ Every device on the lab Wi-Fi also gets a **risk level** from its alerts of the 
 
 **Finding → playbook → instant advice → Llama → answer checker → explanation.**
 
-- **Playbooks** (`advisor/playbooks/*.md`): 25 short files, one per kind of problem: 11 for messages and links (bank KYC, OTP theft, delivery fee, digital arrest, lottery, job task, utility disconnection, APK link, phishing link, promotional spam, other suspicious messages), 3 for files and 11 for the network (port scan, network scan, flood, password guessing, risky port, beacon, DGA names, DNS tunnel, phishing look-up, unusual device, scam link opened). Each has a title, a severity, the steps to take, and three lines only Llama sees: who the scam pretends to be, what it wants, and one checked fact. **The steps shown to users always come from the playbook, word for word.**
+- **Playbooks** (`home-hub/advisor/playbooks/*.md`): 25 short files, one per kind of problem: 11 for messages and links (bank KYC, OTP theft, delivery fee, digital arrest, lottery, job task, utility disconnection, APK link, phishing link, promotional spam, other suspicious messages), 3 for files and 11 for the network (port scan, network scan, flood, password guessing, risky port, beacon, DGA names, DNS tunnel, phishing look-up, unusual device, scam link opened). Each has a title, a severity, the steps to take, and three lines only Llama sees: who the scam pretends to be, what it wants, and one checked fact. **The steps shown to users always come from the playbook, word for word.**
 - **Instant advice** (`advise.py`): headline, what, why (the checker's reasons) and steps, shown at once.
-- **Prompt** (`prompt.py`, version 5): the playbook's facts, the checker's red flags, the claimed organisation from a fixed list and, since update 47, what this message says in fixed words ("says your electricity will be cut off", "mentions ₹25,000", "asks you to pay money", from `detectors/sms/says.py`), **never the message text**, so a scammer's words cannot steer Llama and the explanation is about this message, not only its scam type. Worked examples (English and Hindi) instead of rules, because a 1B model copies examples far better than it follows instructions. Network alerts have their own prompt and examples.
+- **Prompt** (`prompt.py`, version 5): the playbook's facts, the checker's red flags, the claimed organisation from a fixed list and, since update 47, what this message says in fixed words ("says your electricity will be cut off", "mentions ₹25,000", "asks you to pay money", from `home-hub/detectors/sms/says.py`), **never the message text**, so a scammer's words cannot steer Llama and the explanation is about this message, not only its scam type. Worked examples (English and Hindi) instead of rules, because a 1B model copies examples far better than it follows instructions. Network alerts have their own prompt and examples.
 - **Llama 3.2 1B Instruct**, Meta's SpinQuant INT4 checkpoint, exported with ExecuTorch release 1.5 (`export_llm`, XNNPACK): 4-bit weights in groups of 32 with 8-bit dynamic activations, 8-bit embeddings and output layer, a KV cache, the custom SDPA op, 2,048 tokens of context. The `.pte` is about 1.0 GB. The same file also runs on the phone (update 44): the app copies it from its paired Pi (`GET /llama`) and runs it with ExecuTorch 1.5.1's Android library when the Pi cannot be reached, with the same prompt and the same answer checker ([docs/phone-guard.md](docs/phone-guard.md#llama-on-the-phone-update-44)).
-- **Our C++ engine** (`deploy/advisor_server/`, driven by `llm_native.py` and `llm_service.py`). It is built for the Cortex-A72 with the Arm GNU toolchain 14.3 (`-march=armv8-a -mtune=cortex-a72`), and:
+- **Our C++ engine** (`home-hub/llama-engine/advisor_server/`, driven by `llm_native.py` and `llm_service.py`). It is built for the Cortex-A72 with the Arm GNU toolchain 14.3 (`-march=armv8-a -mtune=cortex-a72`), and:
   - keeps the model loaded;
   - reads the fixed start of the prompt (system text and worked examples) once and reuses it from the KV cache, in fixed 32-token pieces so an answer never depends on earlier alerts;
   - writes exactly 2 sentences with greedy decoding;
@@ -329,7 +347,7 @@ Every device on the lab Wi-Fi also gets a **risk level** from its alerts of the 
 
 ### 5.9 ESP32 lab device
 
-`esp32/ps3_lab_device/` (Arduino): the ESP32 joins the lab Wi-Fi as an ordinary smart sensor and posts DHT11 and BMP180 readings every 15 s. From the Pi's page, four **harmless test modes** make it behave like an infected IoT device:
+`iot-lab-device/ps3_lab_device/` (Arduino): the ESP32 joins the lab Wi-Fi as an ordinary smart sensor and posts DHT11 and BMP180 readings every 15 s. From the Pi's page, four **harmless test modes** make it behave like an infected IoT device:
 
 | Test | What the ESP32 does | Alert | When |
 | --- | --- | --- | --- |
@@ -363,11 +381,11 @@ Nothing is attacked: the names do not exist, and the beacon fetches IANA's examp
 | 21 November | Phone Guard: the message and link checks on the phone itself, checked to decide as the Pi does, and running on the Galaxy S25; Llama on the phone for alerts away from the Pi |
 | 22 November | Llama on the S25 tested with the Pi out of reach: an explanation in 3.6 s, five to eight times faster than on the Pi 4. The phone app becomes **Sajag**: four pages, a screen per alert, a set-up in three steps. Prompt v5: Llama is told what each message says, in fixed words; each notification names its message. Accuracy test: 755 of 859 real Indian scam campaigns flagged (87.9%), on messages never used to build Sajag |
 
-The work reached the Pi in 52 numbered updates. Each update was a tested git bundle, pulled on the Pi and pushed to GitHub. Every update ran the full test suite first, and every result in this document comes from a script in the repository. Per-part status: [docs/status.md](docs/status.md).
+The work reached the Pi in 53 numbered updates. Each update was a tested git bundle, pulled on the Pi and pushed to GitHub. Every update ran the full test suite first, and every result in this document comes from a script in the repository. Per-part status: [docs/status.md](docs/status.md).
 
 ### Problems we solved along the way
 
-1. **The ExecuTorch Python wheel cannot run on a Pi 4.** It stopped with "Illegal instruction". We disassembled its libraries with our own tool (`deploy/tools/check_arm_isa.py`) and found 43 Armv8.1 atomic instructions in the custom LLM ops library, built for Armv8.2. The Pi 4's Cortex-A72 is Armv8.0. Fix: our own C++ engine built from source for `armv8-a`, needing no PyTorch on the Pi.
+1. **The ExecuTorch Python wheel cannot run on a Pi 4.** It stopped with "Illegal instruction". We disassembled its libraries with our own tool (`home-hub/llama-engine/tools/check_arm_isa.py`) and found 43 Armv8.1 atomic instructions in the custom LLM ops library, built for Armv8.2. The Pi 4's Cortex-A72 is Armv8.0. Fix: our own C++ engine built from source for `armv8-a`, needing no PyTorch on the Pi.
 2. **Llama was too slow per alert.** It took 42.5 s with `llama_main`, including 11.7 s just to load. Fix: the model stays loaded, the fixed prompt start is read once, answers are 2 sentences, and repeats come from saved answers. A new alert now takes 18–25 s; a repeat is instant.
 3. **Reusing the KV cache changed answers slightly.** Kernels round differently by call length. Fix: prompts are read in 32-token pieces at fixed positions; the same prompt now gives the same logits on the Pi (CRC-32 checked).
 4. **A 1B model invents things, and the checker could not see it.** It caught forbidden forms ("this is safe", links), not invented facts. Fix: grounding checks hold each sentence to its evidence, and 100 answers were graded sentence by sentence. Reading them showed the checks themselves had faults: the "never" check dropped true sentences, and Llama turned the `.bank.in` fact around. Both were fixed (update 38b) and measured on the graded sentences.
@@ -388,9 +406,9 @@ Python 3.13, scikit-learn, NumPy, FastAPI, uvicorn, NFStream 6.6, tldextract; Ex
 
 ## 7. Results
 
-All numbers are measured, with the scripts in this repository, except where marked as a projection. Full tables: [eval/](eval/).
+All numbers are measured, with the scripts in this repository, except where marked as a projection. Full tables: [results/](results/).
 
-### Accuracy test, 22 November ([eval/results_accuracy.md](eval/results_accuracy.md))
+### Accuracy test, 22 November ([results/results_accuracy.md](results/results_accuracy.md))
 
 The app's message checks as the phone runs them (the same code, compared on 16,272 messages), on labelled messages. In brackets: 95% intervals.
 
@@ -400,9 +418,9 @@ The app's message checks as the phone runs them (the same code, compared on 16,2
 | Public messages the model never trained on (1,816) | 304 of 318 (95.6%) | 18 of 1,498 (1.2%) |
 | India test set (227; senders typed by hand; used while building the rules) | 96 of 100 | 44 of 75 (59%): with a real registered sender ID 1 of 10, with a typed name 38 of 47 |
 
-Of the 96 caught India scams, the alert's title names the right kind of scam for 54%, a general kind for 30% and the wrong kind for 16% (mostly "Fake bank KYC" for reward-point and SIM-card scams). On the team's real messages (3,126, every flagged one labelled but 14): **4.3 normal SMS per 100 from registered sender IDs flagged**, 4.7 per 100 over all messages; 4 scams from registered IDs flagged and 1 missed. Live test on the S25: 11 of 11 scams flagged, 8 of 9 normal messages safe, and 4 of 4 scams flagged again with the Wi-Fi off ([eval/results_accuracy.md](eval/results_accuracy.md)). Grading Llama's prompt v5 against v4 on the same 87 cases (the answers are generated) is moved to Phase 2.
+Of the 96 caught India scams, the alert's title names the right kind of scam for 54%, a general kind for 30% and the wrong kind for 16% (mostly "Fake bank KYC" for reward-point and SIM-card scams). On the team's real messages (3,126, every flagged one labelled but 14): **4.3 normal SMS per 100 from registered sender IDs flagged**, 4.7 per 100 over all messages; 4 scams from registered IDs flagged and 1 missed. Live test on the S25: 11 of 11 scams flagged, 8 of 9 normal messages safe, and 4 of 4 scams flagged again with the Wi-Fi off ([results/results_accuracy.md](results/results_accuracy.md)). Grading Llama's prompt v5 against v4 on the same 87 cases (the answers are generated) is moved to Phase 2.
 
-### SMS ([eval/results_sms.md](eval/results_sms.md))
+### SMS ([results/results_sms.md](results/results_sms.md))
 
 | Test | Result |
 | --- | --- |
@@ -416,7 +434,7 @@ Of the 96 caught India scams, the alert's title names the right kind of scam for
 | Sender rules on the Pi (226 messages from registered IDs, India set and team) | `cap` and `brand`: no false alarm added, switched on; `suffix`: 7 more false alarms, left off. v1 still lets through 3 of 4 team scams from registered IDs |
 | SMS model v2 against v1 (94 labelled team messages, rule fixed in advance) | From registered sender IDs on held-out phones, marketing and normal flagged: 10 → 0; but v2 missed the one scam from a registered ID that v1 caught. **v2 does not pass; the app keeps v1** |
 
-### Links ([eval/results_url.md](eval/results_url.md))
+### Links ([results/results_url.md](results/results_url.md))
 
 Held out by domain: no test domain was seen in training.
 
@@ -429,7 +447,7 @@ Held out by domain: no test domain was seen in training.
 
 ROC AUC of the link model alone: 0.920.
 
-### Network ([eval/results_net.md](eval/results_net.md))
+### Network ([results/results_net.md](results/results_net.md))
 
 **CIC-IDS2017** (5 days of a company network, 2,830,743 flows, 40.7 hours, fed in order as one Pi would see them):
 
@@ -447,7 +465,7 @@ ROC AUC of the link model alone: 0.920.
 | A busy hour (30 websites, YouTube, Windows Update) with the earlier rules | 5 false alarms in 36 minutes, all fixed |
 | The same activities after the fixes | **No false alarm in 20,960 flows** (1.1 hours with traffic, including 14,716 flows in 15 minutes) |
 
-**IoT-23** (real IoT malware and real smart-home devices, labelled by the Stratosphere Laboratory; the rules were not tuned on it), replayed on the Pi from the labelled logs ([eval/results_net.md](eval/results_net.md#iot-23-real-iot-malware-16-november-2026)):
+**IoT-23** (real IoT malware and real smart-home devices, labelled by the Stratosphere Laboratory; the rules were not tuned on it), replayed on the Pi from the labelled logs ([results/results_net.md](results/results_net.md#iot-23-real-iot-malware-16-november-2026)):
 
 | Test | Result |
 | --- | --- |
@@ -458,7 +476,7 @@ ROC AUC of the link model alone: 0.920.
 
 The monitor catches loud behaviour and controllers on telltale ports, not quiet controllers on web ports: those need the content or lists of known controller addresses.
 
-### Llama on the Pi 4 ([eval/results_pi4.md](eval/results_pi4.md) and [docs/llama-grading.md](docs/llama-grading.md))
+### Llama on the Pi 4 ([results/results_pi4.md](results/results_pi4.md) and [docs/llama-grading.md](docs/llama-grading.md))
 
 | | Result |
 | --- | --- |
@@ -496,7 +514,7 @@ The phone's Kotlin code against the Pi's Python code, on a computer, both withou
 
 Llama on the phone gets the Pi's prompt: the same whole prompt, in English and in Hindi, for all 8,833 of these messages that Llama explains, and the same organisation it claims to be for all 16,272. Its answers pass the Pi's answer checker: the phone's copy decided as the Pi's on 9,850 answers (Llama's 100 graded answers from the Pi, the worked examples, and variants built to trip every rule). On the Galaxy S25, Llama explained the test scam in 3.6 s (5.2 s when the model had to load first, in 1.3 s): it read the 678-token prompt in 2.0–2.6 s and wrote 54 tokens in 1.2–1.5 s. The Pi 4 needs 18–31 s for a new explanation.
 
-### Files ([eval/results_files.md](eval/results_files.md))
+### Files ([results/results_files.md](results/results_files.md))
 
 | Test | Result |
 | --- | --- |
@@ -571,34 +589,35 @@ Llama on the phone gets the Pi's prompt: the same whole prompt, in English and i
 
 ## 11. Repository layout and how to run it
 
+The layout is described in [Start here](#how-the-repository-is-organised). In more detail:
+
 | Folder | What is in it |
 | --- | --- |
-| `detectors/sms/` | SMS checker: India rules, sender rules, brands, text model (v1) and its training script, model v2 tools |
-| `detectors/url/` | Link checker: link parsing, lists, phishing list (SQLite), link model and its training script |
-| `detectors/files/` | File checker |
-| `detectors/net/` | Network monitor: flows, rules, DNS checks, DGA model, each device's normal, the watch list, the monitor service, the CIC-IDS2017 evaluation and the IoT-23 replay |
-| `advisor/` | Findings, scam types, playbooks, prompts, Llama engines and service, answer checker, the grading tool |
-| `app/` | FastAPI app server and page, HTTPS serving (`serve.py`), DNS blocking (`dns_block.py`), the Llama files for paired phones (`llama_files.py`), SMS log, lab devices |
-| `android/` | The Android Studio project (Kotlin), with Phone Guard in `app/src/main/java/.../guard/` and its data in `app/src/main/assets/guard/`, and Llama on the phone in `PhoneLlama.kt`; `guard-check/` runs Phone Guard and its Llama prompt and checks on a computer |
-| `esp32/` | The ESP32 lab device sketch, and a simulation used by the tests |
-| `deploy/` | Llama export notes, the C++ engine (`advisor_server`) and its Pi 4 build, benchmarks, prompts |
-| `scripts/` | Start-up and services, the hotspot and DNS-blocking set-ups, list and dataset downloads, measuring tools (`sms_traffic.py`, `net_traffic.py`, `pi_usage.py`, `check_files.py`), harmless test files, Phone Guard's export and check (`export_phone_guard.py`, `check_phone_guard.py`) |
-| `eval/` | Measured results |
-| `docs/` | Guides for each part, and the status of each part ([docs/status.md](docs/status.md)) |
-| `tests/` | 379 pytest tests |
-| `report/` | The technical report (LaTeX source and PDF) |
+| `home-hub/detectors/sms/` | Message checker: India rules, sender rules, brands, what a message says, the text model (v1) and its training, model v2 tools |
+| `home-hub/detectors/url/` | Link checker: link parsing, lists, the phishing list (SQLite), the domain model and its training |
+| `home-hub/detectors/files/` | File checker |
+| `home-hub/detectors/net/` | Network monitor: flows, rules, DNS checks, the DGA model, each device's normal, the watch list, the monitor service, the CIC-IDS2017 evaluation and the IoT-23 replay |
+| `home-hub/advisor/` | Findings, scam types, playbooks, prompts, Llama engines and service, the grounding checker, the grading tool |
+| `home-hub/app/` | The app server and page (FastAPI), HTTPS (`serve.py`), DNS blocking (`dns_block.py`), Llama files for paired phones (`llama_files.py`), the message log, lab devices |
+| `home-hub/llama-engine/` | Llama's export notes, the C++ engine (`advisor_server`) and its Pi 4 build, benchmarks, prompts, the instruction-set checker |
+| `home-hub/scripts/` | Services and set-ups, downloads, measuring tools, Phone Guard's export and check, the accuracy test ([list](home-hub/scripts/README.md)) |
+| `home-hub/tests/` | 379 pytest tests, for the hub, the phone's copy of the checks and the ESP32 sketch |
+| `phone-app/` | The Android Studio project (Kotlin): Phone Guard in `app/src/main/java/.../guard/` with its data in `app/src/main/assets/guard/`, Llama on the phone in `PhoneLlama.kt`; `guard-check/` runs Phone Guard on a computer |
+| `iot-lab-device/` | The ESP32 sketch and a simulation the tests use |
+| `results/`, `docs/`, `report/` | Measured results, guides, the technical report |
 
-**On a laptop** (no Pi or model needed):
+**On a laptop** (no Pi or model needed), from the `home-hub` folder:
 
 ```bash
+cd home-hub
 pip install -r requirements.txt
-pytest -q
+python -m pytest -q
 python scripts/get_url_data.py        # optional: the phishing list and popular websites (~20 MB)
 python -m advisor.cli "Your SBI account is blocked, update KYC: hxxp://sbi-kyc-update.xyz/v"
 uvicorn app.server:app --port 8000     # then open http://localhost:8000
 ```
 
-**On the Pi**, follow the guides: Llama export and the C++ engine in [deploy/README.md](deploy/README.md) and [docs/step3-fast-advisor.md](docs/step3-fast-advisor.md); the services, hotspot and monitor in [docs/network-detector.md](docs/network-detector.md); the phone app, HTTPS and pairing in [docs/android-companion.md](docs/android-companion.md); the ESP32 in [docs/esp32-lab-device.md](docs/esp32-lab-device.md); files in [docs/file-checker.md](docs/file-checker.md); DNS blocking in [docs/dns-blocking.md](docs/dns-blocking.md); the IoT-23 replay in [docs/iot23-replay.md](docs/iot23-replay.md); grading Llama in [docs/llama-grading.md](docs/llama-grading.md).
+**On the Pi**, follow the guides: Llama export and the C++ engine in [home-hub/llama-engine/README.md](home-hub/llama-engine/README.md) and [docs/step3-fast-advisor.md](docs/step3-fast-advisor.md); the services, hotspot and monitor in [docs/network-detector.md](docs/network-detector.md); the phone app, HTTPS and pairing in [docs/android-companion.md](docs/android-companion.md); the ESP32 in [docs/esp32-lab-device.md](docs/esp32-lab-device.md); files in [docs/file-checker.md](docs/file-checker.md); DNS blocking in [docs/dns-blocking.md](docs/dns-blocking.md); the IoT-23 replay in [docs/iot23-replay.md](docs/iot23-replay.md); grading Llama in [docs/llama-grading.md](docs/llama-grading.md).
 
 ---
 
@@ -625,7 +644,7 @@ uvicorn app.server:app --port 8000     # then open http://localhost:8000
 | Each device's normal | Statistics per device | — | Live, on the Pi (2 hours per device) |
 | Llama 3.2 1B Instruct (SpinQuant INT4) | Pre-trained by Meta; used through prompts, not fine-tuned | ≈1.2 billion parameters, ≈1.0 GB `.pte` | — |
 
-The app's fonts, Figtree (Erik Kennedy) and Rozha One (Indian Type Foundry, for the name सजग), are under the SIL Open Font License 1.1; their licence texts are in `android/app/src/main/assets/licenses/`.
+The app's fonts, Figtree (Erik Kennedy) and Rozha One (Indian Type Foundry, for the name सजग), are under the SIL Open Font License 1.1; their licence texts are in `phone-app/app/src/main/assets/licenses/`.
 
 **Built with Llama.** This project uses Llama 3.2 1B Instruct under the [Llama 3.2 Community License](https://www.llama.com/llama3_2/license/). The weights and exported files are not in this repository; download them from Meta or Hugging Face after accepting the licence.
 

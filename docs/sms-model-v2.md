@@ -2,7 +2,7 @@
 
 ## Why
 
-SMS model v1 learned from two public datasets and knows two classes, threat or normal. On the 227 real Indian messages of the India test set ([eval/results_sms.md](../eval/results_sms.md)) it catches 94% of the scams on the text alone, but:
+SMS model v1 learned from two public datasets and knows two classes, threat or normal. On the 227 real Indian messages of the India test set ([results/results_sms.md](../results/results_sms.md)) it catches 94% of the scams on the text alone, but:
 
 - it flags 96% of genuine marketing, because marketing counts as a threat;
 - it flags 64% of normal messages: OTPs, bank alerts, deliveries. The public data has almost no Indian transactional messages, so the model learned that money, links and bank words mean a scam.
@@ -18,14 +18,14 @@ The features stay those of v1: character n-grams and the India red-flag rules, w
 
 ## How the app decides with v2
 
-In India, only a registered sender ID (`JD-HDFCBK-P`) may send marketing (TRAI's DLT rules, [senders.py](../detectors/sms/senders.py)). So v2 trusts the "marketing" reading only for those:
+In India, only a registered sender ID (`JD-HDFCBK-P`) may send marketing (TRAI's DLT rules, [senders.py](../home-hub/detectors/sms/senders.py)). So v2 trusts the "marketing" reading only for those:
 
 | Who sent it | The score the decision starts from |
 | --- | --- |
 | A registered sender ID | the chance of **fraud**: an offer is just an offer |
 | A phone number, a chat, or an unknown sender | the chance of **fraud or marketing**, as in v1: a genuine business does not send offers from a personal number |
 
-Then the sender's odds and the links change the score exactly as before. The code is `model_score` in [detector.py](../detectors/sms/detector.py).
+Then the sender's odds and the links change the score exactly as before. The code is `model_score` in [detector.py](../home-hub/detectors/sms/detector.py).
 
 Digits: the Pi's log writes `#` for every digit. For training, each `#` in a team message becomes a random digit, the same on every run. An OTP or an amount says nothing by its value, and the app always sees real digits.
 
@@ -58,7 +58,7 @@ scp $HOME\Downloads\india_sms_collection_v9.xlsx arrehinus@10.42.0.1:~/
 Pi:
 
 ```bash
-cd ~/ps3-guardian
+cd ~/ps3-guardian/home-hub
 git pull --no-rebase --no-edit ~/ps3-guardian-update33.bundle step3
 git push origin step3 step3:main
 source ~/ps3-venv/bin/activate
@@ -135,7 +135,7 @@ It takes a minute or two on the Pi. Paste the whole output into the chat.
 
 Otherwise the app keeps v1, and v2's numbers go in the report anyway.
 
-The first version of this rule (update 33) also compared scams from phone numbers and chats. The first run showed why that was unfair: the log keeps those texts only when v1 flagged them, so v1 cannot miss one there, and v2 can only do worse. The rule was corrected in update 34, before the second run ([eval/results_sms.md](../eval/results_sms.md#real-traffic-and-sms-model-v2-first-run)).
+The first version of this rule (update 33) also compared scams from phone numbers and chats. The first run showed why that was unfair: the log keeps those texts only when v1 flagged them, so v1 cannot miss one there, and v2 can only do worse. The rule was corrected in update 34, before the second run ([results/results_sms.md](../results/results_sms.md#real-traffic-and-sms-model-v2-first-run)).
 
 **6. If v2 passes, save it and restart:**
 
@@ -145,16 +145,16 @@ sudo systemctl restart ps3-guardian
 curl -s http://localhost:8000/health
 ```
 
-`--save` trains v2 again on all the messages (still never on the India set) and writes `detectors/sms/sms_v2.joblib`. The app loads it at start: `/health` shows `"sms_model": {"version": 2, "file": "sms_v2.joblib", "messages": …}`.
+`--save` trains v2 again on all the messages (still never on the India set) and writes `home-hub/detectors/sms/sms_v2.joblib`. The app loads it at start: `/health` shows `"sms_model": {"version": 2, "file": "sms_v2.joblib", "messages": …}`.
 
-**To go back to v1:** `rm detectors/sms/sms_v2.joblib`, then `sudo systemctl restart ps3-guardian`.
+**To go back to v1:** `rm home-hub/detectors/sms/sms_v2.joblib`, then `sudo systemctl restart ps3-guardian`.
 
 ## Privacy
 
 - The messages and labels stay on the Pi: `logs/` and `data/` are not in git.
 - `sms_v2.joblib` is not in git either (`*.joblib`). It holds no messages, but its vocabulary has pieces of words, up to 5 characters, taken from them.
 - Only the printed tables (counts and percentages) leave the Pi.
-- When the project ends, delete `logs/sms_traffic.jsonl`, `data/sms/labels.json` and `detectors/sms/sms_v2.joblib`.
+- When the project ends, delete `logs/sms_traffic.jsonl`, `data/sms/labels.json` and `home-hub/detectors/sms/sms_v2.joblib`.
 
 ## Limits
 

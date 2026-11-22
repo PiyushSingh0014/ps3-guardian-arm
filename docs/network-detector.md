@@ -1,4 +1,4 @@
-# Network detector (`detectors/net`)
+# Network detector (`home-hub/detectors/net`)
 
 The Pi watches every connection of every device on its own Wi-Fi and raises an alert when a device:
 
@@ -13,7 +13,7 @@ The Pi watches every connection of every device on its own Wi-Fi and raises an a
 
 Alerts appear on the Pi's page under **Network alerts**, with the same kind of advice as SMS alerts, and as notifications in the phone app ([android-companion.md](android-companion.md), Part H). Above them, **Devices on this Wi-Fi** lists every device with a risk level. It reads connection summaries (flows), never the content of the traffic.
 
-Results on CIC-IDS2017 and on IoT-23's real IoT malware: [eval/results_net.md](../eval/results_net.md). To see it catch a device live, use the ESP32 lab device and its harmless test modes: [esp32-lab-device.md](esp32-lab-device.md).
+Results on CIC-IDS2017 and on IoT-23's real IoT malware: [results/results_net.md](../results/results_net.md). To see it catch a device live, use the ESP32 lab device and its harmless test modes: [esp32-lab-device.md](esp32-lab-device.md).
 
 ## How it works
 
@@ -34,7 +34,7 @@ flagged SMS, chat or pasted message ──► app/server.py ──► data/fusio
 
 Each alert has:
 
-- **Kind:** a playbook in `advisor/playbooks/`.
+- **Kind:** a playbook in `home-hub/advisor/playbooks/`.
 - **Verdict:** suspicious or dangerous.
 - **Reasons in plain English,** with addresses and numbers. A device's self-chosen name and the domain names it looked up are kept out of the reasons; they appear only in the details, made unclickable.
 - **Advice:** the playbook's first steps.
@@ -60,16 +60,16 @@ The same problem is reported at most once per 10 minutes, unless it gets worse (
 - **Learning.** A device's first 2 hours are learning only: no unusual-device or beacon alerts then.
 - **Unusual device is for small home devices.** A device that used more than 50 servers while learning is a laptop or phone: how much it does follows its user. In a busy hour on the lab Wi-Fi a laptop opening 30 websites in 10 minutes set it off twice, so it is no longer reported for such devices. The other checks still watch them.
 - **A busy browser is no network scan.** Browsers open many connections at once, and some get no answer. On the lab Wi-Fi a laptop had 15 such tries on port 443 while it made some 2,900 connections in 5 minutes. A scan now needs most of the machines tried on that port to stay silent, as a worm's tries do.
-- **Only new connections are tries** for network scans, password guessing and beacons on live traffic. The flow meter cuts a long connection into pieces after 10 s of silence, and those pieces are not new tries. For a network scan, a machine that answered at all does not count, even if the device then closed the connection unused, as browsers do. Both kinds raised false alarms on the lab Wi-Fi ([eval/results_net.md](../eval/results_net.md)). CIC-IDS2017's rows cannot tell these apart, so they keep the older test.
+- **Only new connections are tries** for network scans, password guessing and beacons on live traffic. The flow meter cuts a long connection into pieces after 10 s of silence, and those pieces are not new tries. For a network scan, a machine that answered at all does not count, even if the device then closed the connection unused, as browsers do. Both kinds raised false alarms on the lab Wi-Fi ([results/results_net.md](../results/results_net.md)). CIC-IDS2017's rows cannot tell these apart, so they keep the older test.
 
 ## Messages meet network traffic
 
 The SMS and link checks see a scam message; the network monitor sees what devices open. Together they can tell when someone opened a link from a scam:
 
-1. When the Pi flags an SMS, a chat or a message pasted on its page, the app writes the websites in its links to `data/fusion/watch.json`, for 24 hours (`detectors/net/scamlinks.py`).
+1. When the Pi flags an SMS, a chat or a message pasted on its page, the app writes the websites in its links to `data/fusion/watch.json`, for 24 hours (`home-hub/detectors/net/scamlinks.py`).
 2. The network monitor reads that list. When a device on the lab Wi-Fi looks up one of those websites, it raises **"Link from a scam message opened"** for that device. The alert says when the message came and how ("an SMS from a mobile number"). This replaces the phishing look-up alert for that name.
 
-- **Why it matters.** Real Indian scam links often use short domains that look just like genuine bulk-SMS link domains, so the link checker alone rates them safe ([eval/results_url.md](../eval/results_url.md)). The message's sender and text gave the scam away, and the look-up shows that the link was opened.
+- **Why it matters.** Real Indian scam links often use short domains that look just like genuine bulk-SMS link domains, so the link checker alone rates them safe ([results/results_url.md](../results/results_url.md)). The message's sender and text gave the scam away, and the look-up shows that the link was opened.
 - **Left out:** official sites, popular sites, link shorteners, chat links and shared services such as Google Drive. Everyone opens those all day, so a match would say nothing. Messages judged safe or plain marketing add nothing either.
 - **Kept:** only the website names, each for 24 hours. No text, no sender.
 - **Look-ups only after the message came** count (with one minute of slack for clocks).
@@ -111,7 +111,7 @@ With the Llama service running, a new alert appears on the page at once with the
   - other addresses become "another device on your network" or "a server on the internet";
   - website names become "a website".
 
-  The device's own name and the names it looked up never reach Llama: whoever chose them could hide instructions in them. Network alerts have their own system text and four worked examples (`advisor/prompt.py`), because "who the message pretends to be from" does not fit a device.
+  The device's own name and the names it looked up never reach Llama: whoever chose them could hide instructions in them. Network alerts have their own system text and four worked examples (`home-hub/advisor/prompt.py`), because "who the message pretends to be from" does not fit a device.
 - **The same checker as for messages.** An answer that calls the alert normal or harmless is refused, and a sentence with a link or a number is dropped. The page then keeps the playbook text.
 - **One at a time, messages first.** The app explains the newest 20 alerts of the last week (the page lists 20), newest first. A new explanation starts only when no message is waiting for Llama. A message checked while Llama explains a network alert waits for it, and the page says so. Its verdict and steps still appear at once.
 - **Time on the Pi** (measured on 3 November 2026, 13 network prompts, four worked examples):
@@ -125,11 +125,11 @@ With the Llama service running, a new alert appears on the page at once with the
 To review the answers and their time, and to fill the answer cache before a demo, run this on the Pi with the Llama service running:
 
 ```bash
-cd ~/ps3-guardian && source ~/ps3-venv/bin/activate
+cd ~/ps3-guardian/home-hub && source ~/ps3-venv/bin/activate
 python -m advisor.warm_cache --net
 ```
 
-It explains one sample of each of the 10 alert kinds, plus every alert in `logs/net_alerts.jsonl`. The table goes to `eval/advisor_net_review.md`. Add `--fresh` to time every answer without the cache.
+It explains one sample of each of the 10 alert kinds, plus every alert in `logs/net_alerts.jsonl`. The table goes to `results/advisor_net_review.md`. Add `--fresh` to time every answer without the cache.
 
 ## Set up on the Pi
 
@@ -138,7 +138,7 @@ It explains one sample of each of the 10 alert kinds, plus every alert in `logs/
 This step needs no network change. It starts watching `wlan0`, which carries mostly the Pi's own traffic until the Pi becomes the hotspot (part 2):
 
 ```bash
-cd ~/ps3-guardian
+cd ~/ps3-guardian/home-hub
 bash scripts/install_netmon.sh
 ```
 
@@ -179,7 +179,7 @@ The internet phone can be a second phone that does nothing else. Ours is a Motor
 3. On the Pi:
 
    ```bash
-   cd ~/ps3-guardian
+   cd ~/ps3-guardian/home-hub
    vcgencmd get_throttled            # 0x0 = power OK; anything else: use the official 3 A supply first
    bash scripts/setup_gateway.sh     # checks everything, prints the hotspot password, asks before switching
    ```
@@ -188,7 +188,7 @@ The internet phone can be a second phone that does nothing else. Ours is a Motor
 
    ```bash
    ssh arrehinus@10.42.0.1
-   cd ~/ps3-guardian && bash scripts/setup_gateway.sh --keep
+   cd ~/ps3-guardian/home-hub && bash scripts/setup_gateway.sh --keep
    ```
 
    If you don't run `--keep` within 10 minutes, the Pi switches back to your phone's hotspot by itself, and you can SSH in as before.
@@ -199,8 +199,8 @@ If one phone does both jobs (internet over USB and the app), it stays off the la
 
 **Other commands:**
 
-- `bash scripts/setup_gateway.sh --status` shows the Wi-Fi, the data used through the internet phone, and the devices on the hotspot.
-- `bash scripts/setup_gateway.sh --undo` goes back to your phone's hotspot. Switch that hotspot on first.
+- `bash home-hub/scripts/setup_gateway.sh --status` shows the Wi-Fi, the data used through the internet phone, and the devices on the hotspot.
+- `bash home-hub/scripts/setup_gateway.sh --undo` goes back to your phone's hotspot. Switch that hotspot on first.
 
 **Things to know:**
 
@@ -238,7 +238,7 @@ Two tools for the report. Run them on the Pi, from `~/ps3-guardian` with `source
 
 1. Leave the lab Wi-Fi in normal use for a day or more: the laptop and phones on `PS3-Guardian-Lab`, used as usual. An hour in, check that the monitor sees them: `tail -n 3 logs/netmon.log` should show hundreds or thousands of flows `in the last 15 min` while the laptop is in use.
 
-   **No time for a day?** A busy hour packs much of a day's variety into an hour: 30 common websites opened one after another, YouTube, Windows Update, the apps you use, a video call. It gives false alarms per hour of use and per 10,000 connections, not per day. The results are in [eval/results_net.md](../eval/results_net.md).
+   **No time for a day?** A busy hour packs much of a day's variety into an hour: 30 common websites opened one after another, YouTube, Windows Update, the apps you use, a video call. It gives false alarms per hour of use and per 10,000 connections, not per day. The results are in [results/results_net.md](../results/results_net.md).
 2. Say what each alert was, in the terminal:
 
    ```bash
@@ -262,7 +262,7 @@ Two tools for the report. Run them on the Pi, from `~/ps3-guardian` with `source
    - Alerts of days without watched time (before the monitor kept it) are left out; `--all` lists them.
    - A day with fewer than 300 flows an hour is named as **hardly used**: a laptop in use makes thousands an hour, so such a day does not show normal use.
 
-**In a spreadsheet instead:** `python scripts/net_traffic.py export alerts.csv` writes every alert with its label so far. Fill the `label` column with `test`, `false` or `real`, then run `python scripts/net_traffic.py measure alerts.csv`. The sheet may go through Excel, which re-writes dates in the PC's own format and may save in the Windows code page: `measure` matches each row to the alert log by its `id`, so it still counts it on the right day.
+**In a spreadsheet instead:** `python home-hub/scripts/net_traffic.py export alerts.csv` writes every alert with its label so far. Fill the `label` column with `test`, `false` or `real`, then run `python home-hub/scripts/net_traffic.py measure alerts.csv`. The sheet may go through Excel, which re-writes dates in the PC's own format and may save in the Windows code page: `measure` matches each row to the alert log by its `id`, so it still counts it on the right day.
 
 **CPU, memory and temperature:**
 
@@ -273,7 +273,7 @@ python scripts/pi_usage.py --minutes 30
 - **What it samples:** every 5 s, the monitor, the app and Llama, and the whole Pi. It prints a table of averages and peaks and writes every sample to `logs/pi_usage-….csv`.
 - **CPU figures** are a share of all four cores: 25% is one core fully busy.
 - **What to do during the 30 minutes** so the table covers the real work: one ESP32 test, and one message check that Llama explains.
-- **If the run was cut off** before its table (the SSH window closed, the laptop slept): `python scripts/pi_usage.py --from last` prints the table from the samples saved so far.
+- **If the run was cut off** before its table (the SSH window closed, the laptop slept): `python home-hub/scripts/pi_usage.py --from last` prints the table from the samples saved so far.
 
 ## Use it on a capture file or the test data
 
@@ -286,9 +286,9 @@ python detectors/net/eval_net.py --data "TrafficLabelling "          # the full 
 ## What it cannot do
 
 - **Attacks inside normal-looking web traffic** (SQL injection, XSS, Heartbleed in CIC-IDS2017): seeing them needs the content of the packets. It reads only connection summaries.
-- **Quiet malware on web ports.** In IoT-23, Torii's 16 tries at its controller in a day and a trojan's 6 downloads looked like ordinary web connections, and Hakai's 8,222 unanswered tries on port 50 matched no rule: 3 of 5 infected devices raised no alert ([eval/results_net.md](../eval/results_net.md#iot-23-real-iot-malware-16-november-2026)).
+- **Quiet malware on web ports.** In IoT-23, Torii's 16 tries at its controller in a day and a trojan's 6 downloads looked like ordinary web connections, and Hakai's 8,222 unanswered tries on port 50 matched no rule: 3 of 5 infected devices raised no alert ([results/results_net.md](../results/results_net.md#iot-23-real-iot-malware-16-november-2026)).
 - **Encrypted DNS** (DNS over HTTPS) hides look-ups from the DNS checks; the server-name (TLS) check still sees the website.
 - **Beacons** can also be normal apps that call home on a timer. They are only "suspicious", and come after the device's learning period.
-- **Beacons over one open connection are not seen.** Only new connections count, because apps that keep a connection open ping it at a fixed rhythm too ([eval/results_net.md](../eval/results_net.md)). Malware that checks in over a connection it keeps open would need a separate "long connection" check.
+- **Beacons over one open connection are not seen.** Only new connections count, because apps that keep a connection open ping it at a fixed rhythm too ([results/results_net.md](../results/results_net.md)). Malware that checks in over a connection it keeps open would need a separate "long connection" check.
 - **Llama explains network alerts in English only.** Messages can also get Hindi.
 - **An internet outage can look like a scan.** When the internet phone loses its connection, every new connection from the lab Wi-Fi fails. A device that retries many servers within a minute then looks like it is scanning.

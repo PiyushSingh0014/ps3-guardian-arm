@@ -15,22 +15,22 @@ When the phone is on the Pi's Wi-Fi, both judge each message: the phone at once,
 
 ## What runs on the phone
 
-The Pi's own checks, copied to Kotlin (`android/app/src/main/java/com/ps3guardian/app/guard/`):
+The Pi's own checks, copied to Kotlin (`phone-app/app/src/main/java/com/ps3guardian/app/guard/`):
 
 - the text cleaning of the SMS model (`train_baseline.clean_text`: HTML entities, ftfy's simple fixes);
 - the SMS text model (TF-IDF of character pieces and a logistic regression, trained on the same 6,053 public messages with the same script) and the India rules;
 - the sender ID with TRAI's rules and the two sender rules switched on on the Pi (`cap`, `brand`);
 - the link checker: link parsing with the Public Suffix List, official websites, brand imitation, short and chat links, free hosting, and the link model (the same file as the Pi's);
 - the scam types and the 25 playbooks' steps;
-- Llama's prompt for messages and the checks on its answer (`advisor/prompt.py`, `advisor/validator.py`), for Llama on the phone (update 44).
+- Llama's prompt for messages and the checks on its answer (`home-hub/advisor/prompt.py`, `home-hub/advisor/validator.py`), for Llama on the phone (update 44).
 
-Their data (patterns, lists, models, playbooks, Llama's prompt and checks: 3.5 MB) is written into `android/app/src/main/assets/guard/` by `scripts/export_phone_guard.py`, from the same Python modules the Pi runs. `tests/test_phone_guard.py` fails if a rule, a list, a playbook or the Llama prompt changes on the Pi and the export is not run again.
+Their data (patterns, lists, models, playbooks, Llama's prompt and checks: 3.5 MB) is written into `phone-app/app/src/main/assets/guard/` by `home-hub/scripts/export_phone_guard.py`, from the same Python modules the Pi runs. `home-hub/tests/test_phone_guard.py` fails if a rule, a list, a playbook or the Llama prompt changes on the Pi and the export is not run again.
 
-**Stays on the Pi:** the public phishing list (392,000 websites), the file checker, the network monitor and the explanations of network alerts. Llama's model (1 GB) is not in the app: the phone copies it from its own Pi (update 44). Without the list, the phone's link checker is the one measured "with no lists" in [eval/results_url.md](../eval/results_url.md): 81% of brand-new phishing sites flagged, 1.1% of popular websites called dangerous.
+**Stays on the Pi:** the public phishing list (392,000 websites), the file checker, the network monitor and the explanations of network alerts. Llama's model (1 GB) is not in the app: the phone copies it from its own Pi (update 44). Without the list, the phone's link checker is the one measured "with no lists" in [results/results_url.md](../results/results_url.md): 81% of brand-new phishing sites flagged, 1.1% of popular websites called dangerous.
 
 ## Does the phone decide as the Pi does?
 
-Checked on a computer: the phone's Kotlin code (run on the JVM by `android/guard-check/`) against the Pi's Python code (`scripts/check_phone_guard.py`), both without the phishing list and with the sender rules `cap` and `brand`. Same SMS model file, 16,272 test messages:
+Checked on a computer: the phone's Kotlin code (run on the JVM by `phone-app/guard-check/`) against the Pi's Python code (`home-hub/scripts/check_phone_guard.py`), both without the phishing list and with the sender rules `cap` and `brand`. Same SMS model file, 16,272 test messages:
 
 | Messages | How many | Same verdict | The same in every detail |
 | --- | --- | --- | --- |
@@ -49,13 +49,13 @@ Checked on a computer: the phone's Kotlin code (run on the JVM by `android/guard
 
 **How:**
 
-- The app copies the Pi's own model files, `llama3_2.pte` and `tokenizer.model` (about 1 GB), from the paired Pi, over the pinned HTTPS connection with the pairing token (`GET /llama`, `app/llama_files.py`). It checks each file's SHA-256 against the Pi's and keeps them in its private storage. The model is never in the app or the repository.
+- The app copies the Pi's own model files, `llama3_2.pte` and `tokenizer.model` (about 1 GB), from the paired Pi, over the pinned HTTPS connection with the pairing token (`GET /llama`, `home-hub/app/llama_files.py`). It checks each file's SHA-256 against the Pi's and keeps them in its private storage. The model is never in the app or the repository.
 - It runs them with ExecuTorch's Android library, release 1.5.1, the release the Pi's model was exported with (`org.pytorch:executorch-android`), on the phone's Arm CPU (XNNPACK). Greedy, as on the Pi; at most 80 new pieces of text in English and 192 in Hindi (64 and 160 before prompt v5).
 - Only when the Pi cannot be reached. The phone's alert comes at once; a few seconds later Llama's text replaces it while it is on screen, ending "(Explained by Llama 3.2 on this phone, in N s.)". At home the Pi explains, as before. **Share to PS3 Guardian** with a message's text does the same.
 - Llama sees what it sees on the Pi: the scanner result, the scam type, the playbook's checked fact and the scammer's goal, the warning signs, and who the message claims to be (from the fixed list). Since update 47 also what the message says, in fixed words (below). Never the message text or the sender. Its answer passes the Pi's checks: a sentence with a number, a link, an organisation, a rule or a claim that the evidence does not have is dropped, and if nothing is left the playbook's text stays.
 - The model is loaded for an alert and leaves the phone's memory after 3 minutes without one.
 
-**The same prompt and checks as the Pi's**, compared on a computer (`scripts/check_phone_guard.py`, the phone's Kotlin code run by `android/guard-check/`):
+**The same prompt and checks as the Pi's**, compared on a computer (`home-hub/scripts/check_phone_guard.py`, the phone's Kotlin code run by `phone-app/guard-check/`):
 
 | What | How many | The same on the phone |
 | --- | --- | --- |
@@ -80,7 +80,7 @@ As on the Pi, only flagged messages are explained: a message the phone judges sa
 
 **Why:** Llama saw the scam type and the warning signs, not the message, so every message of a type got much the same explanation: a message threatening to cut the electricity could be told it "pretends to be your bank".
 
-**How:** `detectors/sms/says.py` finds what the message itself claims (an account, card or SIM blocked, electricity cut off, a prize, a parcel, a refund, a job, a loan, police, an investment, reward points; in English or Hindi), the amount, a deadline, and what it asks (an OTP, paying, installing an app, calling someone, updating details, opening a link). It names each in fixed words, at most 4, in that order: "says your electricity will be cut off", "mentions ₹25,000", "asks you to pay money". Only flagged messages get them.
+**How:** `home-hub/detectors/sms/says.py` finds what the message itself claims (an account, card or SIM blocked, electricity cut off, a prize, a parcel, a refund, a job, a loan, police, an investment, reward points; in English or Hindi), the amount, a deadline, and what it asks (an OTP, paying, installing an app, calling someone, updating details, opening a link). It names each in fixed words, at most 4, in that order: "says your electricity will be cut off", "mentions ₹25,000", "asks you to pay money". Only flagged messages get them.
 
 - Llama's case lists them under "The message:" (prompt v5, with new worked examples). Nothing the scammer wrote reaches Llama except an amount, and Llama's answer is still held to its case by the checks.
 - The phone has the same patterns (exported to `sms.json`) and finds the same phrases, so Llama on the phone gets the same case.
@@ -103,7 +103,7 @@ The 100 answers graded by hand ([llama-grading.md](llama-grading.md)) were writt
 ## Install and test (updates 43 and 44)
 
 1. Update the Pi (update 44) and restart it: it now gives its Llama files to paired phones.
-2. Copy the new `android` folder to the Android Studio computer (as in [android-companion.md](android-companion.md), Part B) and press **Run ▶** with the phone connected. It updates the app in place (version 2.2): settings, pairing and the list stay. The first build downloads ExecuTorch's library (about 8 MB).
+2. Copy the new `phone-app` folder to the Android Studio computer (as in [android-companion.md](android-companion.md), Part B) and press **Run ▶** with the phone connected. It updates the app in place (version 2.2): settings, pairing and the list stay. The first build downloads ExecuTorch's library (about 8 MB).
 3. Open the app: under the title it says **Phone Guard is on**.
 4. **Copy Llama** (once, on the Pi's Wi-Fi, paired): tap **Get Llama from the Pi (about 1 GB)** (in app 3.0: Settings → Explanations → **Add from your Home Hub**), then **Copy**. Keep the screen open; it takes a few minutes and ends "Llama 3.2 1B is now on this phone (… MB), checked against the Pi's." If it stops, tap the button again: it goes on from where it stopped.
 5. **Test without the Pi:** switch the phone's Wi-Fi off (mobile data may stay on). Tap **Send a test scam** (in app 3.0: Settings → Advanced; its timings are at the bottom of the alert's screen and in Settings → Advanced → Activity log): the alert comes at once, ending "(Checked on this phone.)", and the list shows "DANGEROUS (…) on this phone, N ms" and "the Pi did not answer". A few seconds later the alert's text becomes Llama's, ending "(Explained by Llama 3.2 on this phone, in N s.)", and the list shows "Llama on this phone explained it in N s, …" with the model's load time and the tokens read and written. A real SMS from another phone gives the same.

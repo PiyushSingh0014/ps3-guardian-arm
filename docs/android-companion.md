@@ -38,11 +38,11 @@ Since update 46 (app 3.0), the app is called **Sajag** (सजग), with four pa
 So that the app comes back by itself after the Pi restarts (for example after a power dip):
 
 ```bash
-cd ~/ps3-guardian
+cd ~/ps3-guardian/home-hub
 bash scripts/install_service.sh
 ```
 
-It installs a systemd service, `ps3-guardian`, that runs `scripts/run_pi.sh` at every boot and again if it stops with an error. From then on:
+It installs a systemd service, `ps3-guardian`, that runs `home-hub/scripts/run_pi.sh` at every boot and again if it stops with an error. From then on:
 
 | To | Run |
 | --- | --- |
@@ -50,7 +50,7 @@ It installs a systemd service, `ps3-guardian`, that runs `scripts/run_pi.sh` at 
 | see if it runs | `systemctl status ps3-guardian --no-pager` |
 | read the log (now appended, not overwritten) | `tail -n 30 ~/ps3-guardian/logs/app.log` |
 
-Don't start `scripts/run_pi.sh` by hand any more: a second copy cannot use port 8000.
+Don't start `home-hub/scripts/run_pi.sh` by hand any more: a second copy cannot use port 8000.
 
 ### Each update
 
@@ -63,7 +63,7 @@ Don't start `scripts/run_pi.sh` by hand any more: a second copy cannot use port 
 2. On the Pi (`arrehinus@ps3-guardian`), pull it, push it to GitHub (the `step3` branch and `main`, the branch GitHub shows first) and restart the app:
 
    ```bash
-   cd ~/ps3-guardian
+   cd ~/ps3-guardian/home-hub
    git pull --no-rebase --no-edit ~/ps3-guardian-update6.bundle step3
    git push origin step3 step3:main
    sudo systemctl restart ps3-guardian
@@ -84,22 +84,22 @@ Don't start `scripts/run_pi.sh` by hand any more: a second copy cannot use port 
 
 1. **Install Android Studio** (the current stable version) from developer.android.com/studio.
 
-2. **Get the project.** The repo's `android/` folder is the complete Android Studio project (package `com.ps3guardian.app`; `com.example.ps3guardian` until update 39). Either clone the repo, or on GitHub choose **Code → Download ZIP** and unzip it.
+2. **Get the project.** The repo's `phone-app/` folder is the complete Android Studio project (package `com.ps3guardian.app`; `com.example.ps3guardian` until update 39). Either clone the repo, or on GitHub choose **Code → Download ZIP** and unzip it.
 
-3. **Open it:** File → **Open** → choose the `android` folder (not the repo's top folder). Android Studio downloads Gradle and the libraries the first time; wait until the sync finishes.
+3. **Open it:** File → **Open** → choose the `phone-app` folder (not the repo's top folder). Android Studio downloads Gradle and the libraries the first time; wait until the sync finishes.
 
    Two warnings are expected and can be left alone: "Not targeting the latest versions of Android" (the target stays at 36 on purpose: apps targeting Android 17, API 37, receive OTP-like SMS three hours late and need an extra local-network permission) and "Use version catalog instead".
 
 4. **Build → Make Project** (Ctrl+F9; called Assemble Project in some versions). It should end with BUILD SUCCESSFUL. If it doesn't, send the first error line.
 
-**Updating the app later:** get the new version of the repo (pull, or download the ZIP again) and press **Run ▶**. The app keeps its settings and its list. Copy the whole `android` folder, not only `app/src/main`: update 39 also changed `app/build.gradle.kts`.
+**Updating the app later:** get the new version of the repo (pull, or download the ZIP again) and press **Run ▶**. The app keeps its settings and its list. Copy the whole `phone-app` folder, not only `phone-app/app/src/main`: update 39 also changed `phone-app/app/build.gradle.kts`.
 
 **Update 39 installs a new app.** Its package name changed, so Android sees another app: the old one stays until you remove it, and both would send each SMS to the Pi. Before installing, open the old app and wait until no message is waiting for the Pi (the list says so), then uninstall it (long-press its icon → **Uninstall**). The new app starts empty: set it up again as in Part D.
 
 <details>
 <summary>How the project was made (only needed to make it again from scratch)</summary>
 
-New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.ps3guardian.app`, Kotlin, minimum SDK API 26, Kotlin DSL. Then in `app/build.gradle.kts`: `targetSdk = 36` and `implementation("androidx.work:work-runtime-ktx:2.12.0")`; then the app's files copied into `app/src/main/` (manifest, the `.kt` files, `res/layout/activity_main.xml`, `res/xml/network_security_config.xml`). If you choose another package name, change the first line (`package ...`) of every `.kt` file to match (Edit → Find → Replace in Files).
+New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.ps3guardian.app`, Kotlin, minimum SDK API 26, Kotlin DSL. Then in `phone-app/app/build.gradle.kts`: `targetSdk = 36` and `implementation("androidx.work:work-runtime-ktx:2.12.0")`; then the app's files copied into `phone-app/app/src/main/` (manifest, the `.kt` files, `res/layout/activity_main.xml`, `res/xml/network_security_config.xml`). If you choose another package name, change the first line (`package ...`) of every `.kt` file to match (Edit → Find → Replace in Files).
 
 </details>
 
@@ -150,21 +150,21 @@ New Project → *Empty Views Activity*: name `PS3 Guardian`, package `com.ps3gua
 2. **Label it on the Pi.** Each person labels their own phone's messages (the name typed in the app):
 
    ```bash
-   cd ~/ps3-guardian && source ~/ps3-venv/bin/activate
+   cd ~/ps3-guardian/home-hub && source ~/ps3-venv/bin/activate
    python scripts/sms_traffic.py label --device B
    ```
 
-   `f` fraud, `m` genuine marketing, `n` normal, Enter if unsure, `u` undo, `q` stop; the screen explains each label, and the app's verdict is not shown. Identical messages are asked once, and labels are saved at once in `data/sms/labels.json`: run it again to carry on. Messages without text (safe messages from phone numbers, safe chats) are not asked. Afterwards, `python scripts/sms_traffic.py review` asks again about likely mistakes (fraud from a registered sender ID, a message labelled two ways).
-   - **Or in Excel:** `python scripts/sms_traffic.py export ~/traffic.csv`, copy it to the laptop (PowerShell: `scp arrehinus@10.42.0.1:~/traffic.csv $HOME\Downloads\`), fill the `label` column with `smishing`, `spam` or `ham`, save as **CSV UTF-8**, copy it back (`scp $HOME\Downloads\traffic.csv arrehinus@10.42.0.1:~/`) and run `python scripts/sms_traffic.py import ~/traffic.csv`: the labels go into `data/sms/labels.json`, which model v2 reads.
+   `f` fraud, `m` genuine marketing, `n` normal, Enter if unsure, `u` undo, `q` stop; the screen explains each label, and the app's verdict is not shown. Identical messages are asked once, and labels are saved at once in `data/sms/labels.json`: run it again to carry on. Messages without text (safe messages from phone numbers, safe chats) are not asked. Afterwards, `python home-hub/scripts/sms_traffic.py review` asks again about likely mistakes (fraud from a registered sender ID, a message labelled two ways).
+   - **Or in Excel:** `python home-hub/scripts/sms_traffic.py export ~/traffic.csv`, copy it to the laptop (PowerShell: `scp arrehinus@10.42.0.1:~/traffic.csv $HOME\Downloads\`), fill the `label` column with `smishing`, `spam` or `ham`, save as **CSV UTF-8**, copy it back (`scp $HOME\Downloads\traffic.csv arrehinus@10.42.0.1:~/`) and run `python home-hub/scripts/sms_traffic.py import ~/traffic.csv`: the labels go into `data/sms/labels.json`, which model v2 reads.
 3. **Measure:**
 
    ```bash
    python scripts/sms_traffic.py measure
    ```
 
-   It prints flagged messages per label, text only vs with the sender ID, for all messages and then separately for SMS and chats, and how many came from each phone: the real-traffic numbers that replace the projection in `eval/results_sms.md`.
+   It prints flagged messages per label, text only vs with the sender ID, for all messages and then separately for SMS and chats, and how many came from each phone: the real-traffic numbers that replace the projection in `results/results_sms.md`.
 4. **Train SMS model v2** from the labelled messages: [sms-model-v2.md](sms-model-v2.md).
-5. **Clean up** only after that: the log and the labels are v2's training data. When the project ends, delete `logs/sms_traffic.jsonl`, `data/sms/labels.json` and `detectors/sms/sms_v2.joblib` on the Pi.
+5. **Clean up** only after that: the log and the labels are v2's training data. When the project ends, delete `logs/sms_traffic.jsonl`, `data/sms/labels.json` and `home-hub/detectors/sms/sms_v2.joblib` on the Pi.
 
 ## Part F: chats (RCS and WhatsApp)
 
@@ -219,7 +219,7 @@ The Pi checks files that came in WhatsApp, Messages or an email: what the file r
 - **Data.** The file goes to the Pi over the lab Wi-Fi only, is checked in memory and is not kept. The Pi's log keeps the file's type, size and verdict, never its name. Files up to 25 MB.
 
 1. **Install** the new version from the Android Studio system: Part B, "Updating the app later", then Part C step 3.
-2. **Put the test files on the phone.** On the Pi, `cd ~/ps3-guardian && python3 scripts/make_file_samples.py ~/ps3-file-samples` makes 21 harmless test files. Copy them to the laptop (PowerShell: `scp -r arrehinus@10.42.0.1:~/ps3-file-samples $HOME\Downloads\`), then send a few to yourself in WhatsApp Web (**Message yourself** → attach → **Document**): `ps3-test-ticket.pdf`, `Wedding_Invitation.pdf`, `ps3-test-kyc-link.pdf`, `ps3-test-macro.docm`. On the phone, open that chat and tap the download arrow on each.
+2. **Put the test files on the phone.** On the Pi, `cd ~/ps3-guardian/home-hub && python3 home-hub/scripts/make_file_samples.py ~/ps3-file-samples` makes 21 harmless test files. Copy them to the laptop (PowerShell: `scp -r arrehinus@10.42.0.1:~/ps3-file-samples $HOME\Downloads\`), then send a few to yourself in WhatsApp Web (**Message yourself** → attach → **Document**): `ps3-test-ticket.pdf`, `Wedding_Invitation.pdf`, `ps3-test-kyc-link.pdf`, `ps3-test-macro.docm`. On the phone, open that chat and tap the download arrow on each.
 3. **Share** `ps3-test-ticket.pdf` to **PS3 Guardian: check it**: "LIKELY SAFE: no danger signs found".
 4. **Share** `Wedding_Invitation.pdf`: "DANGEROUS: App or program sent as a file", because "the file says it is .pdf, but it is really an Android app (APK)". Llama's explanation follows, usually within a minute.
 5. **The warning for saved contacts** (optional, with chats switched on in Part F): a teammate saved in your contacts sends you `Wedding_Invitation.apk` in WhatsApp as a document. Tell them first that it is a harmless test file. About 5 seconds after the notification, the app shows an alert. On the Pi, `tail -n 1 ~/ps3-guardian/logs/sms_traffic.jsonl` shows `"category": "app_file"`. If nothing comes, look at the notification: if it does not show the file's name, the app cannot see it.
@@ -246,7 +246,7 @@ If the Pi ever makes a new certificate (only if its two files are removed), ever
 
 The app now checks every SMS and chat on the phone itself, with the Pi's own rules, model and lists, so a verdict needs no network: at home, on mobile data, or with no network at all. The Pi still adds Llama's explanation and its phishing list when the phone is on its Wi-Fi. How it works, what stays on the Pi and how it was checked: [phone-guard.md](phone-guard.md).
 
-1. **Install:** copy the whole new `android` folder (Part B) and press **Run ▶**. It updates the app in place (version 2.1): settings, pairing and the list stay.
+1. **Install:** copy the whole new `phone-app` folder (Part B) and press **Run ▶**. It updates the app in place (version 2.1): settings, pairing and the list stay.
 2. Under the title the app says **Phone Guard is on**.
 3. **Test:** switch Wi-Fi off and tap **Send a test scam**. The alert comes at once, ending "(Checked on this phone.)"; the list shows "DANGEROUS (…) on this phone, N ms", then "the Pi did not answer". Switch Wi-Fi back on: messages kept meanwhile go to the Pi.
 
@@ -255,7 +255,7 @@ The app now checks every SMS and chat on the phone itself, with the Pi's own rul
 Away from the Pi, the phone's alerts can get Llama's two-sentence explanation too: the app copies the Pi's own Llama 3.2 1B (about 1 GB) once and runs it with ExecuTorch on the phone, with the Pi's prompt and the Pi's checks on the answer. At home the Pi still explains. Details and how it was checked: [phone-guard.md](phone-guard.md#llama-on-the-phone-update-44).
 
 1. **The Pi:** apply update 44 and restart (`sudo systemctl restart ps3-guardian`). It gives its model files only to paired phones, over HTTPS with the token.
-2. **The app:** copy the whole new `android` folder (Part B) and press **Run ▶** (version 2.2). The first build downloads ExecuTorch's library from Maven Central, so the Android Studio computer needs the internet once.
+2. **The app:** copy the whole new `phone-app` folder (Part B) and press **Run ▶** (version 2.2). The first build downloads ExecuTorch's library from Maven Central, so the Android Studio computer needs the internet once.
 3. **Copy Llama:** with the phone on `PS3-Guardian-Lab` and paired (Part J), tap **Get Llama from the Pi (about 1 GB)**, then **Copy**. Keep the screen open (it stays on by itself while copying) for a few minutes. It ends with "Llama 3.2 1B is now on this phone (… MB), checked against the Pi's." Each file is checked against the Pi's SHA-256 before it is used.
 4. **Test:** Wi-Fi off, tap **Send a test scam**. The alert comes at once; a few seconds later its text becomes Llama's, ending "(Explained by Llama 3.2 on this phone, in N s.)". The list shows "Llama on this phone explained it in N s, …" with the time to load the model and how many tokens Llama read and wrote, and how fast: note that line for the report. Send a second test scam: the model is still loaded, so that line shows Llama's speed alone.
 
@@ -263,7 +263,7 @@ Away from the Pi, the phone's alerts can get Llama's two-sentence explanation to
 
 From version 3.0 the app is called **Sajag** (सजग, Hindi for "alert"). It has four pages, switched by the bar at the bottom, a screen for every alert and a set-up in three steps. The checks themselves are the same as in 2.3: Phone Guard, the Pi (now called the **Home Hub** on screen), Llama on the Pi and on the phone.
 
-1. **Install:** copy the whole new `android` folder over the project on the Android Studio computer (Part B) and press **Run ▶**. It updates the app in place (version 3.0): the pairing, the switches, Llama on the phone and the messages waiting for the Pi stay. A phone that was paired before skips the set-up.
+1. **Install:** copy the whole new `phone-app` folder over the project on the Android Studio computer (Part B) and press **Run ▶**. It updates the app in place (version 3.0): the pairing, the switches, Llama on the phone and the messages waiting for the Pi stay. A phone that was paired before skips the set-up.
 2. **A new phone** opens the set-up by itself: (1) allow SMS and alerts, and notification access for chats if wanted; (2) the Home Hub's address, the pairing code (`cat ~/.ps3_guardian_token` on the Pi) and the phone's name, then **Pair with this Home Hub** and compare the fingerprint as in Part J; (3) copy Llama. Each step can be skipped; **Settings → Run set-up again** opens it later.
 3. **Test:** Settings → Advanced → **Send a test scam**. The alert's own screen opens at once: the verdict, what is happening, what to do now (with **Call 1930** and **Report at cybercrime.gov.in**), why it was flagged and the message with its link broken. It fills in by itself when the Home Hub answers and when Llama's explanation is ready. The notification has two buttons: **What to do** (that screen) and **Call 1930** (the dialler, with the number filled in; nothing is called by itself).
 
@@ -282,7 +282,7 @@ From version 3.0 the app is called **Sajag** (सजग, Hindi for "alert"). It 
 | Share to **PS3 Guardian: check it** | Share to **Check with Sajag**: the result opens on the alert's own screen |
 | — | **Home → Check a message** and **Check a link**: paste a text or a link to check it the same way |
 
-The look: charcoal and ivory, with red, yellow and green used only for verdicts (always with an icon and a word); the Figtree font, and the name सजग in Rozha One. Both fonts are under the SIL Open Font License; their licence texts are in `app/src/main/assets/licenses/`.
+The look: charcoal and ivory, with red, yellow and green used only for verdicts (always with an icon and a word); the Figtree font, and the name सजग in Rozha One. Both fonts are under the SIL Open Font License; their licence texts are in `phone-app/app/src/main/assets/licenses/`.
 
 ## If something goes wrong
 
@@ -299,15 +299,15 @@ The look: charcoal and ivory, with red, yellow and green used only for verdicts 
 | "Your Home Hub was out of reach" (app 3.0) or "WAITING for the Pi" | Normal while the phone cannot reach the Pi: the phone has already judged the message (the line above it), Llama on the phone explains it if it was copied there (Part L), and the phone sends it to the Pi later for the phishing list and the Pi's own explanation. Many of them: check the Pi as for "Cannot reach the Pi". |
 | Many alerts at once when the phone is back on the home Wi-Fi | Normal: the messages that waited are checked by the Home Hub now, and Llama's text follows. Since app 3.1 each alert names its message: the sender, the start of the message (links broken) and the time it arrived. |
 | The same chat message sent a second time gave no alert and is not in Alerts (app 3.0–3.1) | The app took it for the same notification posted again and skipped it (the same words from the same sender, for 2 days). Fixed in app 3.2: each message is known by the time its app gives it, so a repeat is checked and alerted again. |
-| "Checks on this phone could not start" (or "Phone Guard could not start") | The app was built without its `assets/guard` folder: copy the whole `android` folder again (Part B) and **Run ▶**. Until then messages wait for the Pi, as before update 43. |
-| "The Pi has no Llama files to give" | "it runs an older version": apply update 44 on the Pi and `sudo systemctl restart ps3-guardian`. Otherwise its model files are not where `scripts/run_pi.sh` looks: on the Pi, `ls -l ~/executorch-deployment/llama3_2.pte ~/executorch-deployment/tokenizer.model`, then restart. |
+| "Checks on this phone could not start" (or "Phone Guard could not start") | The app was built without its `assets/guard` folder: copy the whole `phone-app` folder again (Part B) and **Run ▶**. Until then messages wait for the Pi, as before update 43. |
+| "The Pi has no Llama files to give" | "it runs an older version": apply update 44 on the Pi and `sudo systemctl restart ps3-guardian`. Otherwise its model files are not where `home-hub/scripts/run_pi.sh` looks: on the Pi, `ls -l ~/executorch-deployment/llama3_2.pte ~/executorch-deployment/tokenizer.model`, then restart. |
 | "The copy stopped: …" | The phone left the Pi's Wi-Fi or the screen was closed. Tap **Add from your Home Hub** again (Settings → Explanations): it goes on from where it stopped. |
 | "not enough free space on the phone" | Llama needs about 1.2 GB free: delete some photos or videos, then try again. |
 | "Llama on this phone could not answer: …" | Send that line. The alert keeps the playbook's advice meanwhile. |
 | "Llama on this phone (N s): answer not used, …" | Normal now and then: Llama's answer failed the Pi's checks, so the playbook's advice stays, as on the Pi. |
 | A message came with the Wi-Fi off, but no Llama explanation | Only flagged messages are explained. If Alerts shows it as **Safe**, there was no alert and nothing to explain, as on the Pi. To test, send a scam-like text from another phone. Before app 3.2 a chat text already checked from the same sender was skipped for 2 days; since 3.2 the same text sent again is checked again. |
 | Build error "Could not resolve org.pytorch:executorch-android:1.5.1" | The Android Studio computer needs the internet for the first build after update 44 (Maven Central). |
-| Build error "2 files found with path 'lib/arm64-v8a/…'" | Send the first error line: that library's name goes into `pickFirsts` in `app/build.gradle.kts`, next to `libc++_shared.so`. |
+| Build error "2 files found with path 'lib/arm64-v8a/…'" | Send the first error line: that library's name goes into `pickFirsts` in `phone-app/app/build.gradle.kts`, next to `libc++_shared.so`. |
 | No alert, but the list shows the message | It was judged safe (no alert for safe messages), or notifications are off for the app |
 | Nothing at all when an SMS arrives | SMS permission (Part D, step 5), **Text messages (SMS)** on in Settings, and battery Unrestricted (step 6). Chats are checked only as set up in Part F. |
 | Network alerts: "Cannot reach the Pi" | The phone must be on `PS3-Guardian-Lab`, with the Pi address `https://10.42.0.1:8443`, paired (Part J). |

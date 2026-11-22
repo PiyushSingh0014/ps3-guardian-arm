@@ -1,4 +1,4 @@
-# ESP32 lab device (`esp32/ps3_lab_device`)
+# ESP32 lab device (`iot-lab-device/ps3_lab_device`)
 
 The ESP32 on the IoT Pro Kit board joins the Pi's lab Wi-Fi as an ordinary smart sensor. Every 15 seconds it sends its readings to the Pi.
 
@@ -37,7 +37,7 @@ You need Arduino IDE 2 with the **esp32 by Espressif** boards package, and the l
 
    Choose **Install all** when asked about the libraries they need.
 
-2. **Open the sketch** `esp32/ps3_lab_device/ps3_lab_device.ino`. A copy is also in the laptop folder `D:\ARM\ps3-starter\sms_detector\esp32\ps3_lab_device`.
+2. **Open the sketch** `iot-lab-device/ps3_lab_device/ps3_lab_device.ino`. A copy is also in the laptop folder `D:\ARM\ps3-starter\sms_detector\esp32\ps3_lab_device`.
 
 3. **Secrets.** In that folder, `secrets.h` holds the lab Wi-Fi password and the lab-device token. It is never uploaded to git. If it is missing, copy `secrets.example.h` to `secrets.h`. Fill in the two lines marked FILL IN. To see both values, run this on the Pi:
 
@@ -69,7 +69,7 @@ You need Arduino IDE 2 with the **esp32 by Espressif** boards package, and the l
 
 | Serial Monitor says | Fix |
 | --- | --- |
-| `Not on the Wi-Fi yet` | Check `WIFI_PASS` in `secrets.h`, and that the Pi is the hotspot: `bash scripts/setup_gateway.sh --status`. |
+| `Not on the Wi-Fi yet` | Check `WIFI_PASS` in `secrets.h`, and that the Pi is the hotspot: `bash home-hub/scripts/setup_gateway.sh --status`. |
 | `The Pi refused the pairing token` | `PI_TOKEN` in `secrets.h` must equal `cat ~/.ps3_lab_device_token` on the Pi. |
 | `Report not accepted: connection refused` | The Pi app is not running: `sudo systemctl status ps3-guardian`. |
 | `BMP180: not found` | Check `I2C_SDA` and `I2C_SCL`. |
@@ -79,7 +79,7 @@ The device's name on the Wi-Fi is `esp32-lab`, so alerts show it next to its add
 
 ## How it fits
 
-- The Pi side is `app/lab_devices.py`:
+- The Pi side is `home-hub/app/lab_devices.py`:
   - `POST /iot`: readings in (the lab-device token, or the pairing token), mode out.
   - `GET /iot`: the page's view, with each device's latest network alerts.
   - `POST /iot/mode`: the page's buttons.

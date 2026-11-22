@@ -1,7 +1,7 @@
 # Accuracy test (update 49)
 
 How often Sajag is right about scam and normal messages, and whether its explanations are true.
-Results: [eval/results_accuracy.md](../eval/results_accuracy.md).
+Results: [results/results_accuracy.md](../results/results_accuracy.md).
 
 | Part | Who | Time |
 | --- | --- | --- |
@@ -13,7 +13,7 @@ Results: [eval/results_accuracy.md](../eval/results_accuracy.md).
 Before B and C, the Pi must run update 47 or later, restarted (prompt v5):
 
 ```
-cd ~/ps3-guardian
+cd ~/ps3-guardian/home-hub
 git log --oneline -1
 sudo systemctl restart ps3-guardian
 ```
@@ -25,7 +25,7 @@ Done: see the results file. To run it again on the Pi (it then also shows the Pi
 the Pi's home folder, then:
 
 ```
-cd ~/ps3-guardian
+cd ~/ps3-guardian/home-hub
 ~/ps3-venv/bin/python scripts/accuracy_test.py --india ~/india_sms_collection_v9.xlsx --public ~/merged_sms.csv --smishing ~/final_dataset_output.csv
 ```
 
@@ -36,7 +36,7 @@ were never labelled, so the false-alarm rate is only a range (0.9 to 7.9 per 100
 only the flagged ones: each is a true alert or a false alarm.
 
 ```
-cd ~/ps3-guardian
+cd ~/ps3-guardian/home-hub
 ~/ps3-venv/bin/python scripts/sms_traffic.py label --flagged
 ```
 
@@ -62,7 +62,7 @@ same message cases, now with what each message says (prompt v5), so the two grad
 for like. Run it when nobody is using the app (alerts would wait for Llama):
 
 ```
-cd ~/ps3-guardian
+cd ~/ps3-guardian/home-hub
 ~/ps3-venv/bin/python -m advisor.grade generate --india ~/india_sms_collection_v9.xlsx --folder data/advisor/grading-v5 --match data/advisor/grading
 ```
 

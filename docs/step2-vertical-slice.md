@@ -53,7 +53,7 @@ What to expect:
 - Every call records prompt and generated tokens, time to first token, and
   prefill/decode tokens/s. Collect them; they are your report's performance data.
 - If Llama ignores the answer format, set `INCLUDE_BOS_TOKEN = False` in
-  `advisor/prompt.py` and pass `--num_bos=1` through `extra_args`.
+  `home-hub/advisor/prompt.py` and pass `--num_bos=1` through `extra_args`.
 
 ---
 
@@ -61,16 +61,16 @@ What to expect:
 
 | File | Role |
 | --- | --- |
-| `detectors/sms/detector.py` | Wraps the day-1 model; returns a `Finding` |
-| `advisor/findings.py` | The `Finding` contract and verdict thresholds |
-| `advisor/categorize.py` | Picks a playbook for a flagged message (keyword stopgap) |
-| `advisor/playbooks/*.md` | Remediation steps, one file per scam type |
-| `advisor/prompt.py` | Llama 3.2 chat prompt; sanitises the untrusted message |
-| `advisor/backends.py` | `TemplateBackend`, `LlamaMainBackend`; parses runner metrics |
-| `advisor/validator.py` | Checks every LLM answer before a user sees it |
-| `advisor/advise.py` | Template first, then Llama, then validation |
-| `app/server.py` | FastAPI `/check` endpoint + the phone-friendly page |
-| `tests/` | Test suite + `fake_llama_main.py` for testing without a Pi |
+| `home-hub/detectors/sms/detector.py` | Wraps the day-1 model; returns a `Finding` |
+| `home-hub/advisor/findings.py` | The `Finding` contract and verdict thresholds |
+| `home-hub/advisor/categorize.py` | Picks a playbook for a flagged message (keyword stopgap) |
+| `home-hub/advisor/playbooks/*.md` | Remediation steps, one file per scam type |
+| `home-hub/advisor/prompt.py` | Llama 3.2 chat prompt; sanitises the untrusted message |
+| `home-hub/advisor/backends.py` | `TemplateBackend`, `LlamaMainBackend`; parses runner metrics |
+| `home-hub/advisor/validator.py` | Checks every LLM answer before a user sees it |
+| `home-hub/advisor/advise.py` | Template first, then Llama, then validation |
+| `home-hub/app/server.py` | FastAPI `/check` endpoint + the phone-friendly page |
+| `home-hub/tests/` | Test suite + `fake_llama_main.py` for testing without a Pi |
 
 ## The contract every detector follows
 
@@ -133,7 +133,7 @@ into the advisor and fusion engine with no changes.
 
 ## Adding playbooks
 
-Copy any file in `advisor/playbooks/`, keep the format (`# Title`,
+Copy any file in `home-hub/advisor/playbooks/`, keep the format (`# Title`,
 `severity:`, `summary:`, `## Steps` with a numbered list), and name it after
 the category key it serves. Aim for about 25 by week 4. Hindi versions of the
 step text are the next improvement for non-English users.

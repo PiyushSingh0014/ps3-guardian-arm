@@ -7,4 +7,4 @@ To build it again, from this folder (XeLaTeX, for the Hindi name and the app's f
 
     xelatex sajag-phase1-report.tex && xelatex sajag-phase1-report.tex
 
-The fonts come from the app itself (`android/app/src/main/res/font/`: Figtree and Rozha One, SIL Open Font Licence).
+The fonts come from the app itself (`phone-app/app/src/main/res/font/`: Figtree and Rozha One, SIL Open Font Licence).

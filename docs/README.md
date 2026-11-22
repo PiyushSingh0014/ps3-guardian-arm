@@ -33,7 +33,7 @@ Every part of Sajag (PS3 Guardian) has a guide here. Start with the [README](../
 | [india-sms-test-set.md](india-sms-test-set.md) | The India SMS test set: where its 227 messages come from |
 | [iot23-replay.md](iot23-replay.md) | Replaying IoT-23's real IoT malware captures through the network monitor |
 
-Measured results are in [eval/](../eval/README.md).
+Measured results are in [results/](../results/README.md).
 
 ## History
 

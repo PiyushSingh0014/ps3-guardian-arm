@@ -68,7 +68,7 @@ ham,"Rs 500 debited from A/c XX1234 on 12-10. Not you? Call 1800...",AX-SBIINB-S
 python detectors/sms/eval_india.py --train merged_sms.csv --test india_sms_collection_v9.xlsx --show 20
 ```
 
-This trains the app's model without the India set (test messages that also appear in the training data are dropped), tests only on the India set, and lists the missed fraud and the false alarms. It reads the workbook directly, or a CSV in the format above. The results so far are in `eval/results_sms.md`.
+This trains the app's model without the India set (test messages that also appear in the training data are dropped), tests only on the India set, and lists the missed fraud and the false alarms. It reads the workbook directly, or a CSV in the format above. The results so far are in `results/results_sms.md`.
 
 ## Then improve, in this order
 

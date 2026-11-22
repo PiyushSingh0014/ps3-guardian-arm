@@ -36,15 +36,15 @@ network monitor (phishing look-up) ─┘                              │
 
 - **No sudo for the app or the monitor.** They only write the list. systemd runs the helper as root when the list changes, and every hour so that blocks end on time.
 - **The helper trusts nothing in the list.** It reads only the paths in `/etc/ps3-guardian/dns-block.json`, which only root can change. It refuses a list that is a link or not owned by the app's user, keeps only well-formed website names (at most 1,000), writes one file and signals one process.
-- **One setting for dnsmasq.** NetworkManager's hotspot reads `/etc/NetworkManager/dnsmasq-shared.d/`, where `scripts/setup_gateway.sh` already writes a setting. `setup_dns_block.sh` adds `ps3-block.conf` with one line, `servers-file=/var/lib/ps3-guardian/blocked.servers`, a file dnsmasq reads again on SIGHUP.
+- **One setting for dnsmasq.** NetworkManager's hotspot reads `/etc/NetworkManager/dnsmasq-shared.d/`, where `home-hub/scripts/setup_gateway.sh` already writes a setting. `setup_dns_block.sh` adds `ps3-block.conf` with one line, `servers-file=/var/lib/ps3-guardian/blocked.servers`, a file dnsmasq reads again on SIGHUP.
 - **The alerts say it.** When a device looks up a website that is already blocked, the alert says "the Pi's DNS refused it, so it did not open". When the alert itself blocks the website, it says "the Pi has now blocked this website on its Wi-Fi". Llama sees these words like any other evidence.
 
 ## Set it up (once, on the Pi)
 
-The hotspot must be on (`bash scripts/setup_gateway.sh --status` says `Hotspot: ON`).
+The hotspot must be on (`bash home-hub/scripts/setup_gateway.sh --status` says `Hotspot: ON`).
 
 ```bash
-cd ~/ps3-guardian
+cd ~/ps3-guardian/home-hub
 bash scripts/setup_dns_block.sh
 ```
 
@@ -52,7 +52,7 @@ It installs the helper, the systemd units and the setting, then asks before rest
 
 ```bash
 ssh arrehinus@10.42.0.1                                # if the session stopped
-cd ~/ps3-guardian && bash scripts/setup_dns_block.sh --status
+cd ~/ps3-guardian/home-hub && bash scripts/setup_dns_block.sh --status
 ```
 
 `--status` shows the test that ran after the restart (`logs/dns_block_test.log`): it blocks `example.org` (IANA's example domain) for a moment, checks that the Pi's DNS answers NXDOMAIN, unblocks it and checks that it answers again. If the test passed and a phone on the hotspot still opens websites:
@@ -63,7 +63,7 @@ bash scripts/setup_dns_block.sh --keep
 
 **Tested on the Pi (16 November 2026):** the set-up restarted the hotspot (the SSH session over it stopped, as expected). `--status` then showed the path unit active and the self-test passed: the Pi's DNS answered `example.org` (NOERROR), refused it while it was blocked (NXDOMAIN) and answered it again after it was unblocked. `--keep` was run, so blocking stays on after restarts.
 
-**Safety net:** without `--keep` within 10 minutes, the setting is removed by itself and the hotspot restarts with plain DNS, as `setup_gateway.sh` does for the hotspot. To remove everything later: `bash scripts/setup_dns_block.sh --undo`.
+**Safety net:** without `--keep` within 10 minutes, the setting is removed by itself and the hotspot restarts with plain DNS, as `setup_gateway.sh` does for the hotspot. To remove everything later: `bash home-hub/scripts/setup_dns_block.sh --undo`.
 
 ## Try it
 
@@ -89,8 +89,8 @@ If `example.org` is still blocked by hand when the self-test runs (for example a
 
 | File | What |
 | --- | --- |
-| `data/net/blocklist.json` | The list: written by the app and the monitor ([app/dns_block.py](../app/dns_block.py)) |
+| `data/net/blocklist.json` | The list: written by the app and the monitor ([home-hub/app/dns_block.py](../home-hub/app/dns_block.py)) |
 | `/var/lib/ps3-guardian/blocked.servers` | What dnsmasq reads, written by the helper |
 | `/etc/NetworkManager/dnsmasq-shared.d/ps3-block.conf` | The one setting for the hotspot's dnsmasq |
-| `/usr/local/lib/ps3-guardian/dns-block`, `/etc/ps3-guardian/dns-block.json` | The helper ([scripts/dns_block_helper.py](../scripts/dns_block_helper.py)) and its settings |
+| `/usr/local/lib/ps3-guardian/dns-block`, `/etc/ps3-guardian/dns-block.json` | The helper ([home-hub/scripts/dns_block_helper.py](../home-hub/scripts/dns_block_helper.py)) and its settings |
 | `ps3-dnsblock.service`, `.path`, `.timer` | systemd: apply on change, and every hour |

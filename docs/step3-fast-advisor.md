@@ -35,21 +35,21 @@ Files that changed or are new in step 3:
 
 | File | Role |
 | --- | --- |
-| `advisor/prompt.py` | Prompt v4: evidence only (including what the scammer wants), 3 worked examples (English and Hindi), fixed prefix. Prompt v5 (update 47) adds what the message says, in fixed words ([phone-guard.md](phone-guard.md#what-the-message-says-update-47)) |
-| `advisor/validator.py` | Checks the 2 sentences: verdict contradiction, language, numbers/links, hedging, KYC wording |
-| `advisor/advise.py` | `quick()` (template, instant) and `explain()` (Llama, validated); code picks the steps |
-| `deploy/advisor_server/` | **Native engine for the Pi 4:** `advisor_server.cpp` (Llama on ExecuTorch with KV-cache prefix reuse) and `build_pi4.sh`, which builds it like `llama_main` |
-| `advisor/llm_native.py` | Runs `advisor_server` and talks to it over stdin/stdout |
-| `advisor/llm_engine.py` | The same engine on the ExecuTorch Python runtime (Pi 5, laptops); `python -m advisor.llm_engine` is the smoke test for both |
-| `advisor/llm_service.py` | Persistent service on 127.0.0.1:8765, answer cache, idle re-warm of the prefix |
-| `advisor/warm_cache.py` | Pre-explains a CSV of messages; writes a review/benchmark table |
-| `advisor/backends.py` | New `LlamaServiceBackend`; `llama_main` kept as a fallback |
-| `app/server.py` | `/check` answers at once and starts a job; `/explain/{id}` returns the checked explanation |
-| `detectors/sms/brands.py` | Who a message claims to be (SBI, India Post, ...) from a fixed list |
-| `detectors/sms/rules_india.py` | Clearer warning-sign wording, most important first (model features unchanged) |
-| `advisor/playbooks/*.md` | New `pretends:` and `fact:` lines that only Llama sees |
-| `scripts/run_pi.sh` | Starts the service (with `advisor_server` when present), waits for it, starts the app |
-| `deploy/tools/check_arm_isa.py` | Lists instructions a Cortex-A72 cannot run in a binary; how the pip-wheel crash was found |
+| `home-hub/advisor/prompt.py` | Prompt v4: evidence only (including what the scammer wants), 3 worked examples (English and Hindi), fixed prefix. Prompt v5 (update 47) adds what the message says, in fixed words ([phone-guard.md](phone-guard.md#what-the-message-says-update-47)) |
+| `home-hub/advisor/validator.py` | Checks the 2 sentences: verdict contradiction, language, numbers/links, hedging, KYC wording |
+| `home-hub/advisor/advise.py` | `quick()` (template, instant) and `explain()` (Llama, validated); code picks the steps |
+| `home-hub/llama-engine/advisor_server/` | **Native engine for the Pi 4:** `advisor_server.cpp` (Llama on ExecuTorch with KV-cache prefix reuse) and `build_pi4.sh`, which builds it like `llama_main` |
+| `home-hub/advisor/llm_native.py` | Runs `advisor_server` and talks to it over stdin/stdout |
+| `home-hub/advisor/llm_engine.py` | The same engine on the ExecuTorch Python runtime (Pi 5, laptops); `python -m advisor.llm_engine` is the smoke test for both |
+| `home-hub/advisor/llm_service.py` | Persistent service on 127.0.0.1:8765, answer cache, idle re-warm of the prefix |
+| `home-hub/advisor/warm_cache.py` | Pre-explains a CSV of messages; writes a review/benchmark table |
+| `home-hub/advisor/backends.py` | New `LlamaServiceBackend`; `llama_main` kept as a fallback |
+| `home-hub/app/server.py` | `/check` answers at once and starts a job; `/explain/{id}` returns the checked explanation |
+| `home-hub/detectors/sms/brands.py` | Who a message claims to be (SBI, India Post, ...) from a fixed list |
+| `home-hub/detectors/sms/rules_india.py` | Clearer warning-sign wording, most important first (model features unchanged) |
+| `home-hub/advisor/playbooks/*.md` | New `pretends:` and `fact:` lines that only Llama sees |
+| `home-hub/scripts/run_pi.sh` | Starts the service (with `advisor_server` when present), waits for it, starts the app |
+| `home-hub/llama-engine/tools/check_arm_isa.py` | Lists instructions a Cortex-A72 cannot run in a binary; how the pip-wheel crash was found |
 
 ---
 
@@ -76,7 +76,7 @@ git config --global user.name "Arrehinus"
 git config --global user.email "singhpiyush8414@gmail.com"
 gh auth login
 gh repo clone ps3-guardian-arm ~/ps3-guardian
-cd ~/ps3-guardian
+cd ~/ps3-guardian/home-hub
 git checkout step3
 ```
 
@@ -94,7 +94,7 @@ pip install -r ~/ps3-guardian/requirements.txt
 Train the SMS model on the Pi (scikit-learn versions must match, so do not copy the .joblib). From WSL, copy `merged_sms.csv` over with `scp merged_sms.csv arrehinus@10.140.209.76:~` (the data is not in git). Then on the Pi:
 
 ```bash
-cd ~/ps3-guardian
+cd ~/ps3-guardian/home-hub
 python detectors/sms/train_baseline.py --data ~/merged_sms.csv
 ```
 
@@ -102,19 +102,19 @@ python detectors/sms/train_baseline.py --data ~/merged_sms.csv
 
 ## Build advisor_server (WSL, once)
 
-`advisor_server` is the native Llama engine: the same KV-cache prefix reuse as `advisor/llm_engine.py`, in C++, built in your WSL ExecuTorch tree with the same toolchain and flags as `llama_main`. The script copies one source file next to `llama_main`, adds one build target and builds only that target.
+`advisor_server` is the native Llama engine: the same KV-cache prefix reuse as `home-hub/advisor/llm_engine.py`, in C++, built in your WSL ExecuTorch tree with the same toolchain and flags as `llama_main`. The script copies one source file next to `llama_main`, adds one build target and builds only that target.
 
 Run these in **WSL on the laptop** (prompt `lenovo@...`), not on the Pi: the Pi has no ExecuTorch source tree or cross compiler. Copy the source folder from the Pi, build, and send the binary back:
 
 ```bash
-scp -r arrehinus@10.140.209.76:~/ps3-guardian/deploy/advisor_server ~/
+scp -r arrehinus@10.140.209.76:~/ps3-guardian/home-hub/llama-engine/advisor_server ~/
 bash ~/advisor_server/build_pi4.sh ~/executorch
 scp ~/executorch/cmake-out/examples/models/llama/advisor_server arrehinus@10.140.209.76:~/executorch-deployment/
 ```
 
 Use the path of the ExecuTorch folder where you ran `examples/raspberry_pi/setup.sh pi4` if it is not `~/executorch` (`find ~ -maxdepth 3 -name arm-toolchain-pi4.cmake` shows it).
 
-If you keep an `advisor_server` somewhere else on the Pi (for example a prebuilt copy in its own folder, with its own `libllama_runner.so` beside it), pass its path with `--server-bin` in the smoke test and start the service with `LLAMA_SERVER_BIN=<path> bash scripts/run_pi.sh`.
+If you keep an `advisor_server` somewhere else on the Pi (for example a prebuilt copy in its own folder, with its own `libllama_runner.so` beside it), pass its path with `--server-bin` in the smoke test and start the service with `LLAMA_SERVER_BIN=<path> bash home-hub/scripts/run_pi.sh`.
 
 ---
 
@@ -123,7 +123,7 @@ If you keep an `advisor_server` somewhere else on the Pi (for example a prebuilt
 **1. Smoke test.** This loads the model, reads the fixed prefix, explains one sample alert twice, and with `--verify` re-reads everything from an empty cache to confirm that the answer, and every logit behind it, is bit-identical:
 
 ```bash
-cd ~/ps3-guardian
+cd ~/ps3-guardian/home-hub
 source ~/ps3-venv/bin/activate
 python -m advisor.llm_engine --server-bin ~/executorch-deployment/advisor_server --pte ~/executorch-deployment/llama3_2.pte --tokenizer ~/executorch-deployment/tokenizer.model --verify
 ```
@@ -141,7 +141,7 @@ Then open the address it prints (`https://<the Pi's IP>:8443` since update 39; `
 **3. Before a demo, pre-explain your test messages.** Run this in a second SSH session while the service is running:
 
 ```bash
-cd ~/ps3-guardian && source ~/ps3-venv/bin/activate
+cd ~/ps3-guardian/home-hub && source ~/ps3-venv/bin/activate
 python -m advisor.warm_cache detectors/sms/sample_messages.csv
 ```
 
@@ -150,10 +150,10 @@ The answers are saved in `~/.cache/ps3-guardian/llm_answers.jsonl`. Those alerts
 **4. Benchmark for the report** (fresh generations, no saved answers):
 
 ```bash
-python -m advisor.warm_cache detectors/sms/sample_messages.csv --fresh --limit 6 --report eval/advisor_pi4.md
+python -m advisor.warm_cache detectors/sms/sample_messages.csv --fresh --limit 6 --report ../results/advisor_pi4.md
 ```
 
-`eval/advisor_pi4.md` gives one table row per distinct prompt:
+`results/advisor_pi4.md` gives one table row per distinct prompt:
 
 - prompt tokens, and how many were reused
 - time to first token, decode speed and total time
@@ -164,8 +164,8 @@ Review every answer by hand. Because the prompts contain only evidence, a test s
 **5. Save the results to GitHub** (on the Pi):
 
 ```bash
-cd ~/ps3-guardian
-git add eval/advisor_pi4.md
+cd ~/ps3-guardian/home-hub
+git add ../results/advisor_pi4.md
 git commit -m "Step 3: advisor timings on the Pi 4"
 git push
 ```
@@ -173,7 +173,7 @@ git push
 When everything works on the Pi, merge the branch into `main`. On the laptop (WSL):
 
 ```bash
-cd ~/ps3-guardian
+cd ~/ps3-guardian/home-hub
 git checkout step3
 git pull
 git checkout main
@@ -193,7 +193,7 @@ Useful settings:
 
 The first plan ran Llama through the ExecuTorch Python runtime (`pip install executorch`). On the Pi 4 it stopped with `Illegal instruction` while loading the model.
 
-**What we found.** We disassembled every ARM64 library in the `executorch` 1.5.1 wheel with `deploy/tools/check_arm_isa.py`:
+**What we found.** We disassembled every ARM64 library in the `executorch` 1.5.1 wheel with `home-hub/llama-engine/tools/check_arm_isa.py`:
 
 - `libcustom_ops_aot_lib.so` contains 43 Armv8.1 LSE atomic instructions (`CAS`, `LDADD`, ...) with no run-time CPU check, plus dot-product instructions.
 - These sit in the code that registers the custom LLM ops (`llama::custom_sdpa`, `llama::update_cache`). The model needs those ops, so loading it hits the bad instructions.
@@ -214,7 +214,7 @@ Side benefits:
 
 ## Speed on a Raspberry Pi 4
 
-Measured on 2026-10-24 (details in [eval/results_pi4.md](../eval/results_pi4.md)). The table is the first smoke-test run; the 32-token pieces changed it as noted below:
+Measured on 2026-10-24 (details in [results/results_pi4.md](../results/results_pi4.md)). The table is the first smoke-test run; the 32-token pieces changed it as noted below:
 
 | Case | Llama reads | Llama writes | Time |
 | --- | --- | --- | --- |
@@ -253,7 +253,7 @@ Measured on 2026-10-24 (details in [eval/results_pi4.md](../eval/results_pi4.md)
 
 ## How the engine was verified
 
-Besides the 50 unit tests, `advisor/llm_engine.py` was run on the real ExecuTorch 1.5.1 runtime with torch 2.14. The model was a tiny random Llama, exported with `export_llm` using the same settings as your model:
+Besides the 50 unit tests, `home-hub/advisor/llm_engine.py` was run on the real ExecuTorch 1.5.1 runtime with torch 2.14. The model was a tiny random Llama, exported with `export_llm` using the same settings as your model:
 
 - 8da4w XNNPACK linears
 - 8-bit embeddings

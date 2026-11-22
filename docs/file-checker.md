@@ -1,8 +1,8 @@
-# File checker: is a file from a chat dangerous? (`detectors/files`)
+# File checker: is a file from a chat dangerous? (`home-hub/detectors/files`)
 
 A file that came in WhatsApp, Messages or an email can be checked on the Pi: a PDF, a Word, Excel or PowerPoint file, an app (APK), a zip, or a web page saved as a file. The Pi answers **safe**, **suspicious** or **dangerous**, with reasons and steps like for a message, and Llama explains suspicious and dangerous files. The file is checked in memory and never stored.
 
-Results on the test files: [eval/results_files.md](../eval/results_files.md).
+Results on the test files: [results/results_files.md](../results/results_files.md).
 
 ## Why
 
@@ -41,7 +41,7 @@ First, **what the file really is**, from its first bytes: the name does not coun
 | Text file | Its links |
 | Photo, video or audio | Safe when that is really what it is |
 
-- **Only the PDF's dictionaries count** (update 30). Pictures, fonts and page text are stream data, and random bytes contain `/JS` or `/AA` about 0.06 times per MB each. Read as keys, they made everyday PDFs look as if they had JavaScript ([eval/results_files.md](../eval/results_files.md)).
+- **Only the PDF's dictionaries count** (update 30). Pictures, fonts and page text are stream data, and random bytes contain `/JS` or `/AA` about 0.06 times per MB each. Read as keys, they made everyday PDFs look as if they had JavaScript ([results/results_files.md](../results/results_files.md)).
 - **Scripts that cannot do harm** (update 31): Acrobat's own form helpers with fixed values (`AFNumber_Format(2, 0, 0, 0, "", true);`), page jumps (`this.zoom=100;this.pageNum=162`, as e-books use for their contents), and KiCad's schematic menus, which show a part's details and datasheet links when you click it. KiCad's menu function is recognised by a fingerprint of its text, one per KiCad version (8 and 9, and 10), so a changed function counts as code again. Web addresses inside scripts go to the link checker.
 - **Links.** Up to 20 different websites per file go through the link checker ([url-detector.md](url-detector.md)). A dangerous link makes the file dangerous, a suspicious one suspicious. A dangerous website also goes on the Pi's watch list, so the network monitor can tell if a device on the lab Wi-Fi opens it. E-mail and phone links (`mailto:`, `tel:`) are not websites and are skipped.
 - **Verdict.** The strongest sign decides, with the thresholds of SMS and links: a score of 0.5 or more is suspicious, 0.8 or more dangerous. At most 4 reasons are shown.
@@ -96,7 +96,7 @@ From another machine, use HTTPS and the pairing token: `curl -s --cacert pi-cert
 ### On many files at once: count false alarms
 
 ```bash
-cd ~/ps3-guardian && source ~/ps3-venv/bin/activate
+cd ~/ps3-guardian/home-hub && source ~/ps3-venv/bin/activate
 python scripts/check_files.py ~/normal-files --quiet
 ```
 
@@ -105,12 +105,12 @@ It checks every file in the folder on this machine and prints the flagged ones (
 ## Test files
 
 ```bash
-cd ~/ps3-guardian && source ~/ps3-venv/bin/activate
+cd ~/ps3-guardian/home-hub && source ~/ps3-venv/bin/activate
 python scripts/make_file_samples.py ~/ps3-file-samples
 python scripts/check_files.py ~/ps3-file-samples
 ```
 
-21 harmless files made for this project. 15 carry the signs of harmful files and nothing else: the "apps" have a made-up manifest and no code, so Android refuses to install them; the "JavaScript" only shows a message box; the "launch" names a program that does not exist; the "macro" is a placeholder without code; the links and the template point to made-up websites; the sign-in page sends nowhere. 6 are safe, two of them hard cases: a form whose fields use Acrobat's number helpers, and a scanned page whose picture bytes happen to contain `/JS (` and `/AA <<`. The list is in [eval/results_files.md](../eval/results_files.md).
+21 harmless files made for this project. 15 carry the signs of harmful files and nothing else: the "apps" have a made-up manifest and no code, so Android refuses to install them; the "JavaScript" only shows a message box; the "launch" names a program that does not exist; the "macro" is a placeholder without code; the links and the template point to made-up websites; the sign-in page sends nowhere. 6 are safe, two of them hard cases: a form whose fields use Acrobat's number helpers, and a scanned page whose picture bytes happen to contain `/JS (` and `/AA <<`. The list is in [results/results_files.md](../results/results_files.md).
 
 ## Limits
 
@@ -119,20 +119,20 @@ python scripts/check_files.py ~/ps3-file-samples
 - **Encrypted PDFs and zips:** only their outside is read, and the answer says so. In an encrypted PDF the keys outside object streams still count, but its links and scripts are scrambled. Many bank statements are encrypted, so encryption alone is no warning.
 - **Not an antivirus.** It has no list of known harmful files and does not run anything.
 - **Sent as plain HTTP on the lab Wi-Fi,** like the messages from the app: someone who has the Wi-Fi password and records the traffic could read the file. Check private documents only on a Wi-Fi you trust.
-- **False alarms on everyday documents are not measured yet.** Tool: `scripts/check_files.py` (above).
+- **False alarms on everyday documents are not measured yet.** Tool: `home-hub/scripts/check_files.py` (above).
 
 ## Code
 
 | File | What |
 | --- | --- |
-| `detectors/files/names.py` | File endings for apps, programs, documents; name tricks; an app file named in a chat message |
-| `detectors/files/checker.py` | The real type of a file and its signs: `FileChecker.check(data, name)` returns a `Finding` (`source="file"`) |
-| `advisor/playbooks/app_file.md`, `harmful_document.md`, `phishing_document.md` | What to do, for the advice and for Llama's prompt |
-| `app/server.py` | `POST /file`, and the file picker on the page |
-| `android/.../ShareActivity.kt` | Check with Sajag: sends the file or text to the Pi; the alert's own screen shows the answer and Llama's text |
-| `android/.../ChatListener.kt`, `ChatApps.kt` | The app-file warning for chats from saved contacts |
-| `scripts/make_file_samples.py`, `scripts/check_files.py` | Harmless test files; check a folder |
-| `tests/test_files.py` | Tests |
+| `home-hub/detectors/files/names.py` | File endings for apps, programs, documents; name tricks; an app file named in a chat message |
+| `home-hub/detectors/files/checker.py` | The real type of a file and its signs: `FileChecker.check(data, name)` returns a `Finding` (`source="file"`) |
+| `home-hub/advisor/playbooks/app_file.md`, `harmful_document.md`, `phishing_document.md` | What to do, for the advice and for Llama's prompt |
+| `home-hub/app/server.py` | `POST /file`, and the file picker on the page |
+| `phone-app/.../ShareActivity.kt` | Check with Sajag: sends the file or text to the Pi; the alert's own screen shows the answer and Llama's text |
+| `phone-app/.../ChatListener.kt`, `ChatApps.kt` | The app-file warning for chats from saved contacts |
+| `home-hub/scripts/make_file_samples.py`, `home-hub/scripts/check_files.py` | Harmless test files; check a folder |
+| `home-hub/tests/test_files.py` | Tests |
 
 ## Sources
 

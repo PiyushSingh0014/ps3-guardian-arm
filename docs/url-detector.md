@@ -1,8 +1,8 @@
-# Phishing link checker (`detectors/url`)
+# Phishing link checker (`home-hub/detectors/url`)
 
 Checks every link: links inside SMS and chats from the Android companion, links in messages pasted on the page, and single links sent to `POST /url`. It runs on the Pi in about a millisecond per link, with no network: the lists are downloaded in advance and kept on the SD card.
 
-Results are in [eval/results_url.md](../eval/results_url.md).
+Results are in [results/results_url.md](../results/results_url.md).
 
 ## How a link is judged
 
@@ -30,11 +30,11 @@ link ──► parse (links.py: registered domain, subdomain, path; punycode; "B
 - **What it was trained on.** 996,256 domains:
   - PhiUSIIL (CC BY 4.0) and Phishing.Database (MIT) for phishing;
   - the Chrome UX Report's top 1 million websites as legitimate examples.
-- **Why it reads only the domain.** Training on whole URLs learns a shortcut in PhiUSIIL that flags every genuine SMS link. [eval/results_url.md](../eval/results_url.md) explains it.
+- **Why it reads only the domain.** Training on whole URLs learns a shortcut in PhiUSIIL that flags every genuine SMS link. [results/results_url.md](../results/results_url.md) explains it.
 - **How it is stored.** The model is saved as plain numbers (`url_model.npz`, 1.4 MB): idf weights, coefficients and scaling. `model.py` scores with numpy, so the file works with any scikit-learn version and loading it runs no pickled code.
-- **Retraining.** `python detectors/url/train_url.py` takes about 10 minutes and 3.6 GB of memory (measured on 2 cores). That is too heavy for the Pi while Llama is loaded, so the trained file comes with the repo; retrain on a laptop.
+- **Retraining.** `python home-hub/detectors/url/train_url.py` takes about 10 minutes and 3.6 GB of memory (measured on 2 cores). That is too heavy for the Pi while Llama is loaded, so the trained file comes with the repo; retrain on a laptop.
 
-### The lists (`scripts/get_url_data.py`)
+### The lists (`home-hub/scripts/get_url_data.py`)
 
 | File | What | Source |
 | --- | --- | --- |
@@ -48,7 +48,7 @@ link ──► parse (links.py: registered domain, subdomain, path; punycode; "B
 
 ### Links inside a message
 
-The SMS detector checks each link and adjusts the message's score after the sender (`detectors/sms/detector.py`, `apply_links`):
+The SMS detector checks each link and adjusts the message's score after the sender (`home-hub/detectors/sms/detector.py`, `apply_links`):
 
 | The links in the message | Effect on the odds of fraud |
 | --- | --- |
@@ -86,7 +86,7 @@ Write test links as `hxxp://` (the checker reads them, phones do not make them c
 On the Pi, after pulling update 9:
 
 ```bash
-cd ~/ps3-guardian
+cd ~/ps3-guardian/home-hub
 ~/ps3-venv/bin/pip install tldextract
 ~/ps3-venv/bin/python scripts/get_url_data.py       # about 20 MB; builds data/url/
 sudo systemctl restart ps3-guardian
@@ -98,7 +98,7 @@ curl -s localhost:8000/health | python3 -m json.tool | grep -A12 '"links"'
 To keep the lists fresh, run the download weekly from cron (`crontab -e`):
 
 ```
-17 4 * * 1  cd ~/ps3-guardian && ~/ps3-venv/bin/python scripts/get_url_data.py >> logs/url_data.log 2>&1
+17 4 * * 1  cd ~/ps3-guardian/home-hub && ~/ps3-venv/bin/python scripts/get_url_data.py >> logs/url_data.log 2>&1
 ```
 
 Without the lists (no internet on the Pi), the checker still works with its rules and the model.
