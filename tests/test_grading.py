@@ -291,3 +291,30 @@ def test_a_consistency_pass_and_the_first_pass_in_the_report(tmp_path):
     assert "asha's first pass is kept: the second look changed 1 of its 4 grades." in text
     assert "asha's first pass and ravi: they agree on 50%, Cohen's kappa 0.27" in text
     assert "asha and ravi graded 4 sentences both: they agree on 75%" in text
+
+
+def test_prompt_v5_against_v4_on_the_same_cases(tmp_path):
+    # v4: cases without what the message says; v5 asks again for the same cases, now with the phrases.
+    old, new = tmp_path / "v4", tmp_path / "v5"
+    v4 = findings()
+    llama = Llama("This message pretends to be from SBI to steal your login.")
+    grade.generate(v4, Advisor(backend=llama), str(old), say=lambda _: None)
+    v5 = [Finding(**{**f.__dict__, "entities": {**f.entities, "says": ["says your bank account will be blocked"]}})
+          for f in v4[:3]]
+    v5.append(Finding(source="sms", verdict="dangerous", score=0.9, category="lottery_reward_scam",
+                      reasons=["promises a prize"], entities={}))         # not graded before: not asked
+    said = []
+    assert grade.generate(v5, Advisor(backend=llama), str(new), say=said.append, match=str(old)) == 0
+    assert said[0] == f"2 of the 2 message cases in {old} found again."
+    answers, before = grade.read_answers(str(new)), grade.read_answers(str(old))
+    assert [a["was"] for a in answers] == [a["id"] for a in before]
+    assert all("- says your bank account will be blocked" in a["case"] for a in answers)
+    for folder, mark in ((old, "w"), (new, "s")):
+        it = iter([mark, mark])
+        grade.label(str(folder), "asha", ask=lambda _: next(it), say=lambda _: None)
+    out = []
+    assert grade.report(str(new), say=out.append, compare_with=str(old)) == 0
+    text = "\n".join(out)
+    assert "The same 2 message cases, before and after" in text
+    assert "everything Llama wrote, old" in text and "everything Llama wrote, new" in text
+    assert "2 (100%)" in text.split("everything Llama wrote, new")[1].split("\n")[0]
