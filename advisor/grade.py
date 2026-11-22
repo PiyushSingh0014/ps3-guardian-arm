@@ -26,8 +26,19 @@ they agree (Cohen's kappa). "Now" re-runs today's checks on the saved answers, s
 checks is measured on sentences already graded. --wrong lists the sentences graded w (they come
 from the India set and the fixed network samples, not from the team's messages). --same lists the
 sentences Llama wrote word for word for the same scam type that a grader graded in more than one way.
+
+Prompt v5 against v4 on the same cases (update 49): generate --match OLD_FOLDER asks Llama again
+for the cases graded in OLD_FOLDER, now with what each message says (prompt v5), and keeps the old
+case's id in "was"; report --compare OLD_FOLDER puts each grader's old and new grades side by side
+for those cases:
+
+    python -m advisor.grade generate --india ~/india_sms_collection_v9.xlsx --folder data/advisor/grading-v5 \
+        --match data/advisor/grading                       # about 40 minutes
+    python -m advisor.grade label --grader piyush --folder data/advisor/grading-v5
+    python -m advisor.grade report --folder data/advisor/grading-v5 --compare data/advisor/grading
 """
 import argparse
+import copy
 import hashlib
 import itertools
 import json
@@ -82,6 +93,30 @@ def different_cases(findings, advisor, limit):
     return out
 
 
+def base_case(f, book):
+    """The case without what the message says: the case prompt v4 showed for this finding."""
+    g = copy.copy(f)
+    g.entities = {k: v for k, v in (f.entities or {}).items() if k != "says"}
+    return case_text(g, book)
+
+
+def matched_cases(findings, advisor, old_answers):
+    """(id, finding, playbook, case, old id) for each old message case found again: the first finding
+    whose case without "what the message says" is that old case, in the old file's order."""
+    old = [a["id"] for a in old_answers if a.get("source") != "net"]
+    want, found = set(old), {}
+    for f in findings:
+        if not advisor.needs_llm(f):
+            continue
+        book = get_playbook(advisor.books, f.category)
+        was = hashlib.sha256(f"{f.source}|{f.language}|{base_case(f, book)}".encode()).hexdigest()[:12]
+        if was in want and was not in found:
+            case = case_text(f, book)
+            cid = hashlib.sha256(f"{f.source}|{f.language}|{case}".encode()).hexdigest()[:12]
+            found[was] = (cid, f, book, case, was)
+    return [found[w] for w in old if w in found]
+
+
 def wait_for_llama(backend, say=print, wait_s=180, step_s=5, sleep=time.sleep):
     """True once the Llama service answers /health. After `systemctl restart ps3-guardian` it loads
     for about a minute; backends without a health check (tests, llama_main) count as ready."""
@@ -98,17 +133,24 @@ def wait_for_llama(backend, say=print, wait_s=180, step_s=5, sleep=time.sleep):
     return False
 
 
-def generate(findings, advisor, folder=FOLDER, limit=100, say=print, wait_s=180):
+def generate(findings, advisor, folder=FOLDER, limit=100, say=print, wait_s=180, match=None):
+    """match: an earlier grading folder; only its message cases, asked again (prompt v5 against v4)."""
     os.makedirs(folder, exist_ok=True)
     done = {a["id"] for a in read_answers(folder)}
-    cases = different_cases(findings, advisor, limit)
+    if match:
+        old = read_answers(match)
+        cases = matched_cases(findings, advisor, old)
+        n_old = sum(1 for a in old if a.get("source") != "net")
+        say(f"{len(cases)} of the {n_old} message cases in {match} found again.")
+    else:
+        cases = [c + (None,) for c in different_cases(findings, advisor, limit)]
     todo = [c for c in cases if c[0] not in done]
     say(f"{len(cases)} different cases ({len(cases) - len(todo)} answered before): asking Llama for {len(todo)}.")
     if todo and not wait_for_llama(advisor.backend, say, wait_s):
         return 1
     failures = 0
     with open(os.path.join(folder, "answers.jsonl"), "a", encoding="utf-8") as out:
-        for i, (cid, f, book, case) in enumerate(todo, 1):
+        for i, (cid, f, book, case, was) in enumerate(todo, 1):
             t0 = time.time()
             res = advisor.backend.generate(build_prompt(f, book), max_new_tokens=max_new_tokens(f.language, f.source))
             if res.error or not res.text:
@@ -127,6 +169,8 @@ def generate(findings, advisor, folder=FOLDER, limit=100, say=print, wait_s=180)
                    "dropped_now": [why for _, _, why in now.sentences],
                    "rejected_before": not before.ok, "rejected_now": not now.ok,
                    "seconds": round(time.time() - t0, 1), "cached": bool(res.metrics.get("cached"))}
+            if was:
+                rec["was"] = was
             out.write(json.dumps(rec, ensure_ascii=False) + "\n")
             out.flush()
             say(f"[{i}/{len(todo)}] {f.source} {f.category} ({f.verdict}): {rec['seconds']} s"
@@ -292,7 +336,34 @@ def differently_graded(answers, grades):
     return [(key, Counter(marks)) for key, marks in seen.items() if len(set(marks)) > 1]
 
 
-def report(folder, say=print, wrong=False, same=False):
+def compare(folder, old_folder, say=print):
+    """Each grader's grades on the old cases and on the same cases asked again (generate --match)."""
+    new = [a for a in read_answers(folder) if a.get("was")]
+    old = {a["id"]: a for a in read_answers(old_folder)}
+    pairs = [(old[a["was"]], a) for a in new if a["was"] in old]
+    if not pairs:
+        say(f"\nNo answer here was asked again from {old_folder} (generate --match).")
+        return
+    for a in [x for p in pairs for x in p]:
+        a["now"], a["why_not"], a["rejected"] = recheck(a)
+    graders = sorted(set(f[len("grades_"):-len(".json")] for f in os.listdir(folder) if f.startswith("grades_"))
+                     & set(f[len("grades_"):-len(".json")] for f in os.listdir(old_folder) if f.startswith("grades_")))
+    say(f"\nThe same {len(pairs)} message cases, before and after (today's checks on both):")
+    if not graders:
+        say("No grader has graded both folders yet.")
+    for name in graders:
+        g_old, g_new = load(grades_path(old_folder, name)), load(grades_path(folder, name))
+        say(f"Grader {name}:")
+        say(f"{'':28s} {'sentences':>9s} {'supported':>11s} {'not supported':>13s} {'wrong':>11s}")
+        for label, keep in (("everything Llama wrote", lambda a, i: True), ("shown now", lambda a, i: a["now"][i])):
+            for which, grades, side in (("old", g_old, 0), ("new", g_new, 1)):
+                labels = [grades[p[side]["id"]][str(i)] for p in pairs for i in range(len(p[side]["sentences"]))
+                          if str(i) in grades.get(p[side]["id"], {}) and keep(p[side], i)]
+                n, cells = _shares(labels)
+                say(f"{label + ', ' + which:28s} {n:9d} {cells[0]:>11s} {cells[1]:>13s} {cells[2]:>11s}")
+
+
+def report(folder, say=print, wrong=False, same=False, compare_with=None):
     answers = read_answers(folder)
     files = sorted(f for f in os.listdir(folder) if f.startswith("grades_") and f.endswith(".json")) \
         if os.path.isdir(folder) else []
@@ -363,6 +434,8 @@ def report(folder, say=print, wrong=False, same=False):
                     status = "users see it" if a["now"][i] else f"dropped: {a['why_not'][i]}"
                     who = ", ".join(f"{name} {m}" for name, m in marks.items() if m)
                     say(f"- {a['category']} ({who}; {status}): {s}")
+    if compare_with:
+        compare(folder, compare_with, say)
     return 0
 
 
@@ -373,6 +446,7 @@ def main(argv=None):
     g.add_argument("--india", help="the India test set (.xlsx or .csv)")
     g.add_argument("--net", action="store_true", help="also one sample of each network alert kind")
     g.add_argument("--max", type=int, default=100, help="at most this many different cases")
+    g.add_argument("--match", metavar="OLD_FOLDER", help="ask again only for the message cases graded in OLD_FOLDER")
     lb = sub.add_parser("label")
     lb.add_argument("--grader", required=True, help="your name: each grader gets a file of their own")
     lb.add_argument("--again", action="store_true", help="also show sentences graded before")
@@ -381,6 +455,7 @@ def main(argv=None):
     lb.add_argument("--recheck", metavar="OTHER", help="a second look at the sentences you and OTHER graded differently (neither grade shown)")
     rp = sub.add_parser("report")
     rp.add_argument("--wrong", action="store_true", help="also list the sentences graded w")
+    rp.add_argument("--compare", metavar="OLD_FOLDER", help="each grader's grades here beside those in OLD_FOLDER, same cases")
     rp.add_argument("--same", action="store_true", help="also list identical sentences a grader graded differently")
     for p in (g, lb, rp):
         p.add_argument("--folder", default=FOLDER)
@@ -397,10 +472,10 @@ def main(argv=None):
             findings += net_findings(None)
         if a.india:
             findings += list(india_findings(os.path.expanduser(a.india), SmsDetector()))
-        return generate(findings, advisor, a.folder, a.max)
+        return generate(findings, advisor, a.folder, a.max, match=a.match)
     if a.cmd == "label":
         return label(a.folder, a.grader, a.again, recheck=a.recheck, same=a.same)
-    return report(a.folder, wrong=a.wrong, same=a.same)
+    return report(a.folder, wrong=a.wrong, same=a.same, compare_with=a.compare)
 
 
 if __name__ == "__main__":

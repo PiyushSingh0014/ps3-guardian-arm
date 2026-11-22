@@ -39,7 +39,7 @@ It has two parts. **Phone Guard**, on the Android phone, checks the owner's SMS,
 | **Measured** | **SMS:** F1 0.950 on held-out public messages; on 227 real Indian messages 96 of 100 scams caught, but 59–64% of normal messages flagged with the text and the senders we had (4% with ideal registered sender IDs is a projection, not a measurement); on the team's real traffic, 13% of SMS from registered sender IDs flagged, mostly marketing. **Links:** 81% of brand-new phishing sites caught with no lists; 1.1% of popular websites called dangerous. **Network:** all 10 network-level attacks in CIC-IDS2017 detected; on IoT-23's real IoT malware, 2 of 5 infected devices flagged, with no false alarm in 28.8 h of three real smart-home devices. **Files:** 21 of 21 test files right, no false alarm on 521 ordinary PDFs. **Phone Guard:** the same verdict as the Pi on all 16,272 test messages, and the same Llama prompt on all 8,833 of them that Llama explains. **Llama:** of the sentences users see, 72% supported by the evidence and 12% wrong (one grader) |
 | **Security** | HTTPS to the Pi with a certificate each phone pins when pairing; a 128-bit pairing token on every request; message texts kept only for phones whose owner switched the study on |
 | **Cloud use** | None. The phone decides on its own and talks to the Pi over the home Wi-Fi; the internet is needed only for the devices' own browsing and for refreshing the phishing list |
-| **Code** | 65 Python files (≈12,200 lines), a 38-file Kotlin Android app, Sajag (≈5,500 lines, Phone Guard and Llama on the phone included), a C++ Llama engine, an ESP32 sketch; 375 automated tests as pytest counts them (269 test functions, some run with several inputs) |
+| **Code** | 66 Python files (≈12,700 lines), a 38-file Kotlin Android app, Sajag (≈5,500 lines, Phone Guard and Llama on the phone included), a C++ Llama engine, an ESP32 sketch; 379 automated tests as pytest counts them (273 test functions, some run with several inputs) |
 
 ---
 
@@ -333,9 +333,9 @@ Nothing is attacked: the names do not exist, and the beacon fetches IANA's examp
 | 14–15 November | After the review: a pairing token on every request and study phones; sender rules measured on the Pi; Llama's sentences held to their evidence and 100 answers graded by hand; HTTPS with a pinned certificate, the phone's study switch and a proper package name; DNS blocking on the hotspot; the IoT-23 replay |
 | 16 November | DNS blocking set up and tested on the Pi; IoT-23's real IoT malware replayed on the Pi |
 | 21 November | Phone Guard: the message and link checks on the phone itself, checked to decide as the Pi does, and running on the Galaxy S25; Llama on the phone for alerts away from the Pi |
-| 22 November | Llama on the S25 tested with the Pi out of reach: an explanation in 3.6 s, five to eight times faster than on the Pi 4. The phone app becomes **Sajag**: four pages, a screen per alert, a set-up in three steps. Prompt v5: Llama is told what each message says, in fixed words; each notification names its message |
+| 22 November | Llama on the S25 tested with the Pi out of reach: an explanation in 3.6 s, five to eight times faster than on the Pi 4. The phone app becomes **Sajag**: four pages, a screen per alert, a set-up in three steps. Prompt v5: Llama is told what each message says, in fixed words; each notification names its message. Accuracy test: 755 of 859 real Indian scam campaigns flagged (87.9%), on messages never used to build Sajag |
 
-The work reached the Pi in 48 numbered updates. Each update was a tested git bundle, pulled on the Pi and pushed to GitHub. Every update ran the full test suite first, and every result in this document comes from a script in the repository. Per-part status: [docs/status.md](docs/status.md).
+The work reached the Pi in 49 numbered updates. Each update was a tested git bundle, pulled on the Pi and pushed to GitHub. Every update ran the full test suite first, and every result in this document comes from a script in the repository. Per-part status: [docs/status.md](docs/status.md).
 
 ### Problems we solved along the way
 
@@ -361,6 +361,18 @@ Python 3.13, scikit-learn, NumPy, FastAPI, uvicorn, NFStream 6.6, tldextract; Ex
 ## 7. Results
 
 All numbers are measured, with the scripts in this repository, except where marked as a projection. Full tables: [eval/](eval/).
+
+### Accuracy test, 22 November ([eval/results_accuracy.md](eval/results_accuracy.md))
+
+The app's message checks as the phone runs them (the same code, compared on 16,272 messages), on labelled messages. In brackets: 95% intervals.
+
+| Set | Scams flagged | Normal flagged |
+| --- | --- | --- |
+| *Fishing for Smishing*, India: 859 scam campaigns reported from Indian mobile numbers, never used to build Sajag | **755 of 859 (87.9%, 86–90%)**; banking 97%, telecom 93%, delivery 11 of 11, government 70%, other kinds 68% | – |
+| Public messages the model never trained on (1,816) | 304 of 318 (95.6%) | 18 of 1,498 (1.2%) |
+| India test set (227; senders typed by hand; used while building the rules) | 96 of 100 | 44 of 75 (59%): with a real registered sender ID 1 of 10, with a typed name 38 of 47 |
+
+Of the 96 caught India scams, the alert's title names the right kind of scam for 54%, a general kind for 30% and the wrong kind for 16% (mostly "Fake bank KYC" for reward-point and SIM-card scams). Still to come: the false alarms on the team's real messages, Llama's prompt v5 graded against v4 on the same cases, and a live test on the S25 ([docs/accuracy-test.md](docs/accuracy-test.md)).
 
 ### SMS ([eval/results_sms.md](eval/results_sms.md))
 
@@ -545,7 +557,7 @@ Llama on the phone gets the Pi's prompt: the same whole prompt, in English and i
 | `scripts/` | Start-up and services, the hotspot and DNS-blocking set-ups, list and dataset downloads, measuring tools (`sms_traffic.py`, `net_traffic.py`, `pi_usage.py`, `check_files.py`), harmless test files, Phone Guard's export and check (`export_phone_guard.py`, `check_phone_guard.py`) |
 | `eval/` | Measured results |
 | `docs/` | Guides for each part, and the status of each part ([docs/status.md](docs/status.md)) |
-| `tests/` | 375 pytest tests |
+| `tests/` | 379 pytest tests |
 
 **On a laptop** (no Pi or model needed):
 
@@ -567,6 +579,7 @@ uvicorn app.server:app --port 8000     # then open http://localhost:8000
 | --- | --- | --- |
 | UCI SMS Spam Collection; Mishra & Soni SMS phishing dataset | Training the SMS text model (6,053 unique messages after cleaning) | Public research datasets |
 | India SMS test set: the team's own messages (anonymised), fact-checks, and 80 from *Fishing for Smishing* (Agarwal et al., IMC 2025) | Testing only | CC BY 4.0 for *Fishing for Smishing* |
+| *Fishing for Smishing* (Agarwal et al., IMC 2025; github.com/reportsmishing/Smishing-Dataset-IMC25): its 3,729 reports from Indian mobile numbers, one message per campaign, in the accuracy test (not in the repository) | Testing only | CC BY 4.0 |
 | The team's own SMS from the companion app | Measuring on real traffic; training SMS model v2 (not used by the app) | The team's own, kept on the Pi |
 | PhiUSIIL Phishing URL Dataset (Prasad and Chandra, 2024) | Training the link model | CC BY 4.0 |
 | Phishing.Database | Training the link model; the phishing list on the Pi | MIT |
