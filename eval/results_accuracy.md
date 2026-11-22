@@ -7,7 +7,7 @@ built from, with the code the phone runs. Four parts:
 | --- | --- | --- | --- |
 | A | Labelled message sets: real Indian scam reports, public held-out messages, the India test set | `scripts/accuracy_test.py`, in the cloud (the phone's model and rules) | **done**, below |
 | B | Your phones' real messages, as the app decided at the time | `scripts/sms_traffic.py label --flagged`, then `measure`, on the Pi | to do ([docs/accuracy-test.md](../docs/accuracy-test.md#part-b-your-phones-real-messages)) |
-| C | Llama's explanations: prompt v5 against v4, on the same cases | `advisor/grade.py --match / --compare`, on the Pi | to do ([docs/accuracy-test.md](../docs/accuracy-test.md#part-c-llamas-explanations-v5-against-v4)) |
+| C | Llama's explanations: prompt v5 against v4, on the same cases | `advisor/grade.py --match / --compare`, on the Pi | moved to Phase 2: the answers to 87 cases are generated, not graded yet |
 | D | The whole app on the Galaxy S25: alert, time, title, explanation | 20 messages from another phone, 4 again with the Wi-Fi off | to do ([docs/accuracy-test.md](../docs/accuracy-test.md#part-d-live-test-on-the-phone)) |
 
 ## A. Labelled message sets
@@ -70,7 +70,9 @@ To do: `label --flagged` and `measure` on the Pi.
 
 ## C. Llama's explanations, v5 against v4
 
-To do: generate on the Pi, then grade.
+Moved to Phase 2. On 22 November the Pi found 87 of the 89 cases graded with prompt v4 again and generated
+prompt v5's answers to them (`data/advisor/grading-v5`, 154 sentences); they will be graded in Phase 2. Until then the
+explanation numbers are prompt v4's ([docs/llama-grading.md](../docs/llama-grading.md)).
 
 ## D. Live test on the phone
 

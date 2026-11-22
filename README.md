@@ -400,7 +400,7 @@ The app's message checks as the phone runs them (the same code, compared on 16,2
 | Public messages the model never trained on (1,816) | 304 of 318 (95.6%) | 18 of 1,498 (1.2%) |
 | India test set (227; senders typed by hand; used while building the rules) | 96 of 100 | 44 of 75 (59%): with a real registered sender ID 1 of 10, with a typed name 38 of 47 |
 
-Of the 96 caught India scams, the alert's title names the right kind of scam for 54%, a general kind for 30% and the wrong kind for 16% (mostly "Fake bank KYC" for reward-point and SIM-card scams). Still to come: the false alarms on the team's real messages, Llama's prompt v5 graded against v4 on the same cases, and a live test on the S25 ([docs/accuracy-test.md](docs/accuracy-test.md)).
+Of the 96 caught India scams, the alert's title names the right kind of scam for 54%, a general kind for 30% and the wrong kind for 16% (mostly "Fake bank KYC" for reward-point and SIM-card scams). Still to come: the false alarms on the team's real messages, and a live test on the S25 ([docs/accuracy-test.md](docs/accuracy-test.md)). Grading Llama's prompt v5 against v4 on the same 87 cases (the answers are generated) is moved to Phase 2.
 
 ### SMS ([eval/results_sms.md](eval/results_sms.md))
 
@@ -563,7 +563,7 @@ Llama on the phone gets the Pi's prompt: the same whole prompt, in English and i
 - Sender IDs checked against TRAI's header list, with each header's owner.
 - More scam types and playbooks: trading apps, loan apps, fake customer-care numbers, sextortion calls, SIM swap, UPI collect requests.
 - A learned network classifier next to the rules, trained on more than one dataset; a rule for many unanswered tries at one internet address and lists of known controller addresses (the IoT-23 misses); a whole-day false-alarm measurement; a one-tap quarantine of a device; DNS for devices that bypass the Pi.
-- Llama's sentences graded by a second person and judged by non-expert users.
+- Llama's sentences graded by a second person and judged by non-expert users, starting with prompt v5 against v4 on the same 87 cases (the answers are generated on the Pi).
 - Encrypted PDFs, with a crypto library.
 - A Raspberry Pi 5, if available, for faster explanations.
 

@@ -7,7 +7,7 @@ Results: [eval/results_accuracy.md](../eval/results_accuracy.md).
 | --- | --- | --- |
 | A. Labelled message sets (real Indian scam reports, public held-out messages, the India test set) | done in the cloud | – |
 | B. Your phones' real messages: label the flagged ones | on the Pi | about 15 min |
-| C. Llama's explanations: prompt v5 against v4 on the same cases | on the Pi, then one or two graders | 40 min unattended, then about 45 min per grader |
+| C. Llama's explanations: prompt v5 against v4 on the same cases | moved to Phase 2 (the answers are generated) | – |
 | D. Live test on the Galaxy S25 | you, with a second phone | about 30 min |
 
 Before B and C, the Pi must run update 47 or later, restarted (prompt v5):
@@ -52,6 +52,10 @@ Then paste the output of:
 ```
 
 ## Part C: Llama's explanations, v5 against v4
+
+**Moved to Phase 2 (22 November).** Llama's answers to the same 87 cases are generated on the Pi
+(`data/advisor/grading-v5`); grading them takes about an hour per grader, so Phase 1 reports prompt v4's grading. The
+steps below are kept for Phase 2.
 
 The 100 answers graded on 15 November were written with prompt v4. This asks Llama again for the
 same message cases, now with what each message says (prompt v5), so the two gradings compare like

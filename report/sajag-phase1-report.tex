@@ -974,7 +974,7 @@ left out (the reports hide links), 86.3\% are still flagged.}
 \textbf{B. The team's real messages}, labelled after the fact: the exact false-alarm rate on SMS from registered sender IDs
 (so far: 35 of 273 flagged, of the labelled ones 14 marketing, 2 normal, 1 fraud; between 0.9 and 7.9 false alarms per
 100 messages). \todo{to be updated}\\
-\textbf{C. Llama's explanations with prompt v5}, graded against prompt v4 on the same 86 cases. \todo{to be updated}\\
+\textbf{C. Llama's explanations with prompt v5}: Llama's answers to the same 87 cases are generated on the Pi; grading them against prompt v4 is moved to Phase 2.\\
 \textbf{D. Live test on the Galaxy S25}: 20 messages from a second phone, then 4 with the Wi-Fi off. \todo{to be updated}
 \end{keybox}
 
@@ -1062,8 +1062,8 @@ A repeated alert & at once (saved answers) & --\\
 set, 11 network alert kinds), 183 sentences, graded blind by a team member as supported by the case, not supported, or
 wrong. Of the 163 sentences users see after the grounding checks, \textbf{72\% were supported, 17\% not supported and 12\%
 wrong}; all 16 network sentences were supported; the checks dropped 20 sentences, 19 of them unsupported or wrong. An AI
-pre-check agreed with the human grader on 78\% of sentences (Cohen's $\kappa = 0.52$). Prompt v5 is being graded on the
-same cases (Section~\ref{sec:acc}, box).
+pre-check agreed with the human grader on 78\% of sentences (Cohen's $\kappa = 0.52$). Prompt v5's answers to the
+same 87 cases are generated and will be graded in Phase 2; the numbers above are prompt v4's.
 
 \subsection{Phone and hub agree}
 
@@ -1138,11 +1138,11 @@ Llama 3.2 1B on the Pi 4 (own C++ engine) & running; speed measured; 100 answers
 Phone Guard (checks on the phone) & running on the S25; identical to the hub on 16,272 messages & 43\\
 Llama on the phone (ExecuTorch Android) & running on the S25; 3.6\,s per explanation & 44, 45\\
 App Sajag 3.2 (screens, alerts, set-up) & running on the S25 & 46--48\\
-Prompt v5 (what the message says) & running; parity checked; grading in progress & 47\\
+Prompt v5 (what the message says) & running; parity checked; its answers to be graded in Phase 2 & 47\\
 Security and privacy (token, HTTPS pinning, study switch) & running & 36, 39\\
 Learning loop (log, labels, model v2, export, parity) & built and run once; v2 did not pass, v1 kept & 5, 24--25, 33--35, 43\\
 ESP32 lab IoT device & four harmless test modes, all caught live & 14--16\\
-Accuracy test & part A done; parts B--D in progress & 49\\
+Accuracy test & labelled sets done; real messages and the live test in progress & 49\\
 \bottomrule
 \end{tabularx}
 \caption{The state of every part at the Phase 1 submission.}
@@ -1197,6 +1197,8 @@ in more languages, on every phone.
 
 \subsection{Better explanations}
 \begin{itemize}
+  \item \textbf{Prompt v5 graded against v4} on the same 87 cases, whose answers are already generated on the Pi, by two
+        graders.
   \item \textbf{Llama 3.2 3B on the phone} (about 3.7\,GB while running: it fits the S25, not the Pi 4), still through
         ExecuTorch on the Arm CPU, chosen by a rule fixed in advance: fewer wrong sentences on the same graded cases, at an
         acceptable time per explanation.
