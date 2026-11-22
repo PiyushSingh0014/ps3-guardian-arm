@@ -1,11 +1,39 @@
-# PS3 Guardian: on-device threat, phishing and scam detection
+# Sajag (सजग): on-device threat, phishing and scam detection
 
 **Arm Bharat AI-SoC Student Challenge 2026–27, Problem Statement 3** · Theme: Cybersecurity and Digital Safety · Phase 1, November 2026
 **Team:** Piyush Singh (lead), Anshu Patra, Harshit Oraon
 
-PS3 Guardian is a security assistant for Indian homes that runs entirely on Arm edge hardware: a **Raspberry Pi 4** and an **Android phone**. It checks **SMS and chat messages**, **links**, **files that arrive in chats** and the **network traffic of every device on the home Wi-Fi**. Small, fast checkers give a verdict in milliseconds: safe, suspicious or dangerous. Then **Llama 3.2 1B**, deployed with **ExecuTorch** on the Pi's Arm CPU (and on the phone's, when the phone is away from home), explains each alert in plain English, a fixed playbook tells the user what to do, and the Pi's DNS stops scam websites from opening on its Wi-Fi. No message, file or traffic record is sent to any cloud service.
+Sajag (Hindi for "alert, watchful"; called PS3 Guardian while it was built, which is why the repository keeps that name) is a security assistant for Indian homes that runs entirely on Arm edge hardware: a **Raspberry Pi 4** and an **Android phone**. It checks **SMS and chat messages**, **links**, **files that arrive in chats** and the **network traffic of every device on the home Wi-Fi**. Small, fast checkers give a verdict in milliseconds: safe, suspicious or dangerous. Then **Llama 3.2 1B**, deployed with **ExecuTorch** on the Pi's Arm CPU (and on the phone's, when the phone is away from home), explains each alert in plain English, a fixed playbook tells the user what to do, and the Pi's DNS stops scam websites from opening on its Wi-Fi. No message, file or traffic record is sent to any cloud service.
 
 It has two parts. **Phone Guard**, on the Android phone, checks the owner's SMS, chats and links on the phone itself, anywhere, even with no network, and away from home explains its alerts with its own copy of the Pi's Llama. The **Home Hub**, on the Pi, protects every device on the home Wi-Fi: it watches their traffic, checks files, blocks scam websites, and runs Llama to explain alerts. At home the two work together.
+
+---
+
+## Start here
+
+| | |
+| --- | --- |
+| **Technical report** | [report/sajag-phase1-report.pdf](report/sajag-phase1-report.pdf): the approach, the architecture, the algorithms, the results and the Phase 2 plan |
+| **Demo video** | *link to be added* |
+| **Results** | [eval/](eval/README.md): every measured number and how to reproduce it |
+| **Guides** | [docs/](docs/README.md): installing the app, the hub, each part, the tests |
+| **State of every part** | [docs/status.md](docs/status.md) |
+| **Run it** | [section 11](#11-repository-layout-and-how-to-run-it) |
+
+**The approach in three stages.** (1) A **Home Hub** on a Raspberry Pi 4 protects every device on the home Wi-Fi, including IoT devices that cannot protect themselves. (2) **Sajag on each phone** protects its owner anywhere, with the hub's own checks and the hub's own Llama running on the phone. (3) At home, each phone **feeds the hub** its owner's real messages (with consent), so the hub learns from every member of the household and can give every phone a better model. Phase 1 built and measured all three; Phase 2 grows the third.
+
+| Folder | What is in it |
+| --- | --- |
+| [`android/`](android/) | The Sajag app (Kotlin): Phone Guard, Llama on the phone, the screens |
+| [`app/`](app/) | The hub's app server and web page, HTTPS, DNS blocking |
+| [`detectors/`](detectors/) | The checkers: `sms/` messages, `url/` links, `files/` files, `net/` network |
+| [`advisor/`](advisor/) | Playbooks, prompts, the Llama service, the grounding checker, the grading tool |
+| [`deploy/`](deploy/) | Llama's export with ExecuTorch and our C++ engine for the Pi 4 |
+| [`esp32/`](esp32/) | The ESP32 lab IoT device |
+| [`scripts/`](scripts/README.md) | Set-up, services, downloads, measuring tools, the phone export |
+| [`eval/`](eval/README.md), [`docs/`](docs/README.md), [`tests/`](tests/), [`report/`](report/README.md) | Results, guides, 379 tests, the technical report |
+
+**Branches:** `main` is the Phase 1 submission; `dev` is where Phase 2 work goes; the tag `phase1-submission` marks the version submitted on 23 November 2026.
 
 ---
 
@@ -335,7 +363,7 @@ Nothing is attacked: the names do not exist, and the beacon fetches IANA's examp
 | 21 November | Phone Guard: the message and link checks on the phone itself, checked to decide as the Pi does, and running on the Galaxy S25; Llama on the phone for alerts away from the Pi |
 | 22 November | Llama on the S25 tested with the Pi out of reach: an explanation in 3.6 s, five to eight times faster than on the Pi 4. The phone app becomes **Sajag**: four pages, a screen per alert, a set-up in three steps. Prompt v5: Llama is told what each message says, in fixed words; each notification names its message. Accuracy test: 755 of 859 real Indian scam campaigns flagged (87.9%), on messages never used to build Sajag |
 
-The work reached the Pi in 49 numbered updates. Each update was a tested git bundle, pulled on the Pi and pushed to GitHub. Every update ran the full test suite first, and every result in this document comes from a script in the repository. Per-part status: [docs/status.md](docs/status.md).
+The work reached the Pi in 50 numbered updates. Each update was a tested git bundle, pulled on the Pi and pushed to GitHub. Every update ran the full test suite first, and every result in this document comes from a script in the repository. Per-part status: [docs/status.md](docs/status.md).
 
 ### Problems we solved along the way
 
@@ -558,6 +586,7 @@ Llama on the phone gets the Pi's prompt: the same whole prompt, in English and i
 | `eval/` | Measured results |
 | `docs/` | Guides for each part, and the status of each part ([docs/status.md](docs/status.md)) |
 | `tests/` | 379 pytest tests |
+| `report/` | The technical report (LaTeX source and PDF) |
 
 **On a laptop** (no Pi or model needed):
 
