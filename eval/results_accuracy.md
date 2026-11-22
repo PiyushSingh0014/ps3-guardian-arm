@@ -6,9 +6,9 @@ built from, with the code the phone runs. Four parts:
 | Part | What | Where | Status |
 | --- | --- | --- | --- |
 | A | Labelled message sets: real Indian scam reports, public held-out messages, the India test set | `scripts/accuracy_test.py`, in the cloud (the phone's model and rules) | **done**, below |
-| B | Your phones' real messages, as the app decided at the time | `scripts/sms_traffic.py label --flagged`, then `measure`, on the Pi | to do ([docs/accuracy-test.md](../docs/accuracy-test.md#part-b-your-phones-real-messages)) |
+| B | Your phones' real messages, as the app decided at the time | `scripts/sms_traffic.py label --flagged`, then `measure`, on the Pi | **done**, below |
 | C | Llama's explanations: prompt v5 against v4, on the same cases | `advisor/grade.py --match / --compare`, on the Pi | moved to Phase 2: the answers to 87 cases are generated, not graded yet |
-| D | The whole app on the Galaxy S25: alert, time, title, explanation | 20 messages from another phone, 4 again with the Wi-Fi off | to do ([docs/accuracy-test.md](../docs/accuracy-test.md#part-d-live-test-on-the-phone)) |
+| D | The whole app on the Galaxy S25: alert, title, the message's sender and time | 20 messages from another phone, 4 again with the Wi-Fi off | **done**, below |
 
 ## A. Labelled message sets
 
@@ -66,7 +66,28 @@ github.com/reportsmishing/Smishing-Dataset-IMC25, CC BY 4.0):
 
 ## B. Your phones' real messages
 
-To do: `label --flagged` and `measure` on the Pi.
+On the Pi, 22 November: `label --flagged` (every flagged message labelled except 14), then `measure`. The log holds
+what the app decided for each message the team's four phones forwarded; nothing is re-scored. 3,126 messages (phone A
+2,089, B 514, C 502, unnamed 21), 524 labelled. Texts of SMS from phone numbers and of chats are kept only when flagged,
+so their missed scams cannot be counted; every SMS from a registered sender ID is kept.
+
+| Sender | Received | Flagged | Flagged: scam / marketing / normal | Normal messages flagged per 100 received |
+| --- | --- | --- | --- | --- |
+| SMS from a registered sender ID | 327 | 44 | 4 / 25 / 14 (1 not labelled) | **4.3** |
+| SMS from a phone number | 17 | 12 | 3 / 1 / 8 | 47.1 |
+| Chat from an unknown number | 58 | 8 | 1 / 2 / 5 | 8.6 |
+| Chat from a saved contact (testing switch) | 2,723 | 243 | 50 / 61 / 119 (13 not labelled) | 4.4 |
+| All (with 1 SMS from a short code) | 3,126 | 307 | 58 / 89 / 146 (14 not labelled) | **4.7** (at most 5.1) |
+
+- **False alarms on real messages: 4.3 normal SMS per 100 from registered sender IDs** (14 of 327; at most 4.6 if the
+  one unlabelled flagged SMS is normal), and 4.7 per 100 over all 3,126 messages (at most 5.1). Before the labelling it
+  was a range of 0.9 to 7.9.
+- **Scams from registered sender IDs:** 4 flagged, 1 missed (the fantasy-league offer found on 14 November).
+- **The sender ID, on real SMS** (labelled SMS, as the app decided against the text alone): normal messages flagged 15%
+  instead of 94%, marketing 19% instead of 87%, scams 88% (7 of 8) instead of 100%.
+- **Most false alarms are group chats** seen through the testing switch: college and placement-cell notices with links,
+  shared PDFs and links to sign-in pages; and personal SMS from phone numbers that carry a link or a number (a personal
+  number with a link is weighed as risky on purpose).
 
 ## C. Llama's explanations, v5 against v4
 
@@ -76,7 +97,24 @@ explanation numbers are prompt v4's ([docs/llama-grading.md](../docs/llama-gradi
 
 ## D. Live test on the phone
 
-To do.
+22 November, Sajag 3.2 on the Galaxy S25. The 20 test messages of [docs/accuracy-test.md](../docs/accuracy-test.md)
+were sent from a second phone as WhatsApp messages from a saved contact (the testing switch on), so they went through
+the chat path, judged on their text and links. Round 1 with the S25 on the hub's Wi-Fi, round 2 with its Wi-Fi off.
+
+| Round | Messages | Result |
+| --- | --- | --- |
+| 1 (hub's Wi-Fi) | 11 scams | **11 flagged**: 9 dangerous, 2 suspicious (the electricity cut-off and the "CBI officer"); the title names the right kind for 9; the SIM-card and the reward-point scams were titled "Fake bank KYC message" (the gap found in part A) |
+| 1 | 9 normal messages | **8 safe**, no alert; 1 suspicious: "Mom, I paid the electricity bill today, Rs 1,240", the hard case on the list |
+| 2 (Wi-Fi off) | 4 scams again (1, 2, 4, 10) | **4 of 4 alerted again**, with the same verdicts: the phone alone, and a message sent twice gets two alerts (app 3.2) |
+
+- Every notification named the sender, the start of the message and the time it arrived, so the alerts that came
+  together could be told apart.
+- The Hindi KYC scam was flagged dangerous in both rounds with the right title; the job, parcel, prize, app-install and
+  OTP-cashback scams got their own titles.
+- During the test, two real bank debit SMS received by the S25 ("Rs.… Dr. from A/C XXXXXX… and Cr. to …") were flagged
+  suspicious: real false alarms of the kind part B counts.
+- Llama's explanation screens were not captured in this run; the speed of Llama on the S25 (3.6 s per explanation) was
+  measured on 22 November (update 45).
 
 ## Full output of part A
 
