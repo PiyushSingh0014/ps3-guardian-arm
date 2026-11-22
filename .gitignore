@@ -36,3 +36,8 @@ logs/
 esp32/**/secrets.h
 # Phone Guard's link model (update 43): the same numbers as detectors/url/url_model.npz, which is in git too
 !android/app/src/main/assets/guard/link_model.bin
+
+# LaTeX build files (the report's PDF is kept)
+report/*.aux
+report/*.toc
+report/*.out
