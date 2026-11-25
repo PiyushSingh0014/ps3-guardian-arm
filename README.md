@@ -14,7 +14,7 @@ It has two parts. **Phone Guard**, on the Android phone, checks the owner's SMS,
 | | |
 | --- | --- |
 | **Technical report** | [report/sajag-phase1-report.pdf](report/sajag-phase1-report.pdf): the approach, the architecture, the algorithms, the results and the Phase 2 plan |
-| **Demo video** | *link to be added* |
+| **Demo video** | https://www.youtube.com/watch?v=hbyHlChu4ys |
 | **Results** | [results/](results/README.md): every measured number and how to reproduce it |
 | **Guides** | [docs/](docs/README.md): installing the app, the hub, each part, the tests |
 | **State of every part** | [docs/status.md](docs/status.md) |
